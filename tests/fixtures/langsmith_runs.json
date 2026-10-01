@@ -1,0 +1,217 @@
+[
+  {
+    "id": "t1-root",
+    "name": "support-agent",
+    "run_type": "chain",
+    "trace_id": "trace-1",
+    "parent_run_ids": [],
+    "start_time": "2026-09-30T10:00:00.000000Z",
+    "end_time": "2026-09-30T10:02:00.000000Z",
+    "error": null,
+    "serialized": {},
+    "outputs": {},
+    "extra": {
+      "metadata": {}
+    }
+  },
+  {
+    "id": "t1-llm",
+    "name": "ChatOpenAI",
+    "run_type": "llm",
+    "trace_id": "trace-1",
+    "parent_run_ids": [
+      "t1-root"
+    ],
+    "start_time": "2026-09-30T10:00:05.000000Z",
+    "end_time": "2026-09-30T10:01:00.000000Z",
+    "error": null,
+    "serialized": {
+      "kwargs": {
+        "name": "gpt-5.6-mini"
+      }
+    },
+    "outputs": {
+      "llm_output": {
+        "token_usage": {
+          "prompt_tokens": 1500,
+          "completion_tokens": 400
+        }
+      }
+    },
+    "extra": {
+      "metadata": {
+        "ls_provider": "openai"
+      }
+    }
+  },
+  {
+    "id": "t1-tool",
+    "name": "crm_lookup",
+    "run_type": "tool",
+    "trace_id": "trace-1",
+    "parent_run_ids": [
+      "t1-root"
+    ],
+    "start_time": "2026-09-30T10:01:05.000000Z",
+    "end_time": "2026-09-30T10:01:06.000000Z",
+    "error": null,
+    "serialized": {},
+    "outputs": {},
+    "extra": {
+      "metadata": {}
+    }
+  },
+  {
+    "id": "t2-root",
+    "name": "support-agent",
+    "run_type": "chain",
+    "trace_id": "trace-2",
+    "parent_run_ids": [],
+    "start_time": "2026-09-30T11:00:00.000000Z",
+    "end_time": "2026-09-30T11:05:00.000000Z",
+    "error": null,
+    "serialized": {},
+    "outputs": {},
+    "extra": {
+      "metadata": {}
+    }
+  },
+  {
+    "id": "t2-llm1",
+    "name": "ChatAnthropic",
+    "run_type": "llm",
+    "trace_id": "trace-2",
+    "parent_run_ids": [
+      "t2-root"
+    ],
+    "start_time": "2026-09-30T11:00:05.000000Z",
+    "end_time": "2026-09-30T11:01:30.000000Z",
+    "error": null,
+    "serialized": {
+      "kwargs": {
+        "name": "claude-haiku-4-5"
+      }
+    },
+    "outputs": {
+      "llm_output": {
+        "token_usage": {
+          "prompt_tokens": 2000,
+          "completion_tokens": 600
+        }
+      }
+    },
+    "extra": {
+      "metadata": {}
+    }
+  },
+  {
+    "id": "t2-retry",
+    "name": "vector_retrieval",
+    "run_type": "tool",
+    "trace_id": "trace-2",
+    "parent_run_ids": [
+      "t2-root"
+    ],
+    "start_time": "2026-09-30T11:01:40.000000Z",
+    "end_time": "2026-09-30T11:01:45.000000Z",
+    "error": null,
+    "serialized": {},
+    "outputs": {},
+    "extra": {
+      "metadata": {
+        "agentpnl_retry": "no results returned"
+      }
+    }
+  },
+  {
+    "id": "t2-esc",
+    "name": "human_review",
+    "run_type": "tool",
+    "trace_id": "trace-2",
+    "parent_run_ids": [
+      "t2-root"
+    ],
+    "start_time": "2026-09-30T11:02:00.000000Z",
+    "end_time": "2026-09-30T11:02:05.000000Z",
+    "error": null,
+    "serialized": {},
+    "outputs": {},
+    "extra": {
+      "metadata": {
+        "agentpnl_escalation_minutes": 8,
+        "agentpnl_escalation_reason": "ambiguous refund policy"
+      }
+    }
+  },
+  {
+    "id": "t2-llm2",
+    "name": "ChatAnthropic",
+    "run_type": "llm",
+    "trace_id": "trace-2",
+    "parent_run_ids": [
+      "t2-root"
+    ],
+    "start_time": "2026-09-30T11:02:10.000000Z",
+    "end_time": "2026-09-30T11:04:00.000000Z",
+    "error": null,
+    "serialized": {
+      "kwargs": {
+        "name": "claude-haiku-4-5"
+      }
+    },
+    "outputs": {
+      "llm_output": {
+        "token_usage": {
+          "prompt_tokens": 2600,
+          "completion_tokens": 700
+        }
+      }
+    },
+    "extra": {
+      "metadata": {}
+    }
+  },
+  {
+    "id": "t3-root",
+    "name": "support-agent",
+    "run_type": "chain",
+    "trace_id": "trace-3",
+    "parent_run_ids": [],
+    "start_time": "2026-09-30T12:00:00.000000Z",
+    "end_time": "2026-09-30T12:01:00.000000Z",
+    "error": "timeout after 30s",
+    "serialized": {},
+    "outputs": {},
+    "extra": {
+      "metadata": {}
+    }
+  },
+  {
+    "id": "t3-llm",
+    "name": "ChatOpenAI",
+    "run_type": "llm",
+    "trace_id": "trace-3",
+    "parent_run_ids": [
+      "t3-root"
+    ],
+    "start_time": "2026-09-30T12:00:05.000000Z",
+    "end_time": "2026-09-30T12:00:50.000000Z",
+    "error": null,
+    "serialized": {
+      "kwargs": {
+        "name": "gpt-5-nano"
+      }
+    },
+    "outputs": {
+      "llm_output": {
+        "token_usage": {
+          "prompt_tokens": 800,
+          "completion_tokens": 150
+        }
+      }
+    },
+    "extra": {
+      "metadata": {}
+    }
+  }
+]

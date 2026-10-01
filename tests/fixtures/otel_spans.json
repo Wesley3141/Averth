@@ -1,0 +1,184 @@
+{
+  "spans": [
+    {
+      "traceId": "trace-a",
+      "spanId": "a1",
+      "name": "llm.chat",
+      "startTimeUnixNano": "1758000000000000000",
+      "endTimeUnixNano": "1758000001200000000",
+      "attributes": [
+        {
+          "key": "gen_ai.request.model",
+          "value": {
+            "stringValue": "gpt-5.6"
+          }
+        },
+        {
+          "key": "gen_ai.usage.input_tokens",
+          "value": {
+            "intValue": "2000"
+          }
+        },
+        {
+          "key": "gen_ai.usage.output_tokens",
+          "value": {
+            "intValue": "500"
+          }
+        }
+      ],
+      "status": {
+        "code": "STATUS_CODE_OK"
+      }
+    },
+    {
+      "traceId": "trace-a",
+      "spanId": "a2",
+      "name": "tool.web_search",
+      "startTimeUnixNano": "1758000001300000000",
+      "endTimeUnixNano": "1758000001600000000",
+      "attributes": [
+        {
+          "key": "tool.name",
+          "value": {
+            "stringValue": "web_search"
+          }
+        }
+      ],
+      "status": {
+        "code": "STATUS_CODE_OK"
+      }
+    },
+    {
+      "traceId": "trace-b",
+      "spanId": "b1",
+      "name": "llm.chat",
+      "startTimeUnixNano": "1758000000000000000",
+      "endTimeUnixNano": "1758000001500000000",
+      "attributes": [
+        {
+          "key": "gen_ai.request.model",
+          "value": {
+            "stringValue": "claude-sonnet-4-5"
+          }
+        },
+        {
+          "key": "gen_ai.usage.input_tokens",
+          "value": {
+            "intValue": "3000"
+          }
+        },
+        {
+          "key": "gen_ai.usage.output_tokens",
+          "value": {
+            "intValue": "800"
+          }
+        }
+      ],
+      "status": {
+        "code": "STATUS_CODE_OK"
+      }
+    },
+    {
+      "traceId": "trace-b",
+      "spanId": "b2",
+      "name": "retry.check",
+      "startTimeUnixNano": "1758000001600000000",
+      "endTimeUnixNano": "1758000001610000000",
+      "attributes": [
+        {
+          "key": "agentpnl.retry",
+          "value": {
+            "stringValue": "validation failed"
+          }
+        }
+      ],
+      "status": {
+        "code": "STATUS_CODE_OK"
+      }
+    },
+    {
+      "traceId": "trace-b",
+      "spanId": "b3",
+      "name": "llm.chat",
+      "startTimeUnixNano": "1758000001700000000",
+      "endTimeUnixNano": "1758000003200000000",
+      "attributes": [
+        {
+          "key": "gen_ai.request.model",
+          "value": {
+            "stringValue": "claude-sonnet-4-5"
+          }
+        },
+        {
+          "key": "llm.usage.prompt_tokens",
+          "value": {
+            "intValue": "3500"
+          }
+        },
+        {
+          "key": "llm.usage.completion_tokens",
+          "value": {
+            "intValue": "900"
+          }
+        }
+      ],
+      "status": {
+        "code": "STATUS_CODE_OK"
+      }
+    },
+    {
+      "traceId": "trace-b",
+      "spanId": "b4",
+      "name": "review.human",
+      "startTimeUnixNano": "1758000003300000000",
+      "endTimeUnixNano": "1758000003400000000",
+      "attributes": [
+        {
+          "key": "agentpnl.escalation_minutes",
+          "value": {
+            "intValue": "5"
+          }
+        },
+        {
+          "key": "agentpnl.escalation_reason",
+          "value": {
+            "stringValue": "low confidence"
+          }
+        }
+      ],
+      "status": {
+        "code": "STATUS_CODE_OK"
+      }
+    },
+    {
+      "traceId": "trace-c",
+      "spanId": "c1",
+      "name": "llm.chat",
+      "startTimeUnixNano": "1758000000000000000",
+      "endTimeUnixNano": "1758000000900000000",
+      "attributes": [
+        {
+          "key": "gen_ai.request.model",
+          "value": {
+            "stringValue": "mistral-large-2407"
+          }
+        },
+        {
+          "key": "gen_ai.usage.input_tokens",
+          "value": {
+            "intValue": "1000"
+          }
+        },
+        {
+          "key": "gen_ai.usage.output_tokens",
+          "value": {
+            "intValue": "200"
+          }
+        }
+      ],
+      "status": {
+        "code": "STATUS_CODE_ERROR"
+      }
+    }
+  ]
+}

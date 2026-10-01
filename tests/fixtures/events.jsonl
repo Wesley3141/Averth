@@ -1,0 +1,10 @@
+{"type": "start", "case_id": "case-1"}
+{"type": "model", "case_id": "case-1", "provider": "openai", "model": "gpt-5-nano", "input_tokens": 1200, "output_tokens": 300}
+{"type": "tool", "case_id": "case-1", "name": "web_search", "latency_ms": 320}
+{"type": "end", "case_id": "case-1", "success": true, "business_value": 5.0}
+{"type": "model", "case_id": "case-2", "provider": "anthropic", "model": "claude-haiku-4-5", "input_tokens": 4000, "output_tokens": 1200}
+{"type": "retry", "case_id": "case-2", "reason": "schema mismatch"}
+{"type": "escalation", "case_id": "case-2", "minutes": 10, "reason": "edge-case refund"}
+{"type": "model", "case_id": "case-2", "provider": "anthropic", "model": "claude-haiku-4-5", "input_tokens": 4500, "output_tokens": 1300}
+{"type": "end", "case_id": "case-2", "success": true, "business_value": 8.0}
+{"type": "model", "case_id": "case-3", "model": "command-r", "input_tokens": 900, "output_tokens": 120}
