@@ -7,6 +7,9 @@ MODEL_PRICES = {
     "openai:gpt-5-nano": (0.05, 0.40),
     "anthropic:claude-opus-4-6": (15.00, 75.00),
     "anthropic:claude-sonnet-4-5": (3.00, 15.00),
+    "anthropic:claude-sonnet-4-20250514": (3.00, 15.00),  # published list price
+    "anthropic:claude-3-7-sonnet-20250219": (3.00, 15.00),  # published list price
+    "anthropic:claude-3-5-sonnet-20241022": (3.00, 15.00),  # published list price
     "anthropic:claude-haiku-4-5": (0.80, 4.00),
     "google:gemini-3-pro": (2.00, 12.00),
     "google:gemini-3-flash": (0.50, 3.00),
