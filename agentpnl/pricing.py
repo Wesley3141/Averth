@@ -29,6 +29,11 @@ TOOL_PRICES = {
 HUMAN_COST_PER_MIN = 1.17  # ~$70/hr loaded
 
 
+# fallback per-1M-token prices (input, output) used when a model has no
+# entry in MODEL_PRICES; estimated spend is flagged, never presented as exact
+ESTIMATED_MODEL_PRICES = (1.00, 3.00)
+
+
 def model_call_cost(provider, model, input_tokens, output_tokens):
     key = f"{provider}:{model}"
     if key not in MODEL_PRICES:
@@ -39,3 +44,15 @@ def model_call_cost(provider, model, input_tokens, output_tokens):
 
 def tool_call_cost(name):
     return TOOL_PRICES.get(name, TOOL_PRICES["default"])
+
+
+def estimated_model_cost(provider, model, input_tokens, output_tokens):
+    """Fallback cost for a model missing from MODEL_PRICES.
+
+    Uses ESTIMATED_MODEL_PRICES (1.00/3.00 per 1M tokens). Integrations call
+    this when model_call_cost raises KeyError and record the result via
+    Tracker.log_model_cost_estimate, which flags the model in
+    pnl()["unpriced_models"].
+    """
+    pin, pout = ESTIMATED_MODEL_PRICES
+    return input_tokens / 1e6 * pin + output_tokens / 1e6 * pout

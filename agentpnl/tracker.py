@@ -30,6 +30,8 @@ class Tracker:
         self.on_breach = on_breach
         self.human_cost_per_min = human_cost_per_min or pricing.HUMAN_COST_PER_MIN
         self.attempts = []
+        # "provider:model" keys priced by estimate (unknown to pricing.MODEL_PRICES)
+        self.unpriced_models = set()
         self._cur = None
 
     # ---- per-attempt lifecycle ----
@@ -52,6 +54,24 @@ class Tracker:
         key = f"{provider}:{model}"
         cur["per_model"][key] = cur["per_model"].get(key, 0.0) + c
         cur["events"].append(("model", provider, model, c))
+
+    def log_model_cost_estimate(self, provider, model, cost,
+                                input_tokens=0, output_tokens=0):
+        """Record a model call priced by estimate (model unknown to pricing tables).
+
+        Used by framework integrations when pricing.model_call_cost raises
+        KeyError. Behaves like log_model_call but takes the dollar cost
+        directly; the model key is flagged in tracker.unpriced_models and
+        surfaced in pnl() so estimated spend is visible, never hidden.
+        """
+        self._req()
+        cur = self._cur
+        cur["model"] += cost
+        cur["steps"].append((input_tokens, output_tokens, cost, cur["in_retry_path"]))
+        key = f"{provider}:{model}"
+        cur["per_model"][key] = cur["per_model"].get(key, 0.0) + cost
+        cur["events"].append(("model_estimate", provider, model, cost))
+        self.unpriced_models.add(key)
 
     def log_tool_call(self, name, cost=None):
         self._req()
@@ -169,6 +189,7 @@ class Tracker:
                      "max": costs[-1] if costs else 0.0,
                      "top5pct_share": tail_share},
             "per_model": per_model,
+            "unpriced_models": sorted(self.unpriced_models),
             "business_value": value,
             "net_value": value - total,
             "budget_per_success": self.budget_per_success,

@@ -1,33 +1,63 @@
-# agentpnl — 5-minute quickstart (pilot)
+# agentpnl: 5-minute quickstart (pilot)
 
 Meter one production agent for two weeks. Read-only. The meter runs inside
-your environment; no prompts or customer data ever leave it.
+your environment and records cost/token/timing metadata only. It makes no
+network calls and exfiltrates no data: the sanitized ledger contains no
+prompts, no completions, no tool payloads, and no customer data.
 
 ## 1. Install (30 seconds)
 
 ```bash
-pip install git+https://github.com/YOUR-ORG/agentpnl.git
+pip install git+https://github.com/Wesley3141/agentpnl.git
 ```
 
-## 2. Wrap your agent's attempt loop (3 minutes)
+Optional extras:
+
+```bash
+pip install "agentpnl[langchain] @ git+https://github.com/Wesley3141/agentpnl.git"   # LangChain callback handler
+pip install "agentpnl[openai] @ git+https://github.com/Wesley3141/agentpnl.git"        # OpenAI trace import
+```
+
+## 2. Instrument your agent's attempt loop (3 minutes)
+
+Use the Tracker directly around each resolved case:
 
 ```python
-from agentpnl import Tracker, ModelStep
+from agentpnl import Tracker
 
 t = Tracker("support-agent", budget_per_success=6.00)
 
 # per resolved case:
-a = t.start_attempt("case-12345", model="gpt-4.1")
-a.step(ModelStep(in_tokens=8200, out_tokens=1400))   # model call
-a.tool("zendesk_lookup", 0.004)                     # external tool/API cost
-a.step(ModelStep(in_tokens=31000, out_tokens=900))  # context grows: metered
-t.end_attempt("case-12345", success=True, human_min=4)  # reviewer time, if any
+t.start_attempt(case_id="case-12345")
+t.log_model_call("openai", "gpt-5.6-mini", 8200, 1400)  # provider, model, in/out tokens
+t.log_tool_call("zendesk_lookup", 0.004)               # external tool/API cost
+t.log_model_call("openai", "gpt-5.6-mini", 31000, 900) # context growth is metered
+t.log_retry("confidence check failed")                 # marks subsequent tokens as waste-path
+t.log_escalation(4.5, "low confidence")                # human reviewer minutes
+t.end_attempt(success=True, business_value=11.20)      # reopened=True if it reopens
 ```
 
 Record what you already have: model token counts, tool/API spend, retry
 loops, human review minutes, and whether the case was accepted/resolved.
 Failed runs, reopens, and escalations are first-class: end with
 `success=False` or `reopened=True`.
+
+On LangChain, the same data is captured with three lines, no manual calls:
+
+```python
+from agentpnl.integrations.langchain import AgentPNLCallbackHandler
+
+handler = AgentPNLCallbackHandler(tracker)
+agent.invoke(..., config={"callbacks": [handler]})
+```
+
+Prefer existing traces? Import one instead of instrumenting:
+
+```bash
+agentpnl trace run-2026-09.json --format jsonl --html report.html
+```
+
+`--format` also accepts `otel` and `langsmith`.
 
 ## 3. Export the sanitized ledger (30 seconds)
 
