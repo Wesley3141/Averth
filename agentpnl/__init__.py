@@ -1,0 +1,28 @@
+"""agentpnl: the economic meter for enterprise agents.
+
+Instrument one agent, get its actual P&L:
+
+    from agentpnl import Tracker
+
+    t = Tracker("invoice-resolution", budget_per_success=5.00)
+
+    t.start_attempt(case_id="INV-1042")
+    t.log_model_call("anthropic", "claude-sonnet-4-5", 3200, 850)
+    t.log_tool_call("erp_lookup")
+    t.log_retry("validation failed", extra_model_cost=0.012)
+    t.log_escalation(4.5, "low confidence on tax code")
+    t.end_attempt(success=True, business_value=11.20)
+
+    from agentpnl.report import report_text
+    print(report_text(t.pnl(), token_dashboard_per_success=1.91))
+
+The tracker records model spend, tool calls, retries, and human review time,
+then attributes it all to accepted business outcomes. The budget hook is the
+seed of governance: exceed per-outcome budget and the callback fires —
+downgrade the model, require approval, or kill the run.
+"""
+
+from .tracker import Tracker, BudgetBreach
+from . import pricing
+
+__all__ = ["Tracker", "BudgetBreach", "pricing"]

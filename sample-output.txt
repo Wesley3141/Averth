@@ -1,0 +1,41 @@
+Agent P&L: support-agent
+
+Attempts:              25
+Autonomous completions:19 (76.0%)
+Reopened:              0
+Human escalations:     3
+Retries:               8
+
+Cost per successful outcome:
+  Model/API:        $0.05
+  Tool calls:       $0.15
+  Retries:          $0.01
+  Human review:     $1.08
+  Fully loaded:     $1.29
+  Token dashboard:  $0.05  (real cost is 25.5x)
+
+The five layers:
+  1. Context compounding: 2.2x input growth, first to last step (state accumulation tax)
+  2. External tool spend: $2.77 total, $0.15 per success (invisible on provider invoices)
+  3. Yield ratio: 55% of tokens on the terminal path (45% burned on retries and dead ends)
+  4. Heavy tail: p50 $0.07 / p95 $8.22 / max $8.61 per attempt; top 5% of attempts consumed 35% of budget
+  5. Model mix:
+       anthropic:claude-sonnet-4-5: $0.61 (63% of model spend)
+       anthropic:claude-opus-4-6: $0.31 (33% of model spend)
+       anthropic:claude-haiku-4-5: $0.04 (4% of model spend)
+
+Business value:        $212.80
+Total cost:            $24.44
+Net value:             $188.36
+Budget: $6.00/success, breaches: 2
+
+Policy replay: max_cost_per_attempt=$6.0, yield_floor=0.5
+Would have stopped 8 of 25 runs, exposing $22.34 (91% of total spend).
+  T-00013: $8.61 (success) — cost $8.61 > cap $6.00; yield 20% < floor 50%
+  T-00021: $8.22 (success) — cost $8.22 > cap $6.00; yield 21% < floor 50%
+  T-00018: $4.27 (success) — yield 33% < floor 50%
+  T-00024: $0.37 (success) — yield 31% < floor 50%
+  T-00010: $0.36 (success) — yield 31% < floor 50%
+  T-00020: $0.36 (success) — yield 34% < floor 50%
+  T-00019: $0.07 (success) — yield 30% < floor 50%
+  T-00003: $0.07 (success) — yield 36% < floor 50%

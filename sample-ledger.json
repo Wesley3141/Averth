@@ -1,0 +1,532 @@
+{
+  "agent": "support-resolution",
+  "attempts": [
+    {
+      "case_id": "T-00000",
+      "model": 0.012327999999999999,
+      "tools": 0.003,
+      "retry_cost": 0.0,
+      "retries": 0,
+      "human_min": 0.0,
+      "human_cost": 0.0,
+      "ai_cost": 0.015327999999999998,
+      "total_cost": 0.015327999999999998,
+      "total_tokens": 3218,
+      "waste_tokens": 0,
+      "context_growth": 1.3594713656387665,
+      "success": true,
+      "reopened": false,
+      "business_value": 11.2,
+      "per_model": {
+        "anthropic:claude-haiku-4-5": 0.001384,
+        "anthropic:claude-sonnet-4-5": 0.010943999999999999
+      }
+    },
+    {
+      "case_id": "T-00001",
+      "model": 0.011833000000000002,
+      "tools": 0.303,
+      "retry_cost": 0.0,
+      "retries": 0,
+      "human_min": 0.0,
+      "human_cost": 0.0,
+      "ai_cost": 0.314833,
+      "total_cost": 0.314833,
+      "total_tokens": 3161,
+      "waste_tokens": 0,
+      "context_growth": 1.263793103448276,
+      "success": false,
+      "reopened": false,
+      "business_value": 0.0,
+      "per_model": {
+        "anthropic:claude-haiku-4-5": 0.00148,
+        "anthropic:claude-sonnet-4-5": 0.010353000000000001
+      }
+    },
+    {
+      "case_id": "T-00002",
+      "model": 0.016131000000000003,
+      "tools": 0.003,
+      "retry_cost": 0.0,
+      "retries": 0,
+      "human_min": 0.0,
+      "human_cost": 0.0,
+      "ai_cost": 0.019131000000000002,
+      "total_cost": 0.019131000000000002,
+      "total_tokens": 3657,
+      "waste_tokens": 0,
+      "context_growth": 1.571806167400881,
+      "success": true,
+      "reopened": false,
+      "business_value": 11.2,
+      "per_model": {
+        "anthropic:claude-haiku-4-5": 0.001344,
+        "anthropic:claude-sonnet-4-5": 0.014787000000000002
+      }
+    },
+    {
+      "case_id": "T-00003",
+      "model": 0.0505636,
+      "tools": 0.003,
+      "retry_cost": 0.014,
+      "retries": 1,
+      "human_min": 0.0,
+      "human_cost": 0.0,
+      "ai_cost": 0.0675636,
+      "total_cost": 0.0675636,
+      "total_tokens": 12407,
+      "waste_tokens": 7992,
+      "context_growth": 2.7291807718348005,
+      "success": true,
+      "reopened": false,
+      "business_value": 11.2,
+      "per_model": {
+        "anthropic:claude-haiku-4-5": 0.0015976,
+        "anthropic:claude-sonnet-4-5": 0.048965999999999996
+      }
+    },
+    {
+      "case_id": "T-00004",
+      "model": 0.0172912,
+      "tools": 0.303,
+      "retry_cost": 0.0,
+      "retries": 0,
+      "human_min": 0.0,
+      "human_cost": 0.0,
+      "ai_cost": 0.3202912,
+      "total_cost": 0.3202912,
+      "total_tokens": 4242,
+      "waste_tokens": 0,
+      "context_growth": 1.5777940102264427,
+      "success": false,
+      "reopened": false,
+      "business_value": 0.0,
+      "per_model": {
+        "anthropic:claude-haiku-4-5": 0.0014512,
+        "anthropic:claude-sonnet-4-5": 0.01584
+      }
+    },
+    {
+      "case_id": "T-00005",
+      "model": 0.015061799999999998,
+      "tools": 0.003,
+      "retry_cost": 0.0,
+      "retries": 0,
+      "human_min": 0.0,
+      "human_cost": 0.0,
+      "ai_cost": 0.0180618,
+      "total_cost": 0.0180618,
+      "total_tokens": 3688,
+      "waste_tokens": 0,
+      "context_growth": 1.6228373702422145,
+      "success": false,
+      "reopened": false,
+      "business_value": 0.0,
+      "per_model": {
+        "anthropic:claude-haiku-4-5": 0.0014088,
+        "anthropic:claude-sonnet-4-5": 0.013652999999999998
+      }
+    },
+    {
+      "case_id": "T-00006",
+      "model": 0.012694400000000002,
+      "tools": 0.003,
+      "retry_cost": 0.0,
+      "retries": 0,
+      "human_min": 0.0,
+      "human_cost": 0.0,
+      "ai_cost": 0.0156944,
+      "total_cost": 0.0156944,
+      "total_tokens": 3472,
+      "waste_tokens": 0,
+      "context_growth": 1.5975503062117236,
+      "success": true,
+      "reopened": false,
+      "business_value": 11.2,
+      "per_model": {
+        "anthropic:claude-haiku-4-5": 0.0013664,
+        "anthropic:claude-sonnet-4-5": 0.011328000000000001
+      }
+    },
+    {
+      "case_id": "T-00007",
+      "model": 0.014721399999999999,
+      "tools": 0.303,
+      "retry_cost": 0.0,
+      "retries": 0,
+      "human_min": 0.0,
+      "human_cost": 0.0,
+      "ai_cost": 0.3177214,
+      "total_cost": 0.3177214,
+      "total_tokens": 3699,
+      "waste_tokens": 0,
+      "context_growth": 1.3226299694189603,
+      "success": true,
+      "reopened": false,
+      "business_value": 11.2,
+      "per_model": {
+        "anthropic:claude-haiku-4-5": 0.0015664,
+        "anthropic:claude-sonnet-4-5": 0.013155
+      }
+    },
+    {
+      "case_id": "T-00008",
+      "model": 0.014855600000000002,
+      "tools": 0.303,
+      "retry_cost": 0.0,
+      "retries": 0,
+      "human_min": 0.0,
+      "human_cost": 0.0,
+      "ai_cost": 0.3178556,
+      "total_cost": 0.3178556,
+      "total_tokens": 4034,
+      "waste_tokens": 0,
+      "context_growth": 1.4902667627974044,
+      "success": false,
+      "reopened": false,
+      "business_value": 0.0,
+      "per_model": {
+        "anthropic:claude-haiku-4-5": 0.0015296,
+        "anthropic:claude-sonnet-4-5": 0.013326000000000001
+      }
+    },
+    {
+      "case_id": "T-00009",
+      "model": 0.015748,
+      "tools": 0.003,
+      "retry_cost": 0.0,
+      "retries": 0,
+      "human_min": 0.0,
+      "human_cost": 0.0,
+      "ai_cost": 0.018748,
+      "total_cost": 0.018748,
+      "total_tokens": 4252,
+      "waste_tokens": 0,
+      "context_growth": 1.3481967213114754,
+      "success": true,
+      "reopened": false,
+      "business_value": 11.2,
+      "per_model": {
+        "anthropic:claude-haiku-4-5": 0.00184,
+        "anthropic:claude-sonnet-4-5": 0.013908
+      }
+    },
+    {
+      "case_id": "T-00010",
+      "model": 0.04423439999999999,
+      "tools": 0.303,
+      "retry_cost": 0.014,
+      "retries": 1,
+      "human_min": 0.0,
+      "human_cost": 0.0,
+      "ai_cost": 0.3612344,
+      "total_cost": 0.3612344,
+      "total_tokens": 10530,
+      "waste_tokens": 7258,
+      "context_growth": 3.220562390158172,
+      "success": true,
+      "reopened": false,
+      "business_value": 11.2,
+      "per_model": {
+        "anthropic:claude-haiku-4-5": 0.0014064,
+        "anthropic:claude-sonnet-4-5": 0.042828
+      }
+    },
+    {
+      "case_id": "T-00011",
+      "model": 0.016228,
+      "tools": 0.003,
+      "retry_cost": 0.0,
+      "retries": 0,
+      "human_min": 0.0,
+      "human_cost": 0.0,
+      "ai_cost": 0.019228,
+      "total_cost": 0.019228,
+      "total_tokens": 3783,
+      "waste_tokens": 0,
+      "context_growth": 1.3122137404580152,
+      "success": false,
+      "reopened": false,
+      "business_value": 0.0,
+      "per_model": {
+        "anthropic:claude-haiku-4-5": 0.001516,
+        "anthropic:claude-sonnet-4-5": 0.014712
+      }
+    },
+    {
+      "case_id": "T-00012",
+      "model": 0.013377400000000001,
+      "tools": 0.003,
+      "retry_cost": 0.0,
+      "retries": 0,
+      "human_min": 0.0,
+      "human_cost": 0.0,
+      "ai_cost": 0.0163774,
+      "total_cost": 0.0163774,
+      "total_tokens": 3686,
+      "waste_tokens": 0,
+      "context_growth": 1.4121725731895223,
+      "success": true,
+      "reopened": false,
+      "business_value": 11.2,
+      "per_model": {
+        "anthropic:claude-haiku-4-5": 0.0015783999999999998,
+        "anthropic:claude-sonnet-4-5": 0.011799
+      }
+    },
+    {
+      "case_id": "T-00013",
+      "model": 0.2113872,
+      "tools": 0.003,
+      "retry_cost": 0.014,
+      "retries": 1,
+      "human_min": 7.164678213406988,
+      "human_cost": 8.382673509686176,
+      "ai_cost": 0.2283872,
+      "total_cost": 8.611060709686177,
+      "total_tokens": 18481,
+      "waste_tokens": 14765,
+      "context_growth": 5.35158254918734,
+      "success": true,
+      "reopened": false,
+      "business_value": 11.2,
+      "per_model": {
+        "anthropic:claude-haiku-4-5": 0.0013511999999999999,
+        "anthropic:claude-sonnet-4-5": 0.048471,
+        "anthropic:claude-opus-4-6": 0.16156500000000001
+      }
+    },
+    {
+      "case_id": "T-00014",
+      "model": 0.0140914,
+      "tools": 0.003,
+      "retry_cost": 0.0,
+      "retries": 0,
+      "human_min": 0.0,
+      "human_cost": 0.0,
+      "ai_cost": 0.0170914,
+      "total_cost": 0.0170914,
+      "total_tokens": 3638,
+      "waste_tokens": 0,
+      "context_growth": 1.4537409493161706,
+      "success": true,
+      "reopened": false,
+      "business_value": 11.2,
+      "per_model": {
+        "anthropic:claude-haiku-4-5": 0.0014104,
+        "anthropic:claude-sonnet-4-5": 0.012681000000000001
+      }
+    },
+    {
+      "case_id": "T-00015",
+      "model": 0.0162634,
+      "tools": 0.003,
+      "retry_cost": 0.0,
+      "retries": 0,
+      "human_min": 0.0,
+      "human_cost": 0.0,
+      "ai_cost": 0.0192634,
+      "total_cost": 0.0192634,
+      "total_tokens": 3801,
+      "waste_tokens": 0,
+      "context_growth": 1.6284246575342465,
+      "success": true,
+      "reopened": false,
+      "business_value": 11.2,
+      "per_model": {
+        "anthropic:claude-haiku-4-5": 0.0014224,
+        "anthropic:claude-sonnet-4-5": 0.014841
+      }
+    },
+    {
+      "case_id": "T-00016",
+      "model": 0.016102400000000003,
+      "tools": 0.003,
+      "retry_cost": 0.0,
+      "retries": 0,
+      "human_min": 0.0,
+      "human_cost": 0.0,
+      "ai_cost": 0.019102400000000002,
+      "total_cost": 0.019102400000000002,
+      "total_tokens": 4242,
+      "waste_tokens": 0,
+      "context_growth": 1.6626954579300075,
+      "success": true,
+      "reopened": false,
+      "business_value": 11.2,
+      "per_model": {
+        "anthropic:claude-haiku-4-5": 0.0016784,
+        "anthropic:claude-sonnet-4-5": 0.014424000000000001
+      }
+    },
+    {
+      "case_id": "T-00017",
+      "model": 0.0150132,
+      "tools": 0.003,
+      "retry_cost": 0.0,
+      "retries": 0,
+      "human_min": 0.0,
+      "human_cost": 0.0,
+      "ai_cost": 0.0180132,
+      "total_cost": 0.0180132,
+      "total_tokens": 4189,
+      "waste_tokens": 0,
+      "context_growth": 1.3576115485564304,
+      "success": true,
+      "reopened": false,
+      "business_value": 11.2,
+      "per_model": {
+        "anthropic:claude-haiku-4-5": 0.0017112000000000002,
+        "anthropic:claude-sonnet-4-5": 0.013302000000000001
+      }
+    },
+    {
+      "case_id": "T-00018",
+      "model": 0.053864800000000004,
+      "tools": 0.003,
+      "retry_cost": 0.014,
+      "retries": 1,
+      "human_min": 3.5903397736403546,
+      "human_cost": 4.200697535159215,
+      "ai_cost": 0.0708648,
+      "total_cost": 4.2715623351592145,
+      "total_tokens": 12941,
+      "waste_tokens": 8674,
+      "context_growth": 3.7017411052233156,
+      "success": true,
+      "reopened": false,
+      "business_value": 11.2,
+      "per_model": {
+        "anthropic:claude-haiku-4-5": 0.0014248,
+        "anthropic:claude-sonnet-4-5": 0.05244
+      }
+    },
+    {
+      "case_id": "T-00019",
+      "model": 0.0558554,
+      "tools": 0.003,
+      "retry_cost": 0.014,
+      "retries": 1,
+      "human_min": 0.0,
+      "human_cost": 0.0,
+      "ai_cost": 0.0728554,
+      "total_cost": 0.0728554,
+      "total_tokens": 13671,
+      "waste_tokens": 9556,
+      "context_growth": 4.00819061801936,
+      "success": true,
+      "reopened": false,
+      "business_value": 11.2,
+      "per_model": {
+        "anthropic:claude-haiku-4-5": 0.0015104,
+        "anthropic:claude-sonnet-4-5": 0.054345
+      }
+    },
+    {
+      "case_id": "T-00020",
+      "model": 0.041839799999999996,
+      "tools": 0.303,
+      "retry_cost": 0.014,
+      "retries": 1,
+      "human_min": 0.0,
+      "human_cost": 0.0,
+      "ai_cost": 0.3588398,
+      "total_cost": 0.3588398,
+      "total_tokens": 10496,
+      "waste_tokens": 6913,
+      "context_growth": 2.8699444885011896,
+      "success": true,
+      "reopened": false,
+      "business_value": 11.2,
+      "per_model": {
+        "anthropic:claude-haiku-4-5": 0.0016248,
+        "anthropic:claude-sonnet-4-5": 0.040215
+      }
+    },
+    {
+      "case_id": "T-00021",
+      "model": 0.1977368,
+      "tools": 0.003,
+      "retry_cost": 0.014,
+      "retries": 1,
+      "human_min": 6.84498198659986,
+      "human_cost": 8.008628924321837,
+      "ai_cost": 0.2147368,
+      "total_cost": 8.223365724321837,
+      "total_tokens": 16583,
+      "waste_tokens": 13156,
+      "context_growth": 3.895986895986896,
+      "success": true,
+      "reopened": false,
+      "business_value": 11.2,
+      "per_model": {
+        "anthropic:claude-haiku-4-5": 0.0015608000000000002,
+        "anthropic:claude-sonnet-4-5": 0.044496,
+        "anthropic:claude-opus-4-6": 0.15167999999999998
+      }
+    },
+    {
+      "case_id": "T-00022",
+      "model": 0.014406200000000001,
+      "tools": 0.303,
+      "retry_cost": 0.0,
+      "retries": 0,
+      "human_min": 0.0,
+      "human_cost": 0.0,
+      "ai_cost": 0.31740619999999997,
+      "total_cost": 0.31740619999999997,
+      "total_tokens": 4253,
+      "waste_tokens": 0,
+      "context_growth": 1.5529172320217097,
+      "success": true,
+      "reopened": false,
+      "business_value": 11.2,
+      "per_model": {
+        "anthropic:claude-haiku-4-5": 0.0015392000000000001,
+        "anthropic:claude-sonnet-4-5": 0.012867
+      }
+    },
+    {
+      "case_id": "T-00023",
+      "model": 0.0147352,
+      "tools": 0.303,
+      "retry_cost": 0.0,
+      "retries": 0,
+      "human_min": 0.0,
+      "human_cost": 0.0,
+      "ai_cost": 0.3177352,
+      "total_cost": 0.3177352,
+      "total_tokens": 3417,
+      "waste_tokens": 0,
+      "context_growth": 1.3353293413173652,
+      "success": false,
+      "reopened": false,
+      "business_value": 0.0,
+      "per_model": {
+        "anthropic:claude-haiku-4-5": 0.0013671999999999998,
+        "anthropic:claude-sonnet-4-5": 0.013368000000000001
+      }
+    },
+    {
+      "case_id": "T-00024",
+      "model": 0.051929600000000006,
+      "tools": 0.303,
+      "retry_cost": 0.014,
+      "retries": 1,
+      "human_min": 0.0,
+      "human_cost": 0.0,
+      "ai_cost": 0.3689296,
+      "total_cost": 0.3689296,
+      "total_tokens": 12597,
+      "waste_tokens": 8660,
+      "context_growth": 3.769817073170732,
+      "success": true,
+      "reopened": false,
+      "business_value": 11.2,
+      "per_model": {
+        "anthropic:claude-haiku-4-5": 0.0014216,
+        "anthropic:claude-sonnet-4-5": 0.050508000000000004
+      }
+    }
+  ]
+}
