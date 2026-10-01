@@ -28,9 +28,14 @@ Mapping (documented here):
                   Provider from extra.metadata["ls_provider"] when present,
                   else guessed from the model name.
   tool call       run_type "tool" -> tool event with the run name.
-  retry marker    extra.metadata {"agentpnl_retry": reason} -> retry event.
+  retry marker    extra.metadata {"agentpnl_retry": reason} -> retry event;
+                  optional "agentpnl_retry_branch" scopes the waste marking
+                  to one parallel branch.
   escalation      extra.metadata {"agentpnl_escalation_minutes": n,
                   "agentpnl_escalation_reason": r} -> escalation event.
+  cache / branch  extra.metadata {"agentpnl_cached_input_tokens": n} on an
+                  llm run -> cached input tokens; {"agentpnl_branch": b}
+                  tags the run's branch for branch-scoped retry accounting.
   business value  extra.metadata {"agentpnl_business_value": v} on the root
                   chain -> end event business_value.
 
@@ -68,8 +73,10 @@ def _llm_tokens(run):
     completion = usage.get("completion_tokens", usage.get("output_tokens",
                              meta.get("completion_tokens",
                                       meta.get("output_tokens", 0))))
+    # C5: negative token counts are malformed exports, never legitimate
+    # economics (they would produce negative cost).
     try:
-        return float(prompt or 0), float(completion or 0)
+        return max(0.0, float(prompt or 0)), max(0.0, float(completion or 0))
     except (TypeError, ValueError):
         return 0.0, 0.0
 
@@ -110,11 +117,19 @@ def load_langsmith(path, agent_name="langsmith-import"):
             rtype = run.get("run_type")
 
             if meta.get("agentpnl_retry") not in (None, ""):
-                events.append({"type": "retry", "case_id": case_id,
-                               "reason": str(meta["agentpnl_retry"])})
+                ev = {"type": "retry", "case_id": case_id,
+                      "reason": str(meta["agentpnl_retry"])}
+                if meta.get("agentpnl_retry_branch") not in (None, ""):
+                    ev["branch"] = str(meta["agentpnl_retry_branch"])
+                events.append(ev)
             if meta.get("agentpnl_escalation_minutes") not in (None, ""):
+                try:
+                    minutes = float(meta["agentpnl_escalation_minutes"])
+                except (TypeError, ValueError):
+                    minutes = 0.0
+                # C5: negative or non-numeric escalation minutes are malformed
                 events.append({"type": "escalation", "case_id": case_id,
-                               "minutes": float(meta["agentpnl_escalation_minutes"]),
+                               "minutes": max(0.0, minutes),
                                "reason": str(meta.get("agentpnl_escalation_reason", ""))})
             if meta.get("agentpnl_business_value") not in (None, ""):
                 try:
@@ -126,9 +141,18 @@ def load_langsmith(path, agent_name="langsmith-import"):
                 model = _llm_model(run)
                 in_tok, out_tok = _llm_tokens(run)
                 provider = meta.get("ls_provider") or guess_provider(model)
-                events.append({"type": "model", "case_id": case_id,
-                               "provider": provider, "model": model,
-                               "input_tokens": in_tok, "output_tokens": out_tok})
+                ev = {"type": "model", "case_id": case_id,
+                      "provider": provider, "model": model,
+                      "input_tokens": in_tok, "output_tokens": out_tok}
+                try:
+                    cached = float(meta.get("agentpnl_cached_input_tokens") or 0)
+                except (TypeError, ValueError):
+                    cached = 0.0
+                if cached > 0:
+                    ev["cached_input_tokens"] = cached
+                if meta.get("agentpnl_branch") not in (None, ""):
+                    ev["branch"] = str(meta["agentpnl_branch"])
+                events.append(ev)
             elif rtype == "tool":
                 events.append({"type": "tool", "case_id": case_id,
                                "name": str(run.get("name") or "tool")})

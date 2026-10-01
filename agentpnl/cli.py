@@ -3,11 +3,16 @@
 Usage:
     agentpnl trace <file> --format otel|langsmith|jsonl [--html PATH]
                  [--policy-cap FLOAT] [--policy-yield FLOAT] [--agent NAME]
+    agentpnl simulate --attempts N --seed S [--jsonl PATH] [--html PATH]
+                 [--agent NAME]
 
 Parses an agent trace into a cost ledger, prints the text P&L report to
-stdout, and writes a shareable one-page HTML report. Imports of the
-trace-importer modules are deferred to main() so this module always
-imports cleanly.
+stdout, and writes a shareable one-page HTML report. `simulate` generates
+adversarial synthetic production traffic (retries, escalations, heavy-tail
+runaways, context growth, cache hits, parallel branches) so you can see what
+the report looks like on production-shaped data before instrumenting anything
+real. Imports of the trace-importer modules are deferred to main() so this
+module always imports cleanly.
 """
 
 import argparse
@@ -43,12 +48,62 @@ def build_parser():
                    help="Replay a hypothetical minimum yield-floor policy.")
     t.add_argument("--agent", default=None, metavar="NAME",
                    help="Override the agent name shown in the report.")
+
+    s = sub.add_parser("simulate",
+                       help="Generate adversarial synthetic production traffic "
+                            "and report its P&L.")
+    s.add_argument("--attempts", type=int, default=2000,
+                   help="Number of synthetic attempts (default: 2000).")
+    s.add_argument("--seed", type=int, default=42,
+                   help="RNG seed; same seed reproduces the same ledger.")
+    s.add_argument("--jsonl", default=None, metavar="PATH",
+                   help="Also write the synthetic events as JSONL.")
+    s.add_argument("--html", default=None, metavar="PATH",
+                   help="HTML report output path (default: simulate.html in cwd).")
+    s.add_argument("--agent", default="synthetic-support", metavar="NAME",
+                   help="Agent name shown in the report.")
     return p
+
+
+def _report_and_html(tracker, html_path, policy_sim=None):
+    from agentpnl.report import report_text, write_html
+    from agentpnl.insights import findings_text
+
+    p = tracker.pnl()
+    print(report_text(p))
+    print()
+    print("=" * 60)
+    print(findings_text(p))
+    if policy_sim is not None:
+        from agentpnl import policy
+        print()
+        print(policy.policy_text(policy_sim))
+    html_path = os.path.abspath(html_path)
+    write_html(html_path, tracker, policy_sim=policy_sim)
+    print("\nHTML report written to %s" % html_path)
+    return 0
+
+
+def _cmd_simulate(args):
+    from agentpnl import stress
+    if args.attempts < 1:
+        print("agentpnl: error: --attempts must be >= 1", file=sys.stderr)
+        return 2
+    tracker, _ = stress.generate(seed=args.seed, attempts=args.attempts,
+                                 agent_name=args.agent)
+    if args.jsonl:
+        stress.write_jsonl(args.jsonl, seed=args.seed,
+                           attempts=args.attempts, agent_name=args.agent)
+        print("Synthetic JSONL written to %s" % os.path.abspath(args.jsonl))
+    return _report_and_html(tracker, args.html or "simulate.html")
 
 
 def main(argv=None):
     parser = build_parser()
     args = parser.parse_args(argv)
+
+    if args.cmd == "simulate":
+        return _cmd_simulate(args)
 
     path = args.file
     if not os.path.isfile(path):
@@ -81,7 +136,6 @@ def main(argv=None):
     if args.agent:
         tracker.agent_name = args.agent
 
-    from agentpnl.report import report_text, write_html
     from agentpnl import policy
 
     sim = None
@@ -90,20 +144,12 @@ def main(argv=None):
                                      max_cost_per_attempt=args.policy_cap,
                                      yield_floor=args.policy_yield)
 
-    print(report_text(tracker.pnl()))
-    if sim is not None:
-        print()
-        print(policy.policy_text(sim))
-
     if args.html:
         html_path = args.html
     else:
         base = os.path.basename(path)
         html_path = os.path.splitext(base)[0] + ".html"
-    html_path = os.path.abspath(html_path)
-    write_html(html_path, tracker, policy_sim=sim)
-    print("\nHTML report written to %s" % html_path)
-    return 0
+    return _report_and_html(tracker, html_path, policy_sim=sim)
 
 
 if __name__ == "__main__":

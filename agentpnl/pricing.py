@@ -31,6 +31,13 @@ TOOL_PRICES = {
 # fully loaded human reviewer cost per minute (wages + benefits + overhead)
 HUMAN_COST_PER_MIN = 1.17  # ~$70/hr loaded
 
+# Fraction of the base input-token price charged for cache-read tokens.
+# Anthropic publishes 0.10x for cache reads (1.25x for cache writes, which we
+# do not model separately); other vendors differ, so Tracker accepts an
+# override. Any cache saving the meter reports is labeled as derived from
+# this documented assumption, never as a vendor invoice line.
+CACHE_READ_DISCOUNT = 0.10
+
 
 # fallback per-1M-token prices (input, output) used when a model has no
 # entry in MODEL_PRICES; estimated spend is flagged, never presented as exact

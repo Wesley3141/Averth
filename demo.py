@@ -77,7 +77,8 @@ for i in range(CASES):
         t.end_attempt(success=False)
 
 p = t.pnl()
-print(report_text(p, token_dashboard_per_success=p["per_success"]["model"]))
+dashboard_per_success = p["cost_model"] / p["successes"] if p["successes"] else 0.0
+print(report_text(p, token_dashboard_per_success=dashboard_per_success))
 print()
 print(f"Budget breaches captured by on_breach hook: {len(breaches)}")
 print()

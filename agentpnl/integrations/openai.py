@@ -26,9 +26,10 @@ from agentpnl import pricing
 
 
 def _int_or_zero(value):
+    # C10: int(float("inf")) raises OverflowError, not ValueError
     try:
         return int(value) if value is not None else 0
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return 0
 
 
@@ -52,14 +53,37 @@ def _usage_tokens(usage):
     return in_tok, out_tok
 
 
+def _usage_cached_tokens(usage):
+    """Cached input tokens from usage.prompt_tokens_details (dict or object).
+
+    OpenAI's API reports these as measured data; when absent this returns 0
+    and pricing proceeds without a cache term.
+    """
+    if usage is None:
+        return 0
+    if isinstance(usage, dict):
+        details = usage.get("prompt_tokens_details")
+    else:
+        details = getattr(usage, "prompt_tokens_details", None)
+    if details is None:
+        return 0
+    if isinstance(details, dict):
+        return _int_or_zero(details.get("cached_tokens"))
+    return _int_or_zero(getattr(details, "cached_tokens", None))
+
+
 def _capture(tracker, provider, model, resp):
     model = model or getattr(resp, "model", None) or "unknown"
-    in_tok, out_tok = _usage_tokens(getattr(resp, "usage", None))
+    usage = getattr(resp, "usage", None)
+    in_tok, out_tok = _usage_tokens(usage)
+    cached_tok = _usage_cached_tokens(usage)
     try:
-        tracker.log_model_call(provider, model, in_tok, out_tok)
+        tracker.log_model_call(provider, model, in_tok, out_tok,
+                               cached_input_tokens=cached_tok)
     except KeyError:
         cost = pricing.estimated_model_cost(provider, model, in_tok, out_tok)
-        tracker.log_model_cost_estimate(provider, model, cost, in_tok, out_tok)
+        tracker.log_model_cost_estimate(provider, model, cost, in_tok, out_tok,
+                                        cached_input_tokens=cached_tok)
 
 
 class _CreateMethod:

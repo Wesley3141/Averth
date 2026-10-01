@@ -20,9 +20,21 @@ Attribute mapping (documented here because vendors emit several dialects):
                   latency_ms.
   failure         status.code in ("ERROR", "STATUS_CODE_ERROR") marks the
                   whole case failed.
-  retry marker    attribute agentpnl.retry -> retry event (reason = value)
+  retry marker    attribute agentpnl.retry -> retry event (reason = value);
+                  optional agentpnl.branch scopes the waste marking to one
+                  parallel branch instead of the whole attempt. On a span
+                  that is both a model call and a retry marker, the model
+                  event is emitted first: the retry marks FOLLOWING steps
+                  as retry-path, it does not retroactively taint the call
+                  on its own span (for branch-scoped retries the branch
+                  work is still caught by the retroactive branch rule).
   escalation      attribute agentpnl.escalation_minutes -> escalation event;
                   agentpnl.escalation_reason supplies the reason.
+  cache           gen_ai.usage.cache_read_input_tokens (or the llm.usage /
+                  agentpnl.cached_input_tokens equivalents) -> cached input
+                  tokens, priced at the Tracker's cache_read_discount
+  branch          attribute agentpnl.branch on a model span tags that call's
+                  branch for branch-scoped retry accounting
   overrides       agentpnl.business_value and agentpnl.success set the end
                   event fields explicitly when present.
 
@@ -86,6 +98,21 @@ def _first(attrs, *keys):
     return None
 
 
+def _parse_bool(value):
+    """Parse an OTel attribute as a boolean. bool("false") is True, so a
+    naive bool() cast silently flips string "false" to True (I1)."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    s = str(value).strip().lower()
+    if s in ("1", "true", "t", "yes", "y"):
+        return True
+    if s in ("0", "false", "f", "no", "n"):
+        return False
+    return None
+
+
 def _span_times(span):
     start = _num(span.get("startTimeUnixNano") or span.get("start_time_unix_nano"), 0)
     end = _num(span.get("endTimeUnixNano") or span.get("end_time_unix_nano"), start)
@@ -115,7 +142,7 @@ def load_otel(path, agent_name="otel-import"):
         if attrs.get("agentpnl.business_value") is not None:
             case["business_value"] = _num(attrs["agentpnl.business_value"])
         if attrs.get("agentpnl.success") is not None:
-            case["success_override"] = bool(attrs["agentpnl.success"])
+            case["success_override"] = _parse_bool(attrs["agentpnl.success"])
 
     events = []
     for case_id, case in cases.items():
@@ -125,14 +152,11 @@ def load_otel(path, agent_name="otel-import"):
             start, end = _span_times(span)
             latency_ms = (end - start) / 1e6 if end >= start else None
 
-            if attrs.get("agentpnl.retry") not in (None, ""):
-                events.append({"type": "retry", "case_id": case_id,
-                               "reason": str(attrs["agentpnl.retry"])})
-            if attrs.get("agentpnl.escalation_minutes") not in (None, ""):
-                events.append({"type": "escalation", "case_id": case_id,
-                               "minutes": _nonneg(attrs["agentpnl.escalation_minutes"]),
-                               "reason": str(attrs.get("agentpnl.escalation_reason", ""))})
-
+            # M2b: on a dual-attribute span (model call + retry marker), the
+            # model event comes first. A retry event marks the FOLLOWING
+            # steps as retry-path (the documented event semantics); emitting
+            # it before the span's own model call would misattribute that
+            # call as post-retry work.
             model = _first(attrs, "gen_ai.request.model",
                            "gen_ai.response.model", "llm.model")
             if model:
@@ -146,9 +170,31 @@ def load_otel(path, agent_name="otel-import"):
                                          "llm.usage.output_tokens",
                                          "llm.usage.completion_tokens",
                                          "llm.token_count.completion"))
-                events.append({"type": "model", "case_id": case_id,
-                               "provider": guess_provider(model), "model": model,
-                               "input_tokens": in_tok, "output_tokens": out_tok})
+                cached_tok = _nonneg(_first(attrs,
+                                            "gen_ai.usage.cache_read_input_tokens",
+                                            "llm.usage.cache_read_input_tokens",
+                                            "agentpnl.cached_input_tokens"))
+                ev = {"type": "model", "case_id": case_id,
+                      "provider": guess_provider(model), "model": model,
+                      "input_tokens": in_tok, "output_tokens": out_tok}
+                if cached_tok:
+                    ev["cached_input_tokens"] = cached_tok
+                if attrs.get("agentpnl.branch") not in (None, ""):
+                    ev["branch"] = str(attrs["agentpnl.branch"])
+                events.append(ev)
+
+            if attrs.get("agentpnl.retry") not in (None, ""):
+                ev = {"type": "retry", "case_id": case_id,
+                      "reason": str(attrs["agentpnl.retry"])}
+                if attrs.get("agentpnl.branch") not in (None, ""):
+                    ev["branch"] = str(attrs["agentpnl.branch"])
+                events.append(ev)
+            if attrs.get("agentpnl.escalation_minutes") not in (None, ""):
+                events.append({"type": "escalation", "case_id": case_id,
+                               "minutes": _nonneg(attrs["agentpnl.escalation_minutes"]),
+                               "reason": str(attrs.get("agentpnl.escalation_reason", ""))})
+
+            if model:
                 continue
 
             tool = _first(attrs, "tool.name", "mcp.tool.name")

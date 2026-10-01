@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent P&L report: jsonl-import</title>
+<style>
+body { font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; color: #1f2933;
+  max-width: 860px; margin: 0 auto; padding: 24px; background: #f7f8fa; }
+main { background: #fff; border: 1px solid #e2e6ec; border-radius: 10px; padding: 28px; }
+h1 { margin: 0 0 4px; font-size: 26px; }
+.meta { color: #5b6470; margin: 0 0 20px; }
+.warn { background: #fff8e6; border: 1px solid #e8c547; border-radius: 8px;
+  padding: 10px 14px; font-size: 13px; margin: 14px 0; }
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 12px; margin: 18px 0; }
+.card { border: 1px solid #e2e6ec; border-radius: 8px; padding: 12px 14px; background: #fafbfc; }
+.card .k { font-size: 12px; color: #5b6470; text-transform: uppercase; letter-spacing: .04em; }
+.card .v { font-size: 24px; font-weight: 700; margin: 4px 0; }
+.card .s { font-size: 12px; color: #5b6470; }
+.findings { display: grid; gap: 10px; margin: 12px 0; }
+.finding { border-radius: 8px; padding: 12px 14px; border: 1px solid #e2e6ec; }
+.finding.high { border-left: 5px solid #b3261e; background: #fdf3f2; }
+.finding.medium { border-left: 5px solid #e0a32e; background: #fdf9f0; }
+.finding.info { border-left: 5px solid #4a7fd4; background: #f2f6fd; }
+.finding .fk { font-size: 11px; font-weight: 700; letter-spacing: .05em; color: #5b6470; }
+.finding .ft { font-size: 15px; font-weight: 700; margin: 4px 0; }
+.finding .fs { font-size: 13px; color: #3c4450; }
+.finding .fa { font-size: 13px; margin-top: 6px; font-weight: 600; }
+h2 { font-size: 18px; margin: 26px 0 10px; border-bottom: 1px solid #eef1f4; padding-bottom: 6px; }
+.lede { font-size: 15px; }
+.brow { display: flex; align-items: center; gap: 10px; margin: 6px 0; }
+.blabel { width: 170px; font-size: 13px; }
+.btrack { flex: 1; height: 18px; background: #eef1f4; border-radius: 9px; overflow: hidden; }
+.bfill { height: 100%; }
+.bval { width: 90px; text-align: right; font-variant-numeric: tabular-nums; font-size: 13px; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 10px 0; }
+th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #eef1f4; }
+th { color: #5b6470; font-weight: 600; }
+.r { text-align: right; font-variant-numeric: tabular-nums; }
+svg { width: 100%; height: auto; background: #fafbfc; border: 1px solid #eef1f4; border-radius: 8px; }
+.layers li { margin: 6px 0; font-size: 14px; }
+footer { margin-top: 24px; font-size: 12px; color: #8a94a1; text-align: center; }
+</style>
+</head>
+<body>
+<main>
+<h1>Agent P&L: jsonl-import</h1>
+<p class="meta">100 attempts &middot; 85 autonomous completions &middot;
+85.0% success rate &middot; 8 escalations &middot; 2 reopened</p>
+
+<div class="cards">
+<div class="card"><div class="k">Fully loaded</div><div class="v">$2.14</div>
+<div class="s">per accepted outcome</div></div>
+
+<div class="card"><div class="k">Yield ratio</div><div class="v">3%</div>
+<div class="s">terminal-path tokens / total</div></div>
+<div class="card"><div class="k">Top 5% tail share</div><div class="v">59%</div>
+<div class="s">of total spend in costliest runs</div></div>
+<div class="card"><div class="k">Failed-run waste</div><div class="v">$100.21</div>
+<div class="s">55% of spend, zero outcomes</div></div>
+</div>
+<h2>What to do Monday morning</h2><div class="findings"><div class="finding high"><div class="fk">HIGH FINDING &middot; $107.99</div><div class="ft">The costliest 5 runs consumed 59% of the budget</div><div class="fs">p50 is $0.01 but p95 is $12.76 and max is $30.31. Median unit economics look fine; the tail is where the budget goes.</div><div class="fa">&rarr; Put a hard per-attempt envelope at ~p95 ($12.76). The policy replay below shows exactly what it would have saved — and what good outcomes it would have cost.</div></div><div class="finding high"><div class="fk">HIGH FINDING &middot; $103.58</div><div class="ft">Retry loops burned $103.58 (57% of spend)</div><div class="fs">Yield is 3%: 112 retries across 100 attempts, and the discarded paths cost real money, not just tokens. Top culprit: &#x27;judge rejected draft&#x27; (23 retries).</div><div class="fa">&rarr; Fix the top retry reason before touching models: &#x27;judge rejected draft&#x27;. One validation fix upstream is worth more than a cheaper model.</div></div><div class="finding medium"><div class="fk">MEDIUM FINDING &middot; $100.88</div><div class="ft">Only 3% of tokens were on a terminal path</div><div class="fs">Failed attempts and retry paths together discarded 97% of all tokens ($100.88 of model spend). Token dashboards report this as usage; it is waste.</div><div class="fa">&rarr; Terminate attempts that cross the retry-count or cost threshold where historical yield collapses.</div></div></div><p class="fineprint">Waste figures are overlapping lenses on the same spend, not additive partitions — do not sum them.</p>
+<h2>Cost per successful outcome</h2>
+<div class="brow"><span class="blabel">Model / API (terminal)</span><div class="btrack"><div class="bfill" style="width:0.8%;background:#4a7fd4;"></div></div><span class="bval">$0.02</span></div><div class="brow"><span class="blabel">Retry path</span><div class="btrack"><div class="bfill" style="width:55.4%;background:#e0a32e;"></div></div><span class="bval">$1.19</span></div><div class="brow"><span class="blabel">Tool calls</span><div class="btrack"><div class="bfill" style="width:6.9%;background:#7ab648;"></div></div><span class="bval">$0.15</span></div><div class="brow"><span class="blabel">Human review</span><div class="btrack"><div class="bfill" style="width:36.9%;background:#c25bb5;"></div></div><span class="bval">$0.79</span></div>
+<h2>Per-attempt cost distribution</h2>
+<svg viewBox="0 0 640 220" role="img" aria-label="Histogram of per-attempt costs">
+<rect x="58.0" y="30.0" width="52.4" height="156.0" fill="#4a7fd4"><title>87 attempts in bucket</title></rect>
+<rect x="114.4" y="178.8" width="52.4" height="7.2" fill="#4a7fd4"><title>4 attempts in bucket</title></rect>
+<rect x="170.8" y="184.2" width="52.4" height="1.8" fill="#4a7fd4"><title>1 attempts in bucket</title></rect>
+<rect x="227.2" y="182.4" width="52.4" height="3.6" fill="#4a7fd4"><title>2 attempts in bucket</title></rect>
+<rect x="283.6" y="182.4" width="52.4" height="3.6" fill="#4a7fd4"><title>2 attempts in bucket</title></rect>
+<rect x="340.0" y="184.2" width="52.4" height="1.8" fill="#4a7fd4"><title>1 attempts in bucket</title></rect>
+<rect x="396.4" y="186.0" width="52.4" height="0.0" fill="#4a7fd4"><title>0 attempts in bucket</title></rect>
+<rect x="452.8" y="184.2" width="52.4" height="1.8" fill="#4a7fd4"><title>1 attempts in bucket</title></rect>
+<rect x="509.2" y="184.2" width="52.4" height="1.8" fill="#4a7fd4"><title>1 attempts in bucket</title></rect>
+<rect x="565.6" y="184.2" width="52.4" height="1.8" fill="#4a7fd4"><title>1 attempts in bucket</title></rect>
+<line x1="56.2" y1="30" x2="56.2" y2="186" stroke="#1c5c2a" stroke-width="2" stroke-dasharray="5,3"/><text x="56.2" y="20" fill="#1c5c2a" font-size="12" text-anchor="middle">p50 $0.01</text>
+<line x1="293.3" y1="30" x2="293.3" y2="186" stroke="#b3261e" stroke-width="2" stroke-dasharray="5,3"/><text x="293.3" y="20" fill="#b3261e" font-size="12" text-anchor="middle">p95 $12.76</text>
+<text x="56" y="212" font-size="11" fill="#555">$0.00</text><text x="620" y="212" font-size="11" fill="#555" text-anchor="end">$30.31</text><text x="56" y="24.0" font-size="11" fill="#555">87 attempts max bucket</text>
+</svg>
+<p class="s">p50 $0.01 &middot; p95 $12.76 &middot; max $30.31 per attempt</p>
+<h2>The five layers</h2>
+<ul class="layers">
+<li><b>Context compounding:</b> 11.1x input growth, first to last step.
+Context tax: <b>$98.73</b> (96% of model spend) vs a flat-context counterfactual.</li>
+<li><b>External tool spend:</b> $12.56 total, $0.15 per success
+(invisible on provider invoices).</li>
+<li><b>Yield ratio:</b> 3% of tokens on the terminal path,
+97% burned on retries and failed runs.</li>
+<li><b>Heavy tail:</b> p50 $0.01 / p95 $12.76 / max $30.31 per attempt;
+the top 5% consumed 59% of budget.</li>
+<li><b>Model mix:</b> $102.37 total model spend (see table).
+Prompt cache: 85,435 input tokens cached, saving $0.00.</li>
+</ul>
+<h2>Top cost drivers (per model)</h2>
+<table><tr><th>Model</th><th class="r">Spend</th><th class="r">Share</th></tr><tr><td>anthropic:claude-sonnet-4-5</td><td class="r">$100.79</td><td class="r">98% of model spend</td></tr><tr><td>anthropic:claude-opus-4-6</td><td class="r">$0.82</td><td class="r">1% of model spend</td></tr><tr><td>anthropic:claude-haiku-4-5</td><td class="r">$0.75</td><td class="r">1% of model spend</td></tr><tr><td>openai:gpt-5-nano</td><td class="r">$0.01</td><td class="r">0% of model spend</td></tr></table>
+<h2>Costliest attempts</h2>
+<table><tr><th>Run</th><th class="r">Cost</th><th>Outcome</th><th class="r">Retries</th><th class="r">Human</th></tr><tr><td>S-00067</td><td class="r">$30.31</td><td>FAILED</td><td class="r">23</td><td class="r">0.0 min</td></tr><tr><td>S-00065</td><td class="r">$24.59</td><td>FAILED</td><td class="r">17</td><td class="r">0.0 min</td></tr><tr><td>S-00081</td><td class="r">$22.52</td><td>FAILED</td><td class="r">17</td><td class="r">0.0 min</td></tr><tr><td>S-00019</td><td class="r">$17.67</td><td>FAILED</td><td class="r">9</td><td class="r">0.0 min</td></tr><tr><td>S-00068</td><td class="r">$12.90</td><td>success</td><td class="r">1</td><td class="r">10.9 min</td></tr><tr><td>S-00024</td><td class="r">$12.75</td><td>success</td><td class="r">2</td><td class="r">10.5 min</td></tr><tr><td>S-00069</td><td class="r">$11.70</td><td>success</td><td class="r">1</td><td class="r">9.9 min</td></tr><tr><td>S-00062</td><td class="r">$10.43</td><td>success</td><td class="r">1</td><td class="r">8.5 min</td></tr><tr><td>S-00076</td><td class="r">$7.71</td><td>success</td><td class="r">1</td><td class="r">6.5 min</td></tr><tr><td>S-00058</td><td class="r">$5.46</td><td>success</td><td class="r">1</td><td class="r">4.6 min</td></tr></table>
+<h2>Retry reasons</h2><table><tr><th class="r">Count</th><th>Reason</th></tr><tr><td class="r">23x</td><td>judge rejected draft</td></tr><tr><td class="r">20x</td><td>retrieved stale context, refetching</td></tr><tr><td class="r">17x</td><td>answer failed confidence check</td></tr><tr><td class="r">16x</td><td>tool timeout, retrying</td></tr><tr><td class="r">16x</td><td>validation schema mismatch</td></tr></table>
+<h2>Policy replay (read only)</h2><p class="lede">Had this policy existed, <b>100 runs</b> would have been stopped: <b>15 failed</b> (pure savings <b>$100.21</b>) and <b>85 that went on to succeed</b> (collateral <b>$82.04</b> — good outcomes the policy would have destroyed).</p><p class="s">Policy tested: max cost per attempt $0.0, yield floor None. No enforcement was applied; this is a replay of recorded history.</p><table><tr><th>Run</th><th>Cost</th><th>Outcome</th><th>Reason</th></tr><tr><td>S-00067</td><td class="r">$30.31</td><td>FAILED</td><td>cost $30.31 &gt; cap $0.00</td></tr><tr><td>S-00065</td><td class="r">$24.59</td><td>FAILED</td><td>cost $24.59 &gt; cap $0.00</td></tr><tr><td>S-00081</td><td class="r">$22.52</td><td>FAILED</td><td>cost $22.52 &gt; cap $0.00</td></tr><tr><td>S-00019</td><td class="r">$17.67</td><td>FAILED</td><td>cost $17.67 &gt; cap $0.00</td></tr><tr><td>S-00068</td><td class="r">$12.90</td><td>success</td><td>cost $12.90 &gt; cap $0.00</td></tr><tr><td>S-00024</td><td class="r">$12.75</td><td>success</td><td>cost $12.75 &gt; cap $0.00</td></tr><tr><td>S-00069</td><td class="r">$11.70</td><td>success</td><td>cost $11.70 &gt; cap $0.00</td></tr><tr><td>S-00062</td><td class="r">$10.43</td><td>success</td><td>cost $10.43 &gt; cap $0.00</td></tr><tr><td>S-00076</td><td class="r">$7.71</td><td>success</td><td>cost $7.71 &gt; cap $0.00</td></tr><tr><td>S-00058</td><td class="r">$5.46</td><td>success</td><td>cost $5.46 &gt; cap $0.00</td></tr></table>
+</main>
+<footer>Generated locally by agentpnl. No data leaves your environment.</footer>
+</body>
+</html>

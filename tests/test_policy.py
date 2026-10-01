@@ -12,6 +12,8 @@ SCHEMA_KEYS = {
     "case_id", "model", "tools", "retry_cost", "retries",
     "human_min", "human_cost", "ai_cost", "total_cost",
     "total_tokens", "waste_tokens", "context_growth",
+    "context_tax", "retry_path_cost", "terminal_model_cost",
+    "cached_tokens", "cache_savings",
     "success", "reopened", "business_value", "per_model",
 }
 
@@ -58,8 +60,13 @@ def test_ledger_contains_no_payload_data(tmp_path):
     forbidden = {"prompt", "completion", "payload", "message", "content", "input", "output"}
     for a in blob["attempts"]:
         assert forbidden.isdisjoint(set(a.keys())), f"leak: {set(a.keys()) & forbidden}"
-    # event stream (reasons) is never exported
-    assert "events" not in blob["attempts"][0]
+    # events ARE exported (retry reasons must survive reimport), but they
+    # are metadata only: no prompts, completions, or payloads
+    for a in blob["attempts"]:
+        for ev in a.get("events", []):
+            assert ev[0] in ("model", "tool", "retry", "escalation")
+            for field in ev[1:]:
+                assert isinstance(field, (str, int, float))
 
 
 def test_simulate_policy_cost_cap_stops_right_runs(tmp_path):
@@ -115,6 +122,8 @@ def test_simulate_policy_no_filters_stops_nothing(tmp_path):
 def test_policy_text_renders():
     sim = {"policy": {"max_cost_per_attempt": 6.0, "yield_floor": 0.5},
            "attempts": 10, "would_stop": 3,
+           "would_stop_failed": 2, "would_stop_success": 1,
+           "saved_spend": 32.5, "collateral_spend": 10.0,
            "exposed_spend": 42.5, "exposed_share": 0.85,
            "worst": [{"case_id": "C-9", "total_cost": 20.0,
                       "success": False, "reasons": ["cost $20.00 > cap $6.00"]},
@@ -122,5 +131,26 @@ def test_policy_text_renders():
                       "success": True, "reasons": ["yield 40% < floor 50%"]}]}
     text = P.policy_text(sim)
     assert "3 of 10 runs" in text
-    assert "$42.50" in text
+    assert "$32.50" in text and "$10.00" in text
     assert "C-9" in text and "C-2" in text
+    # honest split: failed-stop savings vs destroyed good outcomes
+    assert "2 failed" in text and "pure savings $32.50" in text
+    assert "1 that went on to succeed" in text and "collateral $10.00" in text
+
+
+def test_simulate_policy_splits_saved_vs_collateral(tmp_path):
+    t = build_tracker()
+    path = str(tmp_path / "ledger.json")
+    P.export_ledger(t, path)
+    ledger = P.load_ledger(path)
+    # cap between cheap and expensive: stops the (successful) expensive run
+    cheap = ledger["attempts"][0]["total_cost"]
+    expensive = ledger["attempts"][1]["total_cost"]
+    sim = P.simulate_policy(ledger, max_cost_per_attempt=(cheap + expensive) / 2)
+    assert sim["would_stop"] == 1
+    assert sim["would_stop_failed"] == 0
+    assert sim["would_stop_success"] == 1
+    assert sim["saved_spend"] == pytest.approx(0.0)
+    assert sim["collateral_spend"] == pytest.approx(expensive)
+    assert sim["saved_spend"] + sim["collateral_spend"] == pytest.approx(
+        sim["exposed_spend"])

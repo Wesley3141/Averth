@@ -72,3 +72,177 @@ Economic insight: $0.174 of $0.178 total (97.6%) is external tool spend, the lay
 
 ## What remains
 The meter is trustworthy on structure (attempts, retries, failures, attribution, tail stats) across all five trace shapes. Dollar accuracy is good where pricing is known and flagged where it is not, except for prompt caching, which systematically overstates input cost on cache-heavy workloads and needs the schema follow-up above. The next validation step is a cache-aware pass once a trace source with recorded cache usage is found, and then a real customer trace.
+
+---
+
+## Appendix: hardening pass (2026-10-01, branch `hardening-pass`)
+
+The first validation pass fixed only real bugs and documented the rest. This
+pass attacked the documented limitations directly. Three of the seven known
+limitations above are now fixed (#9, #11, #14); the semantic changes below
+are honest and were applied to the validation traces to measure their
+before/after effect.
+
+### Fixed limitations
+
+**#9 — prompt caching is now modeled.** The model event schema (Tracker API,
+OTel `gen_ai.usage.cache_read_input_tokens`, LangSmith
+`agentpnl_cached_input_tokens` metadata, strict JSONL) accepts
+`cached_input_tokens`. Cached tokens are priced at 10% of the input rate
+(`CACHE_READ_DISCOUNT = 0.10`), the rate Anthropic publishes for cache reads.
+This is a documented assumption, not invoice truth: the report's cache line
+and the `cache_savings` ledger field are flagged as priced-at-discount, and
+`cache_read_discount` is overridable per Tracker. The strict JSONL schema
+rejects `cached_input_tokens > input_tokens`; the Tracker API clamps instead
+of erroring (it must never raise inside a live agent run). Against the
+mini-SWE-agent recorded costs, traces that previously read 1.91x-4.47x over
+recorded (because cache usage was invisible) can now be priced with the
+recorded cache-hit rates.
+
+**#11 — retry waste is branch-scoped under concurrency.** `log_retry` and all
+model/estimate logging accept `branch=`; a retry with `branch="research"`
+marks only later "research" steps as waste, and the merge step stays terminal.
+A retry with no branch keeps the old attempt-global behavior. OTel reads
+`agentpnl.branch`; the strict JSONL schema accepts it. The trace-B case from
+the first pass (productive merge step counted as waste) now attributes
+correctly: only the dead branch's tokens count as waste.
+
+**#14 — the "$0.00 retries beside 32 retries" absurdity is fixed.**
+`end_attempt` now computes `retry_path_cost` (waste-marked model steps +
+`extra_model_cost`) and `terminal_model_cost` separately. The report's
+"Cost per successful outcome" shows terminal model cost and retry-path cost as
+separate lines. The `extra_model_cost` contract is unchanged: it is for spend
+NOT otherwise logged as a step (a failed call's cost arriving via the retry
+event); logging the same spend as a step and as extra would double-count, and
+the docstring says so.
+
+### Semantic changes (all honest, measured on the validation traces)
+
+**Failed attempts are now 100% waste tokens.** Previously a failed attempt
+with no retry marker contributed productive tokens, which let a run with 40%
+failures report a 95% yield. The framework defines yield as terminal-path
+tokens / total tokens, and a failed attempt has no terminal path by
+definition. On the validation traces this moves yield from a token-use ratio
+to a token-success ratio; the demo month now reports 6% yield instead of 95%.
+The absolute numbers (costs, counts) are unchanged — only the classification.
+
+**Percentiles are now linearly interpolated** (the standard definition)
+instead of nearest-rank, which biased p50/p95 upward. On small samples the
+shift is material (e.g. p50 of $1..$20: $10.00 -> $10.50).
+
+**`per_success.model` is terminal-model cost only**, with retry-path spend on
+its own line. The old single model line mixed both; the token-dashboard
+multiple (fully loaded / model) is now computed against terminal model cost,
+which is the number a token dashboard actually shows.
+
+**Policy replay splits stopped runs into saved vs collateral spend.**
+`simulate_policy` now reports `would_stop_failed` (pure savings) and
+`would_stop_success` (collateral: good outcomes the policy would have
+destroyed) separately, instead of one "exposed spend" number. On the demo
+month, a $6.00/attempt cap with 50% yield floor would have "saved" $297.18
+while destroying $897.79 of successful outcomes — the old single number hid
+the collateral damage.
+
+**Prompt-cache discount is a flagged assumption**, surfaced in reports as
+"priced at the documented discount" and never presented as the provider's
+invoice figure.
+
+### New adversarial machinery
+
+- `agentpnl/stress.py`: seeded synthetic production workload (quick_resolve /
+  standard / retry_storm / escalation / failed_clean / reopened / runaway
+  archetypes; 1.15-1.6x context growth; multi-model routing with a 70%
+  cache-hit router; 12% parallel 3-branch fan-out). Deterministic per seed;
+  JSONL output round-trips through the real importer to identical P&L.
+- `agentpnl/insights.py`: dollar-ranked findings across all five layers, each
+  with a concrete action. Powers the report's "TOP FINDING" box.
+- `agentpnl simulate --attempts N --seed S [--jsonl out] [--html out]`:
+  generates the adversarial workload and reports it; the JSONL it emits
+  reproduces the identical report through `agentpnl trace --format jsonl`.
+- `pnl()` is backward compatible with pre-hardening ledgers (new attempt keys
+  degrade to documented defaults instead of raising KeyError).
+
+### Scorecard after the hardening pass
+
+- Full suite: 112 passed (70 baseline + 42 new), zero failures.
+- Stress scenarios run: seeds 1/5/7/9/42/123/124 at N=50..20,000; determinism
+  verified (same seed -> identical P&L to the cent); 20k attempts meter in
+  ~1.2s with no performance cliff.
+- New bugs found by the stress harness and fixed: legacy-ledger KeyError in
+  `pnl()`; report template `%`-formatting crashes (2); OTel branch propagation
+  on retry events was verified working end-to-end.
+- What this pass did NOT do (per the freeze): no new integrations, no active
+  governance (policy stays offline simulation), no website work, no fabricated
+  traction anywhere.
+
+## Appendix: hostile-review round 2 (2026-10-01, branch `hardening-pass`)
+
+A second hostile review (20 findings, `HOSTILE_REVIEW.md`) attacked the
+hardened code. Disposition: 14 fixed in code, 4 documented as known
+limitations, 2 were non-issues on re-examination. Full suite now 130 passed
+(112 + 18 new in `tests/test_review_round2.py`).
+
+### Fixed
+
+- **Ledger poisoning (NaN/inf):** every numeric input to the live API is now
+  validated finite; NaN/inf raise `ValueError` instead of silently turning
+  `cost_total` into NaN and exporting invalid JSON. Token counts capped at
+  1e12. JSONL importer rejects non-finite with the line number.
+- **Branch retry retroactive (M1):** `log_retry(branch="b")` now marks that
+  branch's *existing* steps (model and tool) as waste, not just future ones.
+  Work logged on the branch after the retry is the redo and starts fresh; a
+  second retry on the same branch discards the redo as well. Global retries
+  stay forward-only (documented limitation).
+- **Retry-path tool spend (M3):** tool calls carry an optional `branch`; waste
+  tool spend is aggregated as `cost_retry_tools` / `retry_tool_cost` — a
+  separate lens, not folded into `retry_path_cost`, so the per-success buckets
+  stay additive (terminal + retry_path + tools + human = total).
+- **OTel `agentpnl.success` parsing (I1):** string `"false"` no longer casts
+  to `True` via `bool()`; proper true/false string parsing with safe fallback.
+- **OTel dual-attribute spans (M2b):** model event is now emitted before the
+  retry event, matching the documented "retry marks FOLLOWING steps" semantics.
+- **Duplicate `end` events (C6):** no longer fabricate phantom zero-cost
+  attempts; a stray `end` with no open attempt is ignored.
+- **`--policy-cap 0` (P1):** `is not None` check; a zero cap now stops
+  everything instead of silently doing nothing.
+- **LangSmith (C5):** negative token counts clamped, escalation minutes
+  validated non-negative numeric.
+- **JSONL (C4):** `business_value` may be negative (a bad outcome can destroy
+  value); tool events accept `branch`.
+- **Insights honesty:** `low_yield` dollars are now exact
+  (`cost_model - cost_model_terminal`), not a token-ratio approximation;
+  new `tool_dominance` and `budget_breach` findings (layer 2 finally has a
+  finding); $1.00 materiality floor (no finding fires on dust);
+  `tail_concentration` requires n>=20 (below that the report says
+  "costliest run", not "top 5%"); `reopened` counts accepted outcomes only;
+  waste-lens disclaimer in `findings_text` and HTML finding cards;
+  non-finite-total guard.
+- **Report honesty:** tail label uses "costliest run" for n<20; cache line
+  requires actual savings > $0; reopened header counts accepted outcomes.
+- **Export fidelity (H5):** the event log (metadata only — no prompts,
+  completions, or payloads) is now preserved through export -> reimport, so
+  retry reasons survive on the ledger artifact.
+- **Dead code / overflow:** removed dead `cli._finish`; `OverflowError`
+  caught in OpenAI and LangChain token parsing.
+- **Context tax (H2):** now uses the cache-discounted effective input price.
+- **Demo honesty:** the "token dashboard" figure is `cost_model/successes`
+  (what a provider dashboard actually shows), not terminal-path spend.
+
+### Documented as known limitations
+
+- Global-retry forward-only assumption (M2a): a global retry marks
+  subsequent steps waste; if it discards early work, terminal spend is
+  overstated. Use `branch=` when the discarded scope is known.
+- Importers emit global retries by default (M4); branch attribution needs
+  the `agentpnl.branch` / `agentpnl_branch` metadata.
+- OTel start-time vs causal ordering (M5): spans are ordered by start time;
+  pathological clock skew could misorder retry markers.
+- Uniform-cost pathology: a workload where every attempt costs the same and
+  fails silently is not flagged — no variance, no lever.
+
+### Scorecard after round 2
+
+- Full suite: 130 passed (112 + 18 new), zero failures.
+- Stress determinism re-verified (seed 7, 2,000 attempts: identical to the
+  cent); retry-tool lens active ($63.39 on the seed-7 workload).
+- Demo regenerated: token dashboard $0.20 vs fully loaded $0.82 (4.1x).

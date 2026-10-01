@@ -65,7 +65,12 @@ def _guess_provider(model):
 
 
 def _token_usage(response):
-    """(input_tokens, output_tokens) from response.llm_output, safely."""
+    """(input_tokens, output_tokens) from response.llm_output, safely.
+
+    Clamped at zero: a provider reporting negative counters is malformed
+    data, and a callback must never inject a negative cost line (or raise
+    inside the agent's own run) because of it.
+    """
     llm_output = getattr(response, "llm_output", None) or {}
     if not isinstance(llm_output, dict):
         return 0, 0
@@ -74,7 +79,10 @@ def _token_usage(response):
         return 0, 0
     in_tok = usage.get("prompt_tokens") or 0
     out_tok = usage.get("completion_tokens") or 0
-    return int(in_tok), int(out_tok)
+    try:
+        return max(0, int(in_tok)), max(0, int(out_tok))
+    except (TypeError, ValueError, OverflowError):
+        return 0, 0
 
 
 def _tool_name(serialized):

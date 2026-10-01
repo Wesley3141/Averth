@@ -85,17 +85,30 @@ def test_yield_ratio_no_waste():
 
 
 def test_tail_p50_p95_top5pct():
-    """20 attempts costing $1..$20: p50=11, p95=20, top5% (=$20) share=20/210."""
+    """20 attempts costing $1..$20: interpolated p50=10.5, p95=19.05,
+    top5% (=$20) share=20/210."""
     t = make_tracker()
     for i in range(1, 21):
         t.start_attempt(case_id=f"C-{i}")
         t.log_tool_call("x", float(i))
         t.end_attempt(success=True)
     p = t.pnl()["tail"]
-    assert p["p50"] == pytest.approx(11.0)
-    assert p["p95"] == pytest.approx(20.0)
+    assert p["p50"] == pytest.approx(10.5)
+    assert p["p95"] == pytest.approx(19.05)
     assert p["max"] == pytest.approx(20.0)
     assert p["top5pct_share"] == pytest.approx(20.0 / 210.0)
+
+
+def test_tail_percentile_interpolation():
+    """Linear interpolation, not nearest-rank: 4 values 1..4 -> p50=2.5."""
+    t = make_tracker()
+    for i in range(1, 5):
+        t.start_attempt(case_id=f"C-{i}")
+        t.log_tool_call("x", float(i))
+        t.end_attempt(success=True)
+    p = t.pnl()["tail"]
+    assert p["p50"] == pytest.approx(2.5)
+    assert p["p95"] == pytest.approx(3.85)  # rank 0.95*3=2.85 -> 3*0.15+4*0.85
 
 
 def test_reopened_and_escalation_flags():
