@@ -1,4 +1,4 @@
-Agent P&L: support-resolution
+Averth: support-resolution
 
 TOP FINDING [HIGH]: Human review is 63% of fully-loaded cost ($803.27)
   133 escalations at $6.04 loaded each. The model bill ($312.09) is a rounding error next to the labor it summons.
