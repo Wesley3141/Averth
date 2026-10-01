@@ -98,6 +98,57 @@ class LangChainHandlerTest(unittest.TestCase):
         self.assertEqual(_guess_provider("grok-4"), "xai")
         self.assertEqual(_guess_provider("mystery-7b"), "unknown")
 
+    def test_nested_chain_end_does_not_close_attempt_early(self):
+        # Real LangGraph reuses one run_id for the whole graph run; a nested
+        # node end must not close the attempt, or later tool/LLM events are
+        # dropped and the run fragments into several empty attempts.
+        h = self.h
+        h.on_chain_start({}, {"case_id": "LG-1"}, run_id="r-root")
+        h.on_chain_start({}, {}, run_id="r-root", parent_run_id="r-root")
+        h.on_llm_start({"kwargs": {"model_name": "gpt-5.6-mini"}},
+                       ["q"], run_id="r-llm")
+        h.on_llm_end(llm_response(1000, 200), run_id="r-llm")
+        h.on_chain_end({}, run_id="r-root", parent_run_id="r-root")  # node done
+        # events after the nested end must still land in the same attempt
+        h.on_tool_start({"name": "web_search"}, "{}", run_id="r-tool")
+        h.on_tool_end("results", run_id="r-tool")
+        h.on_chain_end({}, run_id="r-root")  # graph done
+        p = self.tracker.pnl()
+        self.assertEqual(p["attempts"], 1)
+        self.assertEqual(p["successes"], 1)
+        a = self.tracker.attempts[0]
+        self.assertEqual(a["case_id"], "LG-1")
+        self.assertGreater(a["model"], 0)
+        self.assertAlmostEqual(a["tools"], 0.005)
+
+    def test_nested_chain_error_does_not_fail_attempt_early(self):
+        # A node error the graph recovers from must not fail the attempt;
+        # only the outermost chain error marks the run failed.
+        h = self.h
+        h.on_chain_start({}, {}, run_id="r-root")
+        h.on_chain_start({}, {}, run_id="r-node", parent_run_id="r-root")
+        h.on_chain_error(ValueError("node blew up"), run_id="r-node",
+                         parent_run_id="r-root")
+        h.on_chain_end({}, run_id="r-root")
+        p = self.tracker.pnl()
+        self.assertEqual(p["attempts"], 1)
+        self.assertEqual(p["successes"], 1)
+
+    def test_tool_error_records_tool_cost_and_retry(self):
+        # A failed tool invocation still consumed the tool (network egress,
+        # provider metering): its cost is recorded and the retry classified.
+        h = self.h
+        h.on_chain_start({}, {}, run_id="r-chain")
+        h.on_tool_start({"name": "web_search"}, "{}", run_id="r-tool")
+        h.on_tool_error(RuntimeError("upstream 500"), run_id="r-tool")
+        h.on_tool_start({"name": "web_search"}, "{}", run_id="r-tool2")
+        h.on_tool_end("results", run_id="r-tool2")
+        h.on_chain_end({}, run_id="r-chain")
+        a = self.tracker.attempts[0]
+        self.assertEqual(a["retries"], 1)
+        # two real invocations happened: failed + retried
+        self.assertAlmostEqual(a["tools"], 0.005 * 2)
+
     def test_callbacks_without_attempt_do_not_crash(self):
         h = AgentPNLCallbackHandler(Tracker("idle"))
         h.on_llm_end(llm_response(10, 10), run_id="r-x")

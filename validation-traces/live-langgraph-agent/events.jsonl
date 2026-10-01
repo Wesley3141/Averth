@@ -1,0 +1,144 @@
+{"type": "start", "case_id": "RUN-01"}
+{"type": "model", "case_id": "RUN-01", "provider": "unknown", "model": "StubChatModel", "input_tokens": 9, "output_tokens": 30}
+{"type": "tool", "case_id": "RUN-01", "name": "web_search", "cost": 0.005}
+{"type": "tool", "case_id": "RUN-01", "name": "github_lookup", "cost": 0.002}
+{"type": "tool", "case_id": "RUN-01", "name": "flaky_fetch", "cost": 0.002}
+{"type": "model", "case_id": "RUN-01", "provider": "unknown", "model": "StubChatModel", "input_tokens": 35, "output_tokens": 63}
+{"type": "end", "case_id": "RUN-01", "success": true, "business_value": 0.0, "reopened": false}
+{"type": "start", "case_id": "RUN-02"}
+{"type": "model", "case_id": "RUN-02", "provider": "unknown", "model": "StubChatModel", "input_tokens": 10, "output_tokens": 31}
+{"type": "tool", "case_id": "RUN-02", "name": "web_search", "cost": 0.005}
+{"type": "tool", "case_id": "RUN-02", "name": "github_lookup", "cost": 0.002}
+{"type": "tool", "case_id": "RUN-02", "name": "flaky_fetch", "cost": 0.002}
+{"type": "model", "case_id": "RUN-02", "provider": "unknown", "model": "StubChatModel", "input_tokens": 36, "output_tokens": 64}
+{"type": "end", "case_id": "RUN-02", "success": true, "business_value": 0.0, "reopened": false}
+{"type": "start", "case_id": "RUN-03"}
+{"type": "model", "case_id": "RUN-03", "provider": "unknown", "model": "StubChatModel", "input_tokens": 9, "output_tokens": 30}
+{"type": "tool", "case_id": "RUN-03", "name": "github_lookup", "cost": 0.002}
+{"type": "tool", "case_id": "RUN-03", "name": "web_search", "cost": 0.005}
+{"type": "tool", "case_id": "RUN-03", "name": "flaky_fetch", "cost": 0.002}
+{"type": "model", "case_id": "RUN-03", "provider": "unknown", "model": "StubChatModel", "input_tokens": 35, "output_tokens": 63}
+{"type": "end", "case_id": "RUN-03", "success": true, "business_value": 0.0, "reopened": false}
+{"type": "start", "case_id": "RUN-04"}
+{"type": "model", "case_id": "RUN-04", "provider": "unknown", "model": "StubChatModel", "input_tokens": 9, "output_tokens": 30}
+{"type": "tool", "case_id": "RUN-04", "name": "web_search", "cost": 0.005}
+{"type": "retry", "case_id": "RUN-04", "reason": "tool_error: ReadTimeout"}
+{"type": "tool", "case_id": "RUN-04", "name": "github_lookup", "cost": 0.002}
+{"type": "retry", "case_id": "RUN-04", "reason": "tool_error: ReadTimeout"}
+{"type": "end", "case_id": "RUN-04", "success": false, "business_value": 0.0, "reopened": false}
+{"type": "start", "case_id": "RUN-05"}
+{"type": "model", "case_id": "RUN-05", "provider": "unknown", "model": "StubChatModel", "input_tokens": 8, "output_tokens": 29}
+{"type": "tool", "case_id": "RUN-05", "name": "web_search", "cost": 0.005}
+{"type": "tool", "case_id": "RUN-05", "name": "github_lookup", "cost": 0.002}
+{"type": "tool", "case_id": "RUN-05", "name": "flaky_fetch", "cost": 0.002}
+{"type": "retry", "case_id": "RUN-05", "reason": "tool_error: RuntimeError"}
+{"type": "tool", "case_id": "RUN-05", "name": "flaky_fetch", "cost": 0.002}
+{"type": "retry", "case_id": "RUN-05", "reason": "tool_error: RuntimeError"}
+{"type": "tool", "case_id": "RUN-05", "name": "flaky_fetch", "cost": 0.002}
+{"type": "model", "case_id": "RUN-05", "provider": "unknown", "model": "StubChatModel", "input_tokens": 35, "output_tokens": 63}
+{"type": "end", "case_id": "RUN-05", "success": true, "business_value": 0.0, "reopened": false}
+{"type": "start", "case_id": "RUN-06"}
+{"type": "model", "case_id": "RUN-06", "provider": "unknown", "model": "StubChatModel", "input_tokens": 8, "output_tokens": 29}
+{"type": "tool", "case_id": "RUN-06", "name": "web_search", "cost": 0.005}
+{"type": "tool", "case_id": "RUN-06", "name": "github_lookup", "cost": 0.002}
+{"type": "tool", "case_id": "RUN-06", "name": "flaky_fetch", "cost": 0.002}
+{"type": "retry", "case_id": "RUN-06", "reason": "tool_error: RuntimeError"}
+{"type": "tool", "case_id": "RUN-06", "name": "flaky_fetch", "cost": 0.002}
+{"type": "retry", "case_id": "RUN-06", "reason": "tool_error: RuntimeError"}
+{"type": "tool", "case_id": "RUN-06", "name": "flaky_fetch", "cost": 0.002}
+{"type": "model", "case_id": "RUN-06", "provider": "unknown", "model": "StubChatModel", "input_tokens": 35, "output_tokens": 63}
+{"type": "end", "case_id": "RUN-06", "success": true, "business_value": 0.0, "reopened": false}
+{"type": "start", "case_id": "RUN-07"}
+{"type": "model", "case_id": "RUN-07", "provider": "unknown", "model": "StubChatModel", "input_tokens": 9, "output_tokens": 30}
+{"type": "tool", "case_id": "RUN-07", "name": "web_search", "cost": 0.005}
+{"type": "tool", "case_id": "RUN-07", "name": "github_lookup", "cost": 0.002}
+{"type": "tool", "case_id": "RUN-07", "name": "flaky_fetch", "cost": 0.002}
+{"type": "model", "case_id": "RUN-07", "provider": "unknown", "model": "StubChatModel", "input_tokens": 35, "output_tokens": 63}
+{"type": "end", "case_id": "RUN-07", "success": true, "business_value": 0.0, "reopened": false}
+{"type": "start", "case_id": "RUN-08"}
+{"type": "model", "case_id": "RUN-08", "provider": "unknown", "model": "StubChatModel", "input_tokens": 7, "output_tokens": 28}
+{"type": "tool", "case_id": "RUN-08", "name": "web_search", "cost": 0.005}
+{"type": "tool", "case_id": "RUN-08", "name": "github_lookup", "cost": 0.002}
+{"type": "tool", "case_id": "RUN-08", "name": "flaky_fetch", "cost": 0.002}
+{"type": "retry", "case_id": "RUN-08", "reason": "tool_error: RuntimeError"}
+{"type": "tool", "case_id": "RUN-08", "name": "flaky_fetch", "cost": 0.002}
+{"type": "retry", "case_id": "RUN-08", "reason": "tool_error: RuntimeError"}
+{"type": "tool", "case_id": "RUN-08", "name": "flaky_fetch", "cost": 0.002}
+{"type": "retry", "case_id": "RUN-08", "reason": "tool_error: RuntimeError"}
+{"type": "end", "case_id": "RUN-08", "success": false, "business_value": 0.0, "reopened": false}
+{"type": "start", "case_id": "RUN-09"}
+{"type": "model", "case_id": "RUN-09", "provider": "unknown", "model": "StubChatModel", "input_tokens": 9, "output_tokens": 31}
+{"type": "tool", "case_id": "RUN-09", "name": "web_search", "cost": 0.005}
+{"type": "tool", "case_id": "RUN-09", "name": "github_lookup", "cost": 0.002}
+{"type": "tool", "case_id": "RUN-09", "name": "flaky_fetch", "cost": 0.002}
+{"type": "retry", "case_id": "RUN-09", "reason": "tool_error: RuntimeError"}
+{"type": "tool", "case_id": "RUN-09", "name": "flaky_fetch", "cost": 0.002}
+{"type": "retry", "case_id": "RUN-09", "reason": "tool_error: RuntimeError"}
+{"type": "tool", "case_id": "RUN-09", "name": "flaky_fetch", "cost": 0.002}
+{"type": "model", "case_id": "RUN-09", "provider": "unknown", "model": "StubChatModel", "input_tokens": 37, "output_tokens": 65}
+{"type": "end", "case_id": "RUN-09", "success": true, "business_value": 0.0, "reopened": false}
+{"type": "start", "case_id": "RUN-10"}
+{"type": "model", "case_id": "RUN-10", "provider": "unknown", "model": "StubChatModel", "input_tokens": 8, "output_tokens": 29}
+{"type": "tool", "case_id": "RUN-10", "name": "github_lookup", "cost": 0.002}
+{"type": "tool", "case_id": "RUN-10", "name": "web_search", "cost": 0.005}
+{"type": "tool", "case_id": "RUN-10", "name": "flaky_fetch", "cost": 0.002}
+{"type": "model", "case_id": "RUN-10", "provider": "unknown", "model": "StubChatModel", "input_tokens": 34, "output_tokens": 62}
+{"type": "end", "case_id": "RUN-10", "success": true, "business_value": 0.0, "reopened": false}
+{"type": "start", "case_id": "RUN-11"}
+{"type": "model", "case_id": "RUN-11", "provider": "unknown", "model": "StubChatModel", "input_tokens": 7, "output_tokens": 28}
+{"type": "tool", "case_id": "RUN-11", "name": "github_lookup", "cost": 0.002}
+{"type": "tool", "case_id": "RUN-11", "name": "web_search", "cost": 0.005}
+{"type": "tool", "case_id": "RUN-11", "name": "flaky_fetch", "cost": 0.002}
+{"type": "retry", "case_id": "RUN-11", "reason": "tool_error: RuntimeError"}
+{"type": "tool", "case_id": "RUN-11", "name": "flaky_fetch", "cost": 0.002}
+{"type": "retry", "case_id": "RUN-11", "reason": "tool_error: RuntimeError"}
+{"type": "tool", "case_id": "RUN-11", "name": "flaky_fetch", "cost": 0.002}
+{"type": "model", "case_id": "RUN-11", "provider": "unknown", "model": "StubChatModel", "input_tokens": 34, "output_tokens": 62}
+{"type": "end", "case_id": "RUN-11", "success": true, "business_value": 0.0, "reopened": false}
+{"type": "start", "case_id": "RUN-12"}
+{"type": "model", "case_id": "RUN-12", "provider": "unknown", "model": "StubChatModel", "input_tokens": 11, "output_tokens": 31}
+{"type": "tool", "case_id": "RUN-12", "name": "web_search", "cost": 0.005}
+{"type": "tool", "case_id": "RUN-12", "name": "github_lookup", "cost": 0.002}
+{"type": "tool", "case_id": "RUN-12", "name": "flaky_fetch", "cost": 0.002}
+{"type": "model", "case_id": "RUN-12", "provider": "unknown", "model": "StubChatModel", "input_tokens": 36, "output_tokens": 64}
+{"type": "end", "case_id": "RUN-12", "success": true, "business_value": 0.0, "reopened": false}
+{"type": "start", "case_id": "RUN-13"}
+{"type": "model", "case_id": "RUN-13", "provider": "unknown", "model": "StubChatModel", "input_tokens": 7, "output_tokens": 28}
+{"type": "tool", "case_id": "RUN-13", "name": "web_search", "cost": 0.005}
+{"type": "tool", "case_id": "RUN-13", "name": "github_lookup", "cost": 0.002}
+{"type": "tool", "case_id": "RUN-13", "name": "flaky_fetch", "cost": 0.002}
+{"type": "retry", "case_id": "RUN-13", "reason": "tool_error: RuntimeError"}
+{"type": "tool", "case_id": "RUN-13", "name": "flaky_fetch", "cost": 0.002}
+{"type": "retry", "case_id": "RUN-13", "reason": "tool_error: RuntimeError"}
+{"type": "tool", "case_id": "RUN-13", "name": "flaky_fetch", "cost": 0.002}
+{"type": "retry", "case_id": "RUN-13", "reason": "tool_error: RuntimeError"}
+{"type": "end", "case_id": "RUN-13", "success": false, "business_value": 0.0, "reopened": false}
+{"type": "start", "case_id": "RUN-14"}
+{"type": "model", "case_id": "RUN-14", "provider": "unknown", "model": "StubChatModel", "input_tokens": 8, "output_tokens": 30}
+{"type": "tool", "case_id": "RUN-14", "name": "github_lookup", "cost": 0.002}
+{"type": "tool", "case_id": "RUN-14", "name": "web_search", "cost": 0.005}
+{"type": "tool", "case_id": "RUN-14", "name": "flaky_fetch", "cost": 0.002}
+{"type": "model", "case_id": "RUN-14", "provider": "unknown", "model": "StubChatModel", "input_tokens": 35, "output_tokens": 63}
+{"type": "end", "case_id": "RUN-14", "success": true, "business_value": 0.0, "reopened": false}
+{"type": "start", "case_id": "RUN-15"}
+{"type": "model", "case_id": "RUN-15", "provider": "unknown", "model": "StubChatModel", "input_tokens": 10, "output_tokens": 30}
+{"type": "tool", "case_id": "RUN-15", "name": "web_search", "cost": 0.005}
+{"type": "tool", "case_id": "RUN-15", "name": "github_lookup", "cost": 0.002}
+{"type": "tool", "case_id": "RUN-15", "name": "flaky_fetch", "cost": 0.002}
+{"type": "retry", "case_id": "RUN-15", "reason": "tool_error: RuntimeError"}
+{"type": "tool", "case_id": "RUN-15", "name": "flaky_fetch", "cost": 0.002}
+{"type": "retry", "case_id": "RUN-15", "reason": "tool_error: RuntimeError"}
+{"type": "tool", "case_id": "RUN-15", "name": "flaky_fetch", "cost": 0.002}
+{"type": "model", "case_id": "RUN-15", "provider": "unknown", "model": "StubChatModel", "input_tokens": 36, "output_tokens": 64}
+{"type": "end", "case_id": "RUN-15", "success": true, "business_value": 0.0, "reopened": false}
+{"type": "start", "case_id": "RUN-16"}
+{"type": "model", "case_id": "RUN-16", "provider": "unknown", "model": "StubChatModel", "input_tokens": 9, "output_tokens": 30}
+{"type": "tool", "case_id": "RUN-16", "name": "web_search", "cost": 0.005}
+{"type": "tool", "case_id": "RUN-16", "name": "github_lookup", "cost": 0.002}
+{"type": "tool", "case_id": "RUN-16", "name": "flaky_fetch", "cost": 0.002}
+{"type": "retry", "case_id": "RUN-16", "reason": "tool_error: RuntimeError"}
+{"type": "tool", "case_id": "RUN-16", "name": "flaky_fetch", "cost": 0.002}
+{"type": "retry", "case_id": "RUN-16", "reason": "tool_error: RuntimeError"}
+{"type": "tool", "case_id": "RUN-16", "name": "flaky_fetch", "cost": 0.002}
+{"type": "retry", "case_id": "RUN-16", "reason": "tool_error: RuntimeError"}
+{"type": "end", "case_id": "RUN-16", "success": false, "business_value": 0.0, "reopened": false}
