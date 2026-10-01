@@ -1,9 +1,9 @@
-"""Command line interface for agentpnl.
+"""Command line interface for averth.
 
 Usage:
-    agentpnl trace <file> --format otel|langsmith|jsonl [--html PATH]
+    averth trace <file> --format otel|langsmith|jsonl [--html PATH]
                  [--policy-cap FLOAT] [--policy-yield FLOAT] [--agent NAME]
-    agentpnl simulate --attempts N --seed S [--jsonl PATH] [--html PATH]
+    averth simulate --attempts N --seed S [--jsonl PATH] [--html PATH]
                  [--agent NAME]
 
 Parses an agent trace into a cost ledger, prints the text P&L report to
@@ -22,19 +22,19 @@ import sys
 
 def _importer_for(fmt):
     if fmt == "otel":
-        from agentpnl.importers import otel as mod
-        return mod.load_otel, "agentpnl.importers.otel"
+        from averth.importers import otel as mod
+        return mod.load_otel, "averth.importers.otel"
     if fmt == "langsmith":
-        from agentpnl.importers import langsmith as mod
-        return mod.load_langsmith, "agentpnl.importers.langsmith"
+        from averth.importers import langsmith as mod
+        return mod.load_langsmith, "averth.importers.langsmith"
     if fmt == "jsonl":
-        from agentpnl.importers import jsonl as mod
-        return mod.load_jsonl, "agentpnl.importers.jsonl"
+        from averth.importers import jsonl as mod
+        return mod.load_jsonl, "averth.importers.jsonl"
     raise ValueError("unsupported format: %r (use otel, langsmith, or jsonl)" % (fmt,))
 
 
 def build_parser():
-    p = argparse.ArgumentParser(prog="agentpnl", description="Agent P&L: meter, attribute, report.")
+    p = argparse.ArgumentParser(prog="averth", description="Averth: meter, attribute, report.")
     sub = p.add_subparsers(dest="cmd", required=True)
     t = sub.add_parser("trace", help="Build a P&L report from an agent trace file.")
     t.add_argument("file", help="Trace file to parse.")
@@ -66,8 +66,8 @@ def build_parser():
 
 
 def _report_and_html(tracker, html_path, policy_sim=None):
-    from agentpnl.report import report_text, write_html
-    from agentpnl.insights import findings_text
+    from averth.report import report_text, write_html
+    from averth.insights import findings_text
 
     p = tracker.pnl()
     print(report_text(p))
@@ -75,7 +75,7 @@ def _report_and_html(tracker, html_path, policy_sim=None):
     print("=" * 60)
     print(findings_text(p))
     if policy_sim is not None:
-        from agentpnl import policy
+        from averth import policy
         print()
         print(policy.policy_text(policy_sim))
     html_path = os.path.abspath(html_path)
@@ -85,9 +85,9 @@ def _report_and_html(tracker, html_path, policy_sim=None):
 
 
 def _cmd_simulate(args):
-    from agentpnl import stress
+    from averth import stress
     if args.attempts < 1:
-        print("agentpnl: error: --attempts must be >= 1", file=sys.stderr)
+        print("averth: error: --attempts must be >= 1", file=sys.stderr)
         return 2
     tracker, _ = stress.generate(seed=args.seed, attempts=args.attempts,
                                  agent_name=args.agent)
@@ -107,36 +107,36 @@ def main(argv=None):
 
     path = args.file
     if not os.path.isfile(path):
-        print("agentpnl: error: file not found: %s" % path, file=sys.stderr)
+        print("averth: error: file not found: %s" % path, file=sys.stderr)
         return 2
 
     try:
         load, mod_name = _importer_for(args.format)
     except (ImportError, ValueError) as e:
-        print("agentpnl: error: bad trace format: %s" % e, file=sys.stderr)
+        print("averth: error: bad trace format: %s" % e, file=sys.stderr)
         return 2
     except Exception as e:
-        print("agentpnl: error: cannot load importer: %s" % e, file=sys.stderr)
+        print("averth: error: cannot load importer: %s" % e, file=sys.stderr)
         return 2
 
     try:
         ledger = load(path)
     except Exception as e:
-        print("agentpnl: error: failed to parse %s with %s: %s" % (path, mod_name, e),
+        print("averth: error: failed to parse %s with %s: %s" % (path, mod_name, e),
               file=sys.stderr)
         return 2
 
     try:
-        from agentpnl.importers import common
+        from averth.importers import common
         tracker = common.tracker_from_ledger(ledger)
     except Exception as e:
-        print("agentpnl: error: cannot build tracker from ledger: %s" % e, file=sys.stderr)
+        print("averth: error: cannot build tracker from ledger: %s" % e, file=sys.stderr)
         return 2
 
     if args.agent:
         tracker.agent_name = args.agent
 
-    from agentpnl import policy
+    from averth import policy
 
     sim = None
     if args.policy_cap is not None or args.policy_yield is not None:

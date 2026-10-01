@@ -9,8 +9,8 @@ output), so they are real entries, not estimates.
 
 import pytest
 
-from agentpnl import pricing
-from agentpnl import Tracker
+from averth import pricing
+from averth import Tracker
 
 
 VALIDATION_MODELS = [

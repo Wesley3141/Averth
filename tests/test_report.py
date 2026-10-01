@@ -1,8 +1,8 @@
-"""Tests for agentpnl.report.write_html."""
+"""Tests for averth.report.write_html."""
 
-from agentpnl import Tracker
-from agentpnl.policy import simulate_policy
-from agentpnl.report import write_html
+from averth import Tracker
+from averth.policy import simulate_policy
+from averth.report import write_html
 
 
 def _build_tracker():
@@ -46,12 +46,12 @@ def test_write_html_basic(tmp_path):
     per_success = t.pnl()["per_success"]["fully_loaded"]
     assert f"${per_success:,.2f}" in body or f"${per_success:.2f}" in body
     assert "<svg" in body
-    assert "Generated locally by agentpnl. No data leaves your environment." in body
+    assert "Generated locally by averth. No data leaves your environment." in body
 
 
 def test_write_html_with_policy(tmp_path):
     t = _build_tracker()
-    from agentpnl.policy import export_ledger, load_ledger
+    from averth.policy import export_ledger, load_ledger
     ledger_path = tmp_path / "ledger.json"
     export_ledger(t, str(ledger_path))
     ledger = load_ledger(str(ledger_path))

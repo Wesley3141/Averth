@@ -1,4 +1,4 @@
-"""Probe: how does AgentPNLCallbackHandler behave under a REAL LangGraph run?
+"""Probe: how does AverthCallbackHandler behave under a REAL LangGraph run?
 
 Drives a tiny 2-node graph (node A calls a real HTTP tool, node B is a
 passthrough) through the handler and prints what the tracker recorded.
@@ -6,17 +6,17 @@ Run with the venv python: .venv/bin/python probe_attempt_boundaries.py
 """
 import sys, uuid
 
-sys.path.insert(0, "/home/hatch/workspace/agentpnl")
+sys.path.insert(0, "/home/hatch/workspace/averth")
 
 import requests
 from langgraph.graph import StateGraph, END
 from typing_extensions import TypedDict
 
-from agentpnl import Tracker
-from agentpnl.integrations import AgentPNLCallbackHandler
+from averth import Tracker
+from averth.integrations import AverthCallbackHandler
 
 
-class Events(AgentPNLCallbackHandler):
+class Events(AverthCallbackHandler):
     """Subclass that logs every callback event for inspection."""
     def __init__(self, tracker):
         super().__init__(tracker)

@@ -1,4 +1,4 @@
-"""Simulated support agent, one month, instrumented with agentpnl.
+"""Simulated support agent, one month, instrumented with averth.
 
 Exercises all five cost layers:
   1. context compounding — input tokens grow across steps in an attempt
@@ -13,8 +13,8 @@ import sys
 import json
 sys.path.insert(0, ".")
 
-from agentpnl import Tracker
-from agentpnl.report import report_text
+from averth import Tracker
+from averth.report import report_text
 
 random.seed(42)
 breaches = []
@@ -87,10 +87,10 @@ print("PHASE-0 PILOT FLOW: customer runs the meter locally, exports the")
 print("sanitized ledger (metadata only, no prompts/customer data), we replay")
 print("policies offline. No live enforcement.")
 print("=" * 60)
-from agentpnl import policy as P
+from averth import policy as P
 
-P.export_ledger(t, "/tmp/agentpnl-ledger.json")
-ledger = P.load_ledger("/tmp/agentpnl-ledger.json")
+P.export_ledger(t, "/tmp/averth-ledger.json")
+ledger = P.load_ledger("/tmp/averth-ledger.json")
 print(f"Ledger exported: {len(ledger['attempts'])} attempts, "
       f"{len(json.dumps(ledger)):,} bytes, no prompts or customer data.")
 print()

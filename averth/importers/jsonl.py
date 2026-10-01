@@ -1,6 +1,6 @@
 """Importer for JSONL event files: one EVENT-schema dict per line.
 
-Expected schema (see agentpnl.importers.common for the full definition):
+Expected schema (see averth.importers.common for the full definition):
 
     {"type": "start", "case_id": "CASE-1"}
 

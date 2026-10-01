@@ -8,8 +8,8 @@ import tempfile
 
 import pytest
 
-from agentpnl.importers import otel, langsmith, jsonl
-from agentpnl.importers.common import tracker_from_ledger
+from averth.importers import otel, langsmith, jsonl
+from averth.importers.common import tracker_from_ledger
 
 
 def _tmp(data):
@@ -30,15 +30,15 @@ def test_otel_cache_read_tokens_and_branch():
                             "gen_ai.usage.input_tokens": 4000,
                             "gen_ai.usage.output_tokens": 100,
                             "gen_ai.usage.cache_read_input_tokens": 1000,
-                            "agentpnl.branch": "research",
-                            "agentpnl.case_id": "C-1"}),
-        _span("retry", "t1", {"agentpnl.retry": "junk branch",
-                              "agentpnl.case_id": "C-1"}),
+                            "averth.branch": "research",
+                            "averth.case_id": "C-1"}),
+        _span("retry", "t1", {"averth.retry": "junk branch",
+                              "averth.case_id": "C-1"}),
         _span("llm", "t1", {"gen_ai.request.model": "claude-sonnet-4-5",
                             "gen_ai.usage.input_tokens": 4000,
                             "gen_ai.usage.output_tokens": 100,
-                            "agentpnl.branch": "billing",
-                            "agentpnl.case_id": "C-1"}),
+                            "averth.branch": "billing",
+                            "averth.case_id": "C-1"}),
     ]
     path = _tmp(spans)
     try:
@@ -56,21 +56,21 @@ def test_otel_branch_scoped_retry_on_span():
         _span("llm", "t1", {"gen_ai.request.model": "gpt-5-nano",
                             "gen_ai.usage.input_tokens": 1000,
                             "gen_ai.usage.output_tokens": 100,
-                            "agentpnl.branch": "a",
-                            "agentpnl.case_id": "C-1"}),
-        _span("retry", "t1", {"agentpnl.retry": "a junk",
-                              "agentpnl.branch": "a",
-                              "agentpnl.case_id": "C-1"}),
+                            "averth.branch": "a",
+                            "averth.case_id": "C-1"}),
+        _span("retry", "t1", {"averth.retry": "a junk",
+                              "averth.branch": "a",
+                              "averth.case_id": "C-1"}),
         _span("llm", "t1", {"gen_ai.request.model": "gpt-5-nano",
                             "gen_ai.usage.input_tokens": 1000,
                             "gen_ai.usage.output_tokens": 100,
-                            "agentpnl.branch": "a",
-                            "agentpnl.case_id": "C-1"}),
+                            "averth.branch": "a",
+                            "averth.case_id": "C-1"}),
         _span("llm", "t1", {"gen_ai.request.model": "gpt-5-nano",
                             "gen_ai.usage.input_tokens": 1000,
                             "gen_ai.usage.output_tokens": 100,
-                            "agentpnl.branch": "b",
-                            "agentpnl.case_id": "C-1"}),
+                            "averth.branch": "b",
+                            "averth.case_id": "C-1"}),
     ]
     path = _tmp(spans)
     try:
@@ -94,8 +94,8 @@ def _ls_run(run_id, **extra_meta):
 
 def test_langsmith_cached_and_branch_from_metadata():
     run = _ls_run("r1", case_id="C-1", model="gpt-5-nano",
-                  agentpnl_cached_input_tokens=800,
-                  agentpnl_branch="planner")
+                  averth_cached_input_tokens=800,
+                  averth_branch="planner")
     path = _tmp([run])
     try:
         ledger = langsmith.load_langsmith(path)

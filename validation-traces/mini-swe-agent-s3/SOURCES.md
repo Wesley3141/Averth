@@ -33,7 +33,7 @@ ends with the `MICRO_SWE_AGENT_FINAL_OUTPUT` submission command.
   instance cost, api_calls), saved verbatim
 - `per_instance_details.json` — per-instance real cost/api_calls/resolved,
   saved verbatim
-- `convert.py` — mechanical conversion to agentpnl JSONL events
+- `convert.py` — mechanical conversion to averth JSONL events
 - `compare.py` — cross-check of metered cost vs the real recorded
   per-instance costs
 - `events.jsonl` — converted events (12 cases, one per trajectory)

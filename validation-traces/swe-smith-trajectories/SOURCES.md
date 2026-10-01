@@ -20,7 +20,7 @@ full turn history), `resolved` (real pass/fail verdict), `model`, `traj_id`.
   datasets-server rows API; rows stored verbatim
 - `raw/` — the 16 raw rows, one JSON file per trajectory (fields: messages,
   instance_id, resolved, model, traj_id, patch), unedited
-- `convert.py` — mechanical conversion to agentpnl JSONL events
+- `convert.py` — mechanical conversion to averth JSONL events
 - `events.jsonl` — converted events (16 cases, one per trajectory)
 - `report.html` — CLI HTML report output
 

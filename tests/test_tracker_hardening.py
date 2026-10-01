@@ -5,8 +5,8 @@ and legacy-ledger compatibility."""
 
 import pytest
 
-from agentpnl import Tracker
-from agentpnl.importers import common
+from averth import Tracker
+from averth.importers import common
 
 
 def make_tracker(**kw):

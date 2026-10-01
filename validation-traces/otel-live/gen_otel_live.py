@@ -1,9 +1,9 @@
-"""Live OTel trace generator for agentpnl validation (no hand-fixing).
+"""Live OTel trace generator for averth validation (no hand-fixing).
 
 Runs two realistic agent workflows under the real OpenTelemetry SDK and
 exports genuine spans (real timestamps, real durations from real HTTP calls
 to public read-only endpoints, real recorded exceptions) to OTLP-style JSON
-matching the shape agentpnl/importers/otel.py consumes.
+matching the shape averth/importers/otel.py consumes.
 
 Usage:
     ~/workspace/.venvs-otel-validation/bin/python gen_otel_live.py
@@ -42,7 +42,7 @@ class JsonFileExporter(SpanExporter):
     """Serialize SDK spans to the OTLP JSON dialect the importer expects.
 
     One deliberate edge case: a span carrying the private attribute
-    ``agentpnl.test.drop_end_ts`` is emitted WITHOUT endTimeUnixNano, to
+    ``averth.test.drop_end_ts`` is emitted WITHOUT endTimeUnixNano, to
     exercise the importer's missing-timestamp path. The private attribute
     itself is stripped from the emitted span.
     """
@@ -56,7 +56,7 @@ class JsonFileExporter(SpanExporter):
             for s in spans:
                 ctx = s.get_span_context()
                 attrs = dict(s.attributes or {})
-                drop_end = attrs.pop("agentpnl.test.drop_end_ts", False)
+                drop_end = attrs.pop("averth.test.drop_end_ts", False)
                 out = {
                     "traceId": format(ctx.trace_id, "032x"),
                     "spanId": format(ctx.span_id, "016x"),
@@ -87,13 +87,13 @@ _exporter = JsonFileExporter()
 _provider = TracerProvider()
 _provider.add_span_processor(SimpleSpanProcessor(_exporter))
 trace.set_tracer_provider(_provider)
-tracer = trace.get_tracer("agentpnl.validation", "0.1.0")
+tracer = trace.get_tracer("averth.validation", "0.1.0")
 
 
 # ---------------------------------------------------------------- helpers
 def http_get(url, timeout=12):
     """Real public read-only HTTP call (urllib, no credentials)."""
-    req = urllib.request.Request(url, headers={"User-Agent": "agentpnl-validation/0.1"})
+    req = urllib.request.Request(url, headers={"User-Agent": "averth-validation/0.1"})
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         body = resp.read(4096)
     return resp.status, len(body)
@@ -102,7 +102,7 @@ def http_get(url, timeout=12):
 def llm_span(name, model, in_tok, out_tok, sleep_s=0.4, attrs=None, parent_ctx=None):
     """Child span for one LLM call, using gen_ai.* / llm.* attribute dialects."""
     with tracer.start_as_current_span(name, context=parent_ctx) as span:
-        span.set_attribute("gen_ai.system", "agentpnl-validation")
+        span.set_attribute("gen_ai.system", "averth-validation")
         span.set_attribute("gen_ai.request.model", model)
         span.set_attribute("gen_ai.usage.input_tokens", in_tok)
         span.set_attribute("gen_ai.usage.output_tokens", out_tok)
@@ -115,7 +115,7 @@ def llm_span(name, model, in_tok, out_tok, sleep_s=0.4, attrs=None, parent_ctx=N
 def llm_span_openinference(name, model, prompt_tok, completion_tok, sleep_s=0.4, parent_ctx=None):
     """LLM call instrumented with the OpenInference llm.token_count.* dialect only."""
     with tracer.start_as_current_span(name, context=parent_ctx) as span:
-        span.set_attribute("gen_ai.system", "agentpnl-validation")
+        span.set_attribute("gen_ai.system", "averth-validation")
         span.set_attribute("gen_ai.request.model", model)
         span.set_attribute("llm.token_count.prompt", prompt_tok)
         span.set_attribute("llm.token_count.completion", completion_tok)
@@ -136,7 +136,7 @@ def tool_span(name, tool, url=None, fail=False, parent_ctx=None, extra=None,
             except Exception as exc:  # real ConnectionRefusedError
                 span.record_exception(exc)
                 span.set_status(Status(StatusCode.ERROR, str(exc)))
-                span.set_attribute("agentpnl.retry",
+                span.set_attribute("averth.retry",
                                    retry_reason or "%s connection refused" % tool)
         else:
             status, nbytes = http_get(url)
@@ -148,7 +148,7 @@ def tool_span(name, tool, url=None, fail=False, parent_ctx=None, extra=None,
 def run_trace_a():
     """Sequential chain: plan -> tool -> draft -> FAILED tool -> retry -> tools -> summary."""
     with tracer.start_as_current_span("agent.run") as parent:
-        parent.set_attribute("agentpnl.business_value", 12.50)
+        parent.set_attribute("averth.business_value", 12.50)
         pctx = trace.set_span_in_context(parent)
 
         llm_span("llm.plan", "claude-sonnet-4-5", 2400, 380, parent_ctx=pctx)
@@ -158,8 +158,8 @@ def run_trace_a():
 
         # escalation: a few minutes of human review inside the run
         with tracer.start_as_current_span("review.human", context=pctx) as esc:
-            esc.set_attribute("agentpnl.escalation_minutes", 3)
-            esc.set_attribute("agentpnl.escalation_reason", "refund amount above auto-approve limit")
+            esc.set_attribute("averth.escalation_minutes", 3)
+            esc.set_attribute("averth.escalation_reason", "refund amount above auto-approve limit")
             time.sleep(0.2)
 
         # the failing tool call: real exception, ERROR status, retry marker
@@ -188,7 +188,7 @@ def run_trace_a():
 
         # malformed: exporter drops endTimeUnixNano for this span
         with tracer.start_as_current_span("debug.note", context=pctx) as span:
-            span.set_attribute("agentpnl.test.drop_end_ts", True)
+            span.set_attribute("averth.test.drop_end_ts", True)
             span.set_attribute("note", "cache warm, no action")
             time.sleep(0.1)
 
@@ -209,7 +209,7 @@ def _branch(i, name, pctx):
         tool_span("branch2.tool", "payment_api", fail=True, parent_ctx=pctx)
         llm_span("branch2.llm2", "grok-4", 900, 120, sleep_s=0.2, parent_ctx=pctx)
         tool_span("branch2.tool_retry", "payment_api", fail=True, parent_ctx=pctx,
-                  extra={"agentpnl.retry": "payment_api connection refused, second attempt"})
+                  extra={"averth.retry": "payment_api connection refused, second attempt"})
     else:
         # negative-token malformed span on a priced model
         llm_span("branch3.llm", "gpt-5.6-mini", -100, -40, sleep_s=0.2, parent_ctx=pctx)
@@ -220,7 +220,7 @@ def _branch(i, name, pctx):
 def run_trace_b():
     """Parallel fan-out/fan-in: 4 concurrent branches, one dies twice, then a merge LLM."""
     with tracer.start_as_current_span("agent.run") as parent:
-        parent.set_attribute("agentpnl.business_value", 25.00)
+        parent.set_attribute("averth.business_value", 25.00)
         pctx = trace.set_span_in_context(parent)
         with ThreadPoolExecutor(max_workers=4) as ex:
             futs = [ex.submit(_branch, i, n, pctx)

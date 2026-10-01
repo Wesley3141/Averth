@@ -1,12 +1,12 @@
-"""Tests for agentpnl.policy: sanitized ledger roundtrip and offline simulation."""
+"""Tests for averth.policy: sanitized ledger roundtrip and offline simulation."""
 
 import json
 import os
 
 import pytest
 
-from agentpnl import Tracker
-from agentpnl import policy as P
+from averth import Tracker
+from averth import policy as P
 
 SCHEMA_KEYS = {
     "case_id", "model", "tools", "retry_cost", "retries",

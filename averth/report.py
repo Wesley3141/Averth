@@ -1,7 +1,7 @@
 """Render a P&L report from tracker.pnl(), organized by the five cost layers.
 
 The report leads with the behavior-changing insight: the top finding from
-agentpnl.insights, ranked by dollars, with the concrete action it implies.
+averth.insights, ranked by dollars, with the concrete action it implies.
 """
 
 import html as _html
@@ -13,7 +13,7 @@ def report_text(p, token_dashboard_per_success=None):
     ps = p["per_success"]
     t = p["tail"]
     L = []
-    L.append("Agent P&L: %s" % p["agent"])
+    L.append("Averth: %s" % p["agent"])
     L.append("")
     top = findings(p)[:1]
     if top:
@@ -262,7 +262,7 @@ def write_html(path, tracker, policy_sim=None, token_dashboard_per_success=None)
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Agent P&L report: %(agent)s</title>
+<title>Averth report: %(agent)s</title>
 <style>
 body { font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; color: #1f2933;
   max-width: 860px; margin: 0 auto; padding: 24px; background: #f7f8fa; }
@@ -345,7 +345,7 @@ Context tax: <b>$%(context_tax)s</b> (%(tax_share).0f%% of model spend) vs a fla
 %(retry_section)s
 %(policy_section)s
 </main>
-<footer>Generated locally by agentpnl. No data leaves your environment.</footer>
+<footer>Generated locally by averth. No data leaves your environment.</footer>
 </body>
 </html>
 """ % {

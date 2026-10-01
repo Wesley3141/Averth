@@ -1,12 +1,12 @@
-"""Tests for agentpnl.stress: the adversarial synthetic workload is
+"""Tests for averth.stress: the adversarial synthetic workload is
 deterministic, exercises all five cost layers, reproduces the heavy-tail
 shape it claims, and round-trips through the JSONL importer identically."""
 
 import pytest
 
-from agentpnl import stress
-from agentpnl.importers import jsonl as J
-from agentpnl.importers import common
+from averth import stress
+from averth.importers import jsonl as J
+from averth.importers import common
 
 
 def test_deterministic_for_fixed_seed():
@@ -91,7 +91,7 @@ def test_jsonl_events_pass_strict_validation():
 
 
 def test_cli_simulate_exit0(tmp_path, capsys):
-    from agentpnl.cli import main
+    from averth.cli import main
     html = str(tmp_path / "sim.html")
     rc = main(["simulate", "--attempts", "50", "--seed", "1",
                "--html", html])
@@ -100,4 +100,4 @@ def test_cli_simulate_exit0(tmp_path, capsys):
     assert "TOP FINDING" in out or "No material findings" in out
     assert "Fully loaded" in out
     body = open(html, encoding="utf-8").read()
-    assert "What to do Monday morning" in body or "Agent P&L" in body
+    assert "What to do Monday morning" in body or "Averth" in body

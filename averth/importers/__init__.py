@@ -1,10 +1,10 @@
-"""Trace importers: convert external agent telemetry into agentpnl ledgers.
+"""Trace importers: convert external agent telemetry into averth ledgers.
 
 Each importer parses one source format into the common EVENT schema
-(see agentpnl.importers.common) and returns a sanitized ledger dict,
+(see averth.importers.common) and returns a sanitized ledger dict,
 ready for policy simulation or pnl() via tracker_from_ledger().
 
-    from agentpnl.importers import otel, langsmith, jsonl
+    from averth.importers import otel, langsmith, jsonl
 
     ledger = otel.load_otel("traces.json")
     tracker = tracker_from_ledger(ledger)

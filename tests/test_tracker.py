@@ -4,8 +4,8 @@ import math
 
 import pytest
 
-from agentpnl import Tracker, BudgetBreach
-from agentpnl import pricing
+from averth import Tracker, BudgetBreach
+from averth import pricing
 
 
 def make_tracker(**kw):

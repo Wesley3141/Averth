@@ -1,8 +1,8 @@
-# agentpnl validation report: real production-style traces
+# averth validation report: real production-style traces
 
 Date: 2026-09-30. Branch: `validation-fixes` (merged from three worker branches; NOT merged to master). Full suite: 70 passed (55 baseline + 15 new).
 
-Method: every trace was fed through the meter exactly as a customer would (`python3 -m agentpnl.cli trace <file> --format otel|langsmith|jsonl`), with zero hand-fixing of trace content. Issues were classified as importer gap (real bug, fixed), pricing gap (unknown model/tool cost, flagged estimate), or trace-quality limitation (documented, not hacked around). Only real bugs were fixed; no features added.
+Method: every trace was fed through the meter exactly as a customer would (`python3 -m averth.cli trace <file> --format otel|langsmith|jsonl`), with zero hand-fixing of trace content. Issues were classified as importer gap (real bug, fixed), pricing gap (unknown model/tool cost, flagged estimate), or trace-quality limitation (documented, not hacked around). Only real bugs were fixed; no features added.
 
 ## Traces
 
@@ -35,7 +35,7 @@ Result: processed clean, exit 0, zero hand-fixing.
 Economic insight: the dead payment branch burned 44% of the attempt's cost ($0.024 of $0.055) for zero terminal value; yield reads 56% but overstates waste under concurrency because the productive merge step is counted as retry-path waste.
 
 ### 5. live-langgraph-agent: real LangGraph agent against live public APIs
-A real LangGraph StateGraph (plan, parallel Send fan-out to two tools, fan-in, retry loop, streamed report), instrumented with the 3-line AgentPNLCallbackHandler, run 16 times against DuckDuckGo instant-answer API, GitHub repo search, and httpbin (deliberate HTTP 500s). 16 attempts, 12 successes, 21 retries, $0.1783 total. Includes a genuine unplanned failure (both parallel tools hit real network timeouts). Model orchestration used a deterministic local stub (no model API key in this environment); token counts are real tiktoken measurements, tool calls/latency/retries/failures are 100% real. Dir: `validation-traces/live-langgraph-agent/`.
+A real LangGraph StateGraph (plan, parallel Send fan-out to two tools, fan-in, retry loop, streamed report), instrumented with the 3-line AverthCallbackHandler, run 16 times against DuckDuckGo instant-answer API, GitHub repo search, and httpbin (deliberate HTTP 500s). 16 attempts, 12 successes, 21 retries, $0.1783 total. Includes a genuine unplanned failure (both parallel tools hit real network timeouts). Model orchestration used a deterministic local stub (no model API key in this environment); token counts are real tiktoken measurements, tool calls/latency/retries/failures are 100% real. Dir: `validation-traces/live-langgraph-agent/`.
 
 Result: validated clean with zero hand-fixing. In-process pnl(), rehydrated ledger, and CLI output all agree on every bucket.
 
@@ -57,7 +57,7 @@ Economic insight: $0.174 of $0.178 total (97.6%) is external tool spend, the lay
 
 ### Trace-quality issues (documented as known limitations, not hacked around)
 9. Prompt caching is not modeled. Against mini-SWE-agent's real recorded costs, the meter reads $17.49 vs $4.55 recorded (3.84x; per-instance 1.91x-4.47x, rising with run length). Implied prompt-cache hit rates of 0.48-0.90 reproduce the recorded costs exactly. The library prices all input tokens at list rate with no cache term; traces record no cache usage, so a cache-aware change could not be validated here. Recommended follow-up: add `cached_input_tokens` to the model event schema. This is the largest known accuracy gap and the top candidate for the next validation pass.
-10. An ERROR span marks the attempt failed even when a retry recovered it (the `agentpnl.success` override exists for this).
+10. An ERROR span marks the attempt failed even when a retry recovered it (the `averth.success` override exists for this).
 11. Retry-path waste marking is attempt-global, so under concurrency a productive later span (trace B's merge step) counts as waste.
 12. Usage-tokens-without-model spans are silently skipped.
 13. The retry heuristic in the trajectory converter misses silent failures (converter-side, not library).
@@ -103,7 +103,7 @@ recorded cache-hit rates.
 model/estimate logging accept `branch=`; a retry with `branch="research"`
 marks only later "research" steps as waste, and the merge step stays terminal.
 A retry with no branch keeps the old attempt-global behavior. OTel reads
-`agentpnl.branch`; the strict JSONL schema accepts it. The trace-B case from
+`averth.branch`; the strict JSONL schema accepts it. The trace-B case from
 the first pass (productive merge step counted as waste) now attributes
 correctly: only the dead branch's tokens count as waste.
 
@@ -149,16 +149,16 @@ invoice figure.
 
 ### New adversarial machinery
 
-- `agentpnl/stress.py`: seeded synthetic production workload (quick_resolve /
+- `averth/stress.py`: seeded synthetic production workload (quick_resolve /
   standard / retry_storm / escalation / failed_clean / reopened / runaway
   archetypes; 1.15-1.6x context growth; multi-model routing with a 70%
   cache-hit router; 12% parallel 3-branch fan-out). Deterministic per seed;
   JSONL output round-trips through the real importer to identical P&L.
-- `agentpnl/insights.py`: dollar-ranked findings across all five layers, each
+- `averth/insights.py`: dollar-ranked findings across all five layers, each
   with a concrete action. Powers the report's "TOP FINDING" box.
-- `agentpnl simulate --attempts N --seed S [--jsonl out] [--html out]`:
+- `averth simulate --attempts N --seed S [--jsonl out] [--html out]`:
   generates the adversarial workload and reports it; the JSONL it emits
-  reproduces the identical report through `agentpnl trace --format jsonl`.
+  reproduces the identical report through `averth trace --format jsonl`.
 - `pnl()` is backward compatible with pre-hardening ledgers (new attempt keys
   degrade to documented defaults instead of raising KeyError).
 
@@ -197,7 +197,7 @@ limitations, 2 were non-issues on re-examination. Full suite now 130 passed
   tool spend is aggregated as `cost_retry_tools` / `retry_tool_cost` — a
   separate lens, not folded into `retry_path_cost`, so the per-success buckets
   stay additive (terminal + retry_path + tools + human = total).
-- **OTel `agentpnl.success` parsing (I1):** string `"false"` no longer casts
+- **OTel `averth.success` parsing (I1):** string `"false"` no longer casts
   to `True` via `bool()`; proper true/false string parsing with safe fallback.
 - **OTel dual-attribute spans (M2b):** model event is now emitted before the
   retry event, matching the documented "retry marks FOLLOWING steps" semantics.
@@ -234,7 +234,7 @@ limitations, 2 were non-issues on re-examination. Full suite now 130 passed
   subsequent steps waste; if it discards early work, terminal spend is
   overstated. Use `branch=` when the discarded scope is known.
 - Importers emit global retries by default (M4); branch attribution needs
-  the `agentpnl.branch` / `agentpnl_branch` metadata.
+  the `averth.branch` / `agentpnl_branch` metadata.
 - OTel start-time vs causal ordering (M5): spans are ordered by start time;
   pathological clock skew could misorder retry markers.
 - Uniform-cost pathology: a workload where every attempt costs the same and

@@ -1,18 +1,18 @@
-# agentpnl
+# Averth
 
 The economic meter for enterprise agents. Instrument one agent, get its actual P&L.
 
 ## Installation
 
 ```bash
-pip install git+https://github.com/Wesley3141/agentpnl.git
+pip install git+https://github.com/Wesley3141/Averth.git
 ```
 
 Optional extras:
 
 ```bash
-pip install "agentpnl[langchain] @ git+https://github.com/Wesley3141/agentpnl.git"   # LangChain callback handler
-pip install "agentpnl[openai] @ git+https://github.com/Wesley3141/agentpnl.git"        # OpenAI trace import
+pip install "averth[langchain] @ git+https://github.com/Wesley3141/Averth.git"   # LangChain callback handler
+pip install "averth[openai] @ git+https://github.com/Wesley3141/Averth.git"        # OpenAI trace import
 ```
 
 Requires Python 3.9+.
@@ -27,8 +27,8 @@ network dependencies in its core; extras pull in only what they need.
 ## Instrument
 
 ```python
-from agentpnl import Tracker
-from agentpnl.report import report_text
+from averth import Tracker
+from averth.report import report_text
 
 t = Tracker("support-resolution", budget_per_success=6.00)
 
@@ -63,7 +63,7 @@ pilot is read-only: the customer runs the meter inside their own environment,
 exports a sanitized ledger, and we replay hypothetical policies offline:
 
 ```python
-from agentpnl import policy as P
+from averth import policy as P
 P.export_ledger(t, "ledger.json")   # metadata only: no prompts, no customer data
 ledger = P.load_ledger("ledger.json")
 sim = P.simulate_policy(ledger, max_cost_per_attempt=6.00, yield_floor=0.50)
@@ -85,15 +85,15 @@ mean a single-digit yield when the failures are the expensive runs.
 
 ## Adversarial simulation
 
-`agentpnl simulate` generates a seeded hostile workload — quick resolutions,
+`averth simulate` generates a seeded hostile workload — quick resolutions,
 retry storms, escalations, clean failures, reopened tickets, and 2% runaways
 that burn most of the budget — with 1.15-1.6x context growth, multi-model
 routing (a 70% cache-hit triage router), and parallel 3-branch fan-out:
 
 ```bash
-agentpnl simulate --attempts 2000 --seed 42 --html sim.html
-agentpnl simulate --attempts 500 --seed 7 --jsonl sim.jsonl
-agentpnl trace --format jsonl sim.jsonl   # reproduces the identical P&L
+averth simulate --attempts 2000 --seed 42 --html sim.html
+averth simulate --attempts 500 --seed 7 --jsonl sim.jsonl
+averth trace --format jsonl sim.jsonl   # reproduces the identical P&L
 ```
 
 Same seed always produces the identical P&L to the cent. The JSONL round-trip
@@ -123,11 +123,11 @@ logging calls: the handler opens and closes attempts and meters model calls,
 tool use, and errors behind the scenes.
 
 ```python
-from agentpnl import Tracker
-from agentpnl.integrations.langchain import AgentPNLCallbackHandler
+from averth import Tracker
+from averth.integrations.langchain import AverthCallbackHandler
 
 tracker = Tracker("support-agent", budget_per_success=6.00)
-handler = AgentPNLCallbackHandler(tracker)
+handler = AverthCallbackHandler(tracker)
 agent.invoke(..., config={"callbacks": [handler]})
 ```
 
@@ -139,7 +139,7 @@ OpenTelemetry (`otel`), LangSmith (`langsmith`), and newline-delimited JSON
 (same schema as `policy.export_ledger`).
 
 ```python
-from agentpnl.importers import jsonl, common
+from averth.importers import jsonl, common
 
 ledger = jsonl.load_jsonl("run-2026-09.json")     # cost metadata only
 tracker = common.tracker_from_ledger(ledger)      # back into a Tracker
@@ -154,8 +154,8 @@ or customer data.
 Build a P&L report from a trace file without writing code:
 
 ```bash
-agentpnl trace run-2026-09.json --format jsonl --html report.html
-agentpnl trace trace.otel.json --format otel --agent support-agent \
+averth trace run-2026-09.json --format jsonl --html report.html
+averth trace trace.otel.json --format otel --agent support-agent \
     --policy-cap 6.00 --policy-yield 0.50
 ```
 

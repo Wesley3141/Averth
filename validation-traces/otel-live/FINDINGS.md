@@ -1,6 +1,6 @@
 # OTel live-trace validation: findings
 
-Date: 2026-09-30. Repo: github.com/Wesley3141/agentpnl, master @ 96bb241.
+Date: 2026-09-30. Repo: github.com/Wesley3141/Averth, master @ 96bb241.
 Branch for fixes: `validation-fixes-otel`.
 
 ## Per-trace outcome
@@ -39,7 +39,7 @@ no negative costs, unpriced model flagged).
    `llm.token_count.prompt` / `llm.token_count.completion` imported as
    0 tokens (trace A retry_plan: 3,210 tokens vanished; trace B gemini
    branch: 2,610 tokens vanished, cost $0.00). Fix: added both keys to
-   the token lookup lists in `agentpnl/importers/otel.py` and documented
+   the token lookup lists in `averth/importers/otel.py` and documented
    them in the module docstring. Test:
    `test_otel_openinference_token_dialect`.
 
@@ -79,7 +79,7 @@ no negative costs, unpriced model flagged).
 
 6. Any ERROR span marks the whole attempt failed, even when a retry
    recovered it (trace A retried successfully, still failed=True).
-   The escape hatch exists: set `agentpnl.success=true` on the final
+   The escape hatch exists: set `averth.success=true` on the final
    span. Documented as intended behavior, not changed.
 
 7. Retry-path (waste) marking is attempt-global, not branch-local.

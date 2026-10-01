@@ -10,9 +10,9 @@ import math
 
 import pytest
 
-from agentpnl import Tracker, policy
-from agentpnl.importers import common, jsonl as jsonl_imp, otel
-from agentpnl.insights import findings
+from averth import Tracker, policy
+from averth.importers import common, jsonl as jsonl_imp, otel
+from averth.insights import findings
 
 
 def make_tracker():
@@ -87,7 +87,7 @@ def _otel_p(attrs):
 
 
 def test_otel_success_string_false_is_false():
-    attrs = {"attributes": {"agentpnl.success": "false",
+    attrs = {"attributes": {"averth.success": "false",
                             "gen_ai.request.model": "gpt-5-nano",
                             "gen_ai.usage.input_tokens": 100,
                             "gen_ai.usage.output_tokens": 10}}
@@ -97,7 +97,7 @@ def test_otel_success_string_false_is_false():
 
 
 def test_otel_success_string_true_is_true():
-    attrs = {"attributes": {"agentpnl.success": "True",
+    attrs = {"attributes": {"averth.success": "True",
                             "gen_ai.request.model": "gpt-5-nano",
                             "gen_ai.usage.input_tokens": 100,
                             "gen_ai.usage.output_tokens": 10}}

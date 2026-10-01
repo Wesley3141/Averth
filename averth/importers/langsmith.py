@@ -28,15 +28,15 @@ Mapping (documented here):
                   Provider from extra.metadata["ls_provider"] when present,
                   else guessed from the model name.
   tool call       run_type "tool" -> tool event with the run name.
-  retry marker    extra.metadata {"agentpnl_retry": reason} -> retry event;
-                  optional "agentpnl_retry_branch" scopes the waste marking
+  retry marker    extra.metadata {"averth_retry": reason} -> retry event;
+                  optional "averth_retry_branch" scopes the waste marking
                   to one parallel branch.
-  escalation      extra.metadata {"agentpnl_escalation_minutes": n,
-                  "agentpnl_escalation_reason": r} -> escalation event.
-  cache / branch  extra.metadata {"agentpnl_cached_input_tokens": n} on an
-                  llm run -> cached input tokens; {"agentpnl_branch": b}
+  escalation      extra.metadata {"averth_escalation_minutes": n,
+                  "averth_escalation_reason": r} -> escalation event.
+  cache / branch  extra.metadata {"averth_cached_input_tokens": n} on an
+                  llm run -> cached input tokens; {"averth_branch": b}
                   tags the run's branch for branch-scoped retry accounting.
-  business value  extra.metadata {"agentpnl_business_value": v} on the root
+  business value  extra.metadata {"averth_business_value": v} on the root
                   chain -> end event business_value.
 
 Non-root chains emit no events themselves; they only group their children.
@@ -88,6 +88,15 @@ def _llm_model(run):
             or run.get("name") or "unknown")
 
 
+def _brand(meta, name):
+    """Read an averth_* metadata key, falling back to the pre-rebrand
+    agentpnl_* name so runs logged before the rename still parse."""
+    v = meta.get("averth_" + name)
+    if v is None:
+        v = meta.get("agentpnl_" + name)
+    return v
+
+
 def load_langsmith(path, agent_name="langsmith-import"):
     """Parse a LangSmith run-export JSON file and return a sanitized ledger dict."""
     with open(path) as f:
@@ -116,24 +125,24 @@ def load_langsmith(path, agent_name="langsmith-import"):
             meta = _metadata(run)
             rtype = run.get("run_type")
 
-            if meta.get("agentpnl_retry") not in (None, ""):
+            if _brand(meta, "retry") not in (None, ""):
                 ev = {"type": "retry", "case_id": case_id,
-                      "reason": str(meta["agentpnl_retry"])}
-                if meta.get("agentpnl_retry_branch") not in (None, ""):
-                    ev["branch"] = str(meta["agentpnl_retry_branch"])
+                      "reason": str(_brand(meta, "retry"))}
+                if _brand(meta, "retry_branch") not in (None, ""):
+                    ev["branch"] = str(_brand(meta, "retry_branch"))
                 events.append(ev)
-            if meta.get("agentpnl_escalation_minutes") not in (None, ""):
+            if _brand(meta, "escalation_minutes") not in (None, ""):
                 try:
-                    minutes = float(meta["agentpnl_escalation_minutes"])
+                    minutes = float(_brand(meta, "escalation_minutes"))
                 except (TypeError, ValueError):
                     minutes = 0.0
                 # C5: negative or non-numeric escalation minutes are malformed
                 events.append({"type": "escalation", "case_id": case_id,
                                "minutes": max(0.0, minutes),
-                               "reason": str(meta.get("agentpnl_escalation_reason", ""))})
-            if meta.get("agentpnl_business_value") not in (None, ""):
+                               "reason": str(_brand(meta, "escalation_reason") or "")})
+            if _brand(meta, "business_value") not in (None, ""):
                 try:
-                    business_value = float(meta["agentpnl_business_value"])
+                    business_value = float(_brand(meta, "business_value"))
                 except (TypeError, ValueError):
                     pass
 
@@ -145,13 +154,13 @@ def load_langsmith(path, agent_name="langsmith-import"):
                       "provider": provider, "model": model,
                       "input_tokens": in_tok, "output_tokens": out_tok}
                 try:
-                    cached = float(meta.get("agentpnl_cached_input_tokens") or 0)
+                    cached = float(_brand(meta, "cached_input_tokens") or 0)
                 except (TypeError, ValueError):
                     cached = 0.0
                 if cached > 0:
                     ev["cached_input_tokens"] = cached
-                if meta.get("agentpnl_branch") not in (None, ""):
-                    ev["branch"] = str(meta["agentpnl_branch"])
+                if _brand(meta, "branch") not in (None, ""):
+                    ev["branch"] = str(_brand(meta, "branch"))
                 events.append(ev)
             elif rtype == "tool":
                 events.append({"type": "tool", "case_id": case_id,

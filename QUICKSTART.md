@@ -1,4 +1,4 @@
-# agentpnl: 5-minute quickstart (pilot)
+# averth: 5-minute quickstart (pilot)
 
 Meter one production agent for two weeks. Read-only. The meter runs inside
 your environment and records cost/token/timing metadata only. It makes no
@@ -8,14 +8,14 @@ prompts, no completions, no tool payloads, and no customer data.
 ## 1. Install (30 seconds)
 
 ```bash
-pip install git+https://github.com/Wesley3141/agentpnl.git
+pip install git+https://github.com/Wesley3141/Averth.git
 ```
 
 Optional extras:
 
 ```bash
-pip install "agentpnl[langchain] @ git+https://github.com/Wesley3141/agentpnl.git"   # LangChain callback handler
-pip install "agentpnl[openai] @ git+https://github.com/Wesley3141/agentpnl.git"        # OpenAI trace import
+pip install "averth[langchain] @ git+https://github.com/Wesley3141/Averth.git"   # LangChain callback handler
+pip install "averth[openai] @ git+https://github.com/Wesley3141/Averth.git"        # OpenAI trace import
 ```
 
 ## 2. Instrument your agent's attempt loop (3 minutes)
@@ -23,7 +23,7 @@ pip install "agentpnl[openai] @ git+https://github.com/Wesley3141/agentpnl.git" 
 Use the Tracker directly around each resolved case:
 
 ```python
-from agentpnl import Tracker
+from averth import Tracker
 
 t = Tracker("support-agent", budget_per_success=6.00)
 
@@ -45,16 +45,16 @@ Failed runs, reopens, and escalations are first-class: end with
 On LangChain, the same data is captured with three lines, no manual calls:
 
 ```python
-from agentpnl.integrations.langchain import AgentPNLCallbackHandler
+from averth.integrations.langchain import AverthCallbackHandler
 
-handler = AgentPNLCallbackHandler(tracker)
+handler = AverthCallbackHandler(tracker)
 agent.invoke(..., config={"callbacks": [handler]})
 ```
 
 Prefer existing traces? Import one instead of instrumenting:
 
 ```bash
-agentpnl trace run-2026-09.json --format jsonl --html report.html
+averth trace run-2026-09.json --format jsonl --html report.html
 ```
 
 `--format` also accepts `otel` and `langsmith`.
@@ -62,8 +62,8 @@ agentpnl trace run-2026-09.json --format jsonl --html report.html
 ## 3. Export the sanitized ledger (30 seconds)
 
 ```python
-from agentpnl import policy as P
-P.export_ledger(t, "agentpnl-ledger.json")
+from averth import policy as P
+P.export_ledger(t, "averth-ledger.json")
 ```
 
 The ledger is cost metadata only: per-attempt tokens, tool spend, timings,

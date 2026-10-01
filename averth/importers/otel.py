@@ -20,22 +20,22 @@ Attribute mapping (documented here because vendors emit several dialects):
                   latency_ms.
   failure         status.code in ("ERROR", "STATUS_CODE_ERROR") marks the
                   whole case failed.
-  retry marker    attribute agentpnl.retry -> retry event (reason = value);
-                  optional agentpnl.branch scopes the waste marking to one
+  retry marker    attribute averth.retry (legacy: agentpnl.retry) -> retry event (reason = value);
+                  optional averth.branch scopes the waste marking to one
                   parallel branch instead of the whole attempt. On a span
                   that is both a model call and a retry marker, the model
                   event is emitted first: the retry marks FOLLOWING steps
                   as retry-path, it does not retroactively taint the call
                   on its own span (for branch-scoped retries the branch
                   work is still caught by the retroactive branch rule).
-  escalation      attribute agentpnl.escalation_minutes -> escalation event;
-                  agentpnl.escalation_reason supplies the reason.
+  escalation      attribute averth.escalation_minutes -> escalation event;
+                  averth.escalation_reason supplies the reason.
   cache           gen_ai.usage.cache_read_input_tokens (or the llm.usage /
-                  agentpnl.cached_input_tokens equivalents) -> cached input
+                  averth.cached_input_tokens equivalents) -> cached input
                   tokens, priced at the Tracker's cache_read_discount
-  branch          attribute agentpnl.branch on a model span tags that call's
+  branch          attribute averth.branch on a model span tags that call's
                   branch for branch-scoped retry accounting
-  overrides       agentpnl.business_value and agentpnl.success set the end
+  overrides       averth.business_value and averth.success set the end
                   event fields explicitly when present.
 
 Provider is guessed from the model name (gpt -> openai, claude -> anthropic,
@@ -113,6 +113,15 @@ def _parse_bool(value):
     return None
 
 
+def _brand(attrs, name):
+    """Read an averth.* OTel attribute, falling back to the pre-rebrand
+    agentpnl.* name so traces instrumented before the rename still parse."""
+    v = attrs.get("averth." + name)
+    if v is None:
+        v = attrs.get("agentpnl." + name)
+    return v
+
+
 def _span_times(span):
     start = _num(span.get("startTimeUnixNano") or span.get("start_time_unix_nano"), 0)
     end = _num(span.get("endTimeUnixNano") or span.get("end_time_unix_nano"), start)
@@ -139,10 +148,10 @@ def load_otel(path, agent_name="otel-import"):
         code = str(status.get("code", "")).upper()
         if code in ("ERROR", "STATUS_CODE_ERROR"):
             case["failed"] = True
-        if attrs.get("agentpnl.business_value") is not None:
-            case["business_value"] = _num(attrs["agentpnl.business_value"])
-        if attrs.get("agentpnl.success") is not None:
-            case["success_override"] = _parse_bool(attrs["agentpnl.success"])
+        if _brand(attrs, "business_value") is not None:
+            case["business_value"] = _num(_brand(attrs, "business_value"))
+        if _brand(attrs, "success") is not None:
+            case["success_override"] = _parse_bool(_brand(attrs, "success"))
 
     events = []
     for case_id, case in cases.items():
@@ -173,26 +182,26 @@ def load_otel(path, agent_name="otel-import"):
                 cached_tok = _nonneg(_first(attrs,
                                             "gen_ai.usage.cache_read_input_tokens",
                                             "llm.usage.cache_read_input_tokens",
-                                            "agentpnl.cached_input_tokens"))
+                                            "averth.cached_input_tokens", "agentpnl.cached_input_tokens"))
                 ev = {"type": "model", "case_id": case_id,
                       "provider": guess_provider(model), "model": model,
                       "input_tokens": in_tok, "output_tokens": out_tok}
                 if cached_tok:
                     ev["cached_input_tokens"] = cached_tok
-                if attrs.get("agentpnl.branch") not in (None, ""):
-                    ev["branch"] = str(attrs["agentpnl.branch"])
+                if _brand(attrs, "branch") not in (None, ""):
+                    ev["branch"] = str(_brand(attrs, "branch"))
                 events.append(ev)
 
-            if attrs.get("agentpnl.retry") not in (None, ""):
+            if _brand(attrs, "retry") not in (None, ""):
                 ev = {"type": "retry", "case_id": case_id,
-                      "reason": str(attrs["agentpnl.retry"])}
-                if attrs.get("agentpnl.branch") not in (None, ""):
-                    ev["branch"] = str(attrs["agentpnl.branch"])
+                      "reason": str(_brand(attrs, "retry"))}
+                if _brand(attrs, "branch") not in (None, ""):
+                    ev["branch"] = str(_brand(attrs, "branch"))
                 events.append(ev)
-            if attrs.get("agentpnl.escalation_minutes") not in (None, ""):
+            if _brand(attrs, "escalation_minutes") not in (None, ""):
                 events.append({"type": "escalation", "case_id": case_id,
-                               "minutes": _nonneg(attrs["agentpnl.escalation_minutes"]),
-                               "reason": str(attrs.get("agentpnl.escalation_reason", ""))})
+                               "minutes": _nonneg(_brand(attrs, "escalation_minutes")),
+                               "reason": str(_brand(attrs, "escalation_reason") or "")})
 
             if model:
                 continue

@@ -5,7 +5,7 @@ provider packages, no API keys). This stub replaces the LLM ONLY for
 orchestration decisions (plan formatting, report summarization). Token
 counts are REAL measurements: tiktoken (cl100k_base) over the actual prompt
 text sent and the actual completion text produced. Cost is priced through
-agentpnl's documented estimate fallback and flagged in unpriced_models.
+averth's documented estimate fallback and flagged in unpriced_models.
 
 Everything else is real: real LangGraph dispatch, real callback events,
 real HTTP tool calls, real latency, real failures, real retries.
@@ -36,11 +36,11 @@ class StubChatModel(BaseChatModel):
     context. Both branches are fully deterministic (no randomness).
     """
 
-    model_name: str = "agentpnl-stub-1"
+    model_name: str = "averth-stub-1"
 
     @property
     def _llm_type(self) -> str:
-        return "agentpnl-stub"
+        return "averth-stub"
 
     def _respond(self, messages: List[BaseMessage]) -> str:
         full = messages_text(messages)

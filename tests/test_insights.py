@@ -1,9 +1,9 @@
-"""Tests for agentpnl.insights: every rule fires only above its
+"""Tests for averth.insights: every rule fires only above its
 materiality threshold, findings rank by dollars, and the text renderer
 stays honest."""
 
-from agentpnl import Tracker
-from agentpnl.insights import findings, top_insight, findings_text
+from averth import Tracker
+from averth.insights import findings, top_insight, findings_text
 
 
 def _pnl_with(**kw):

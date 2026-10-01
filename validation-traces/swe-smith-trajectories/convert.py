@@ -1,7 +1,7 @@
-"""Convert raw SWE-smith trajectory rows to agentpnl JSONL events.
+"""Convert raw SWE-smith trajectory rows to averth JSONL events.
 
 MECHANICAL conversion only: walks each raw trajectory's message list and
-emits EVENT-schema lines (see agentpnl/importers/jsonl.py). No record
+emits EVENT-schema lines (see averth/importers/jsonl.py). No record
 content is edited; field mapping rules are fixed below and documented in
 SOURCES.md.
 

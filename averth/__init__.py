@@ -1,8 +1,8 @@
-"""agentpnl: the economic meter for enterprise agents.
+"""averth: the economic meter for enterprise agents.
 
 Instrument one agent, get its actual P&L:
 
-    from agentpnl import Tracker
+    from averth import Tracker
 
     t = Tracker("invoice-resolution", budget_per_success=5.00)
 
@@ -13,7 +13,7 @@ Instrument one agent, get its actual P&L:
     t.log_escalation(4.5, "low confidence on tax code")
     t.end_attempt(success=True, business_value=11.20)
 
-    from agentpnl.report import report_text
+    from averth.report import report_text
     print(report_text(t.pnl(), token_dashboard_per_success=1.91))
 
 The tracker records model spend, tool calls, retries, and human review time,

@@ -1,10 +1,10 @@
 """Verify imported ledgers against the attributes the generator set."""
 import math, os, sys
-sys.path.insert(0, "/home/hatch/workspace/agentpnl")
-from agentpnl.importers import otel
-from agentpnl.importers.common import tracker_from_ledger
+sys.path.insert(0, "/home/hatch/workspace/averth")
+from averth.importers import otel
+from averth.importers.common import tracker_from_ledger
 
-D = "/home/hatch/workspace/agentpnl/validation-traces/otel-live"
+D = "/home/hatch/workspace/averth/validation-traces/otel-live"
 
 def load(f):
     ledger = otel.load_otel(os.path.join(D, f))

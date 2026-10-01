@@ -8,8 +8,8 @@ a fake duck-typed client.
 import unittest
 from types import SimpleNamespace
 
-from agentpnl import Tracker, pricing
-from agentpnl.integrations import AgentPNLCallbackHandler, wrap_openai_client
+from averth import Tracker, pricing
+from averth.integrations import AverthCallbackHandler, wrap_openai_client
 
 
 def llm_response(prompt_tokens, completion_tokens):
@@ -21,7 +21,7 @@ def llm_response(prompt_tokens, completion_tokens):
 class LangChainHandlerTest(unittest.TestCase):
     def setUp(self):
         self.tracker = Tracker("test-agent")
-        self.h = AgentPNLCallbackHandler(self.tracker)
+        self.h = AverthCallbackHandler(self.tracker)
 
     def run_success_flow(self):
         h = self.h
@@ -91,7 +91,7 @@ class LangChainHandlerTest(unittest.TestCase):
         self.assertEqual(p["unpriced_models"], ["openai:gpt-9-ultra"])
 
     def test_provider_guessing(self):
-        from agentpnl.integrations.langchain import _guess_provider
+        from averth.integrations.langchain import _guess_provider
         self.assertEqual(_guess_provider("gpt-5.6-mini"), "openai")
         self.assertEqual(_guess_provider("claude-opus-4-6"), "anthropic")
         self.assertEqual(_guess_provider("gemini-3-pro"), "google")
@@ -150,7 +150,7 @@ class LangChainHandlerTest(unittest.TestCase):
         self.assertAlmostEqual(a["tools"], 0.005 * 2)
 
     def test_callbacks_without_attempt_do_not_crash(self):
-        h = AgentPNLCallbackHandler(Tracker("idle"))
+        h = AverthCallbackHandler(Tracker("idle"))
         h.on_llm_end(llm_response(10, 10), run_id="r-x")
         h.on_tool_end("out", run_id="r-x")
         h.on_chain_end({}, run_id="r-x")

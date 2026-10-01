@@ -1,6 +1,6 @@
-"""Tests for agentpnl.cli.main.
+"""Tests for averth.cli.main.
 
-If agentpnl.importers is not ready yet, the fixture path is exercised via
+If averth.importers is not ready yet, the fixture path is exercised via
 monkeypatched stand-ins rather than failing the suite.
 """
 
@@ -9,12 +9,12 @@ import sys
 
 import pytest
 
-agentpnl = pytest.importorskip("agentpnl")
-from agentpnl.cli import main  # noqa: E402
+averth = pytest.importorskip("averth")
+from averth.cli import main  # noqa: E402
 
 
 def _fixture_jsonl(path):
-    # EVENT schema from agentpnl.importers.common (the real importer path).
+    # EVENT schema from averth.importers.common (the real importer path).
     events = [
         {"type": "start", "case_id": "F-1"},
         {"type": "model", "case_id": "F-1", "provider": "anthropic",
@@ -33,7 +33,7 @@ def _fixture_jsonl(path):
 
 
 def _fake_tracker():
-    from agentpnl import Tracker
+    from averth import Tracker
     t = Tracker("fixture-bot")
     t.start_attempt(case_id="F-1")
     t.log_model_call("anthropic", "claude-sonnet-4-5", 3200, 850)
@@ -48,7 +48,7 @@ def _fake_tracker():
 def _install_fake_importer(monkeypatch):
     """Install stand-in importer modules; returns the tracker built."""
     import types
-    import agentpnl.cli as cli_mod
+    import averth.cli as cli_mod
 
     ledger_holder = {}
 
@@ -56,7 +56,7 @@ def _install_fake_importer(monkeypatch):
         with open(path) as f:
             events = [json.loads(l) for l in f if l.strip()]
         t = _fake_tracker()
-        from agentpnl.policy import export_ledger
+        from averth.policy import export_ledger
         import tempfile
         tmp = tempfile.mktemp(suffix=".json")
         export_ledger(t, tmp)
@@ -64,20 +64,20 @@ def _install_fake_importer(monkeypatch):
         ledger_holder["tracker"] = t
         return ledger
 
-    jsonl_mod = types.ModuleType("agentpnl.importers.jsonl")
+    jsonl_mod = types.ModuleType("averth.importers.jsonl")
     jsonl_mod.load_jsonl = fake_load_jsonl
-    common_mod = types.ModuleType("agentpnl.importers.common")
+    common_mod = types.ModuleType("averth.importers.common")
     common_mod.tracker_from_ledger = lambda ledger: ledger_holder["tracker"]
 
-    importers_pkg = types.ModuleType("agentpnl.importers")
+    importers_pkg = types.ModuleType("averth.importers")
     importers_pkg.jsonl = jsonl_mod
     importers_pkg.common = common_mod
 
-    monkeypatch.setitem(sys.modules, "agentpnl.importers", importers_pkg)
-    monkeypatch.setitem(sys.modules, "agentpnl.importers.jsonl", jsonl_mod)
-    monkeypatch.setitem(sys.modules, "agentpnl.importers.common", common_mod)
+    monkeypatch.setitem(sys.modules, "averth.importers", importers_pkg)
+    monkeypatch.setitem(sys.modules, "averth.importers.jsonl", jsonl_mod)
+    monkeypatch.setitem(sys.modules, "averth.importers.common", common_mod)
     monkeypatch.setattr(cli_mod, "_importer_for",
-                        lambda fmt: (fake_load_jsonl, "agentpnl.importers.jsonl")
+                        lambda fmt: (fake_load_jsonl, "averth.importers.jsonl")
                         if fmt == "jsonl" else (_ for _ in ()).throw(
                             ValueError("unsupported format")))
 
@@ -86,8 +86,8 @@ def _try_real_importer(monkeypatch):
     """Prefer the real importer path; fall back to fakes when absent."""
     try:
         import importlib
-        importlib.import_module("agentpnl.importers.jsonl")
-        importlib.import_module("agentpnl.importers.common")
+        importlib.import_module("averth.importers.jsonl")
+        importlib.import_module("averth.importers.common")
         return True
     except ImportError:
         _install_fake_importer(monkeypatch)
@@ -101,7 +101,7 @@ def test_trace_jsonl_exit0(tmp_path, monkeypatch, capsys):
     rc = main(["trace", trace, "--format", "jsonl", "--agent", "fixture-bot"])
     out = capsys.readouterr().out
     assert rc == 0
-    assert "Agent P&L" in out
+    assert "Averth" in out
     html_file = tmp_path / "trace.html"
     assert html_file.exists()
     assert "fixture-bot" in html_file.read_text(encoding="utf-8")

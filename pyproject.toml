@@ -3,7 +3,7 @@ requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "agentpnl"
+name = "averth"
 version = "0.2.0"
 description = "Economic meter for production AI agents: fully loaded cost per accepted outcome"
 readme = "README.md"
@@ -16,10 +16,10 @@ langchain = ["langchain-core"]
 openai = ["openai"]
 
 [project.scripts]
-agentpnl = "agentpnl.cli:main"
+averth = "averth.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/wesleyd3141/agentpnl"
+Homepage = "https://github.com/Wesley3141/Averth"
 
 [tool.setuptools.packages.find]
-include = ["agentpnl*"]
+include = ["averth*"]

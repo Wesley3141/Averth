@@ -1,11 +1,11 @@
-"""OpenAI SDK wrapper for agentpnl.
+"""OpenAI SDK wrapper for averth.
 
 Wraps an OpenAI client instance (duck-typed, no openai import at module
 level) so chat.completions.create and responses.create calls capture model
 and token usage into a Tracker:
 
-    from agentpnl import Tracker
-    from agentpnl.integrations import wrap_openai_client
+    from averth import Tracker
+    from averth.integrations import wrap_openai_client
 
     tracker = Tracker("support-agent")
     client = wrap_openai_client(openai.OpenAI(), tracker)
@@ -22,7 +22,7 @@ pnl()["unpriced_models"], so estimated spend is visible, never hidden.
 
 import time
 
-from agentpnl import pricing
+from averth import pricing
 
 
 def _int_or_zero(value):

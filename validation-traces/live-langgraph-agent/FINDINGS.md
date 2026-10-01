@@ -4,7 +4,7 @@
 
 16 runs through a real LangGraph graph (plan -> parallel fan-out to
 DuckDuckGo + GitHub -> fan-in -> flaky HTTP fetch with graph-level retry
-loop -> streamed report), metered by `AgentPNLCallbackHandler` into one
+loop -> streamed report), metered by `AverthCallbackHandler` into one
 Tracker. Result: **16 attempts, 12 successes, 21 retries, $0.1783 total**,
 all from real network calls with real latency, real failures, and real
 tiktoken-measured token counts. One run (RUN-04) failed for real on a
@@ -21,14 +21,14 @@ tail stats, yield ratio, and the unpriced-model flag list.
 
 ### (a) Integration gap, FIXED — nested chain ends closed the attempt early
 
-`AgentPNLCallbackHandler.on_chain_end` closed the Tracker attempt on ANY
+`AverthCallbackHandler.on_chain_end` closed the Tracker attempt on ANY
 chain end. LangGraph reuses one run_id for a whole graph run and emits a
 chain end per node, so the first node end closed the attempt as
 "success"; later tool/LLM events were silently dropped or splintered
 into extra empty attempts. A 2-node probe produced **2 attempts, 0
 events, both "success"** before the fix, 1 attempt after.
 
-Fix (`agentpnl/integrations/langchain.py`): depth-count open chains in
+Fix (`averth/integrations/langchain.py`): depth-count open chains in
 `_chain_stack`; only the outermost chain end/error closes the attempt.
 Nested errors no longer fail the attempt either — only the outermost
 chain error marks the run failed, so graph-recovered node errors do not

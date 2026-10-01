@@ -1,4 +1,4 @@
-"""Adversarial synthetic production workload for agentpnl.
+"""Adversarial synthetic production workload for averth.
 
 Generates long-horizon support-agent traffic with the pathologies real
 production traces have: retry storms, human escalations, multi-model routing,
@@ -11,11 +11,11 @@ This is the stress harness the meter is validated against, and it ships so a
 prospect can see what the report looks like on production-shaped traffic
 before instrumenting anything real:
 
-    python -m agentpnl.cli simulate --attempts 5000 --seed 7 --html out.html
+    python -m averth.cli simulate --attempts 5000 --seed 7 --html out.html
 
 Two outputs:
   generate(...)   -> a fully-driven Tracker (meter directly)
-  write_jsonl(...) -> EVENT-schema JSONL (round-trips through `agentpnl trace`)
+  write_jsonl(...) -> EVENT-schema JSONL (round-trips through `averth trace`)
 
 The workload is deliberately hostile to naive metering: runaways must land
 in the tail, dead branches must not smear the productive merge step's yield,
@@ -243,7 +243,7 @@ def generate(seed=42, attempts=2000, agent_name="synthetic-support",
 
 
 def write_jsonl(path, seed=42, attempts=2000, agent_name="synthetic-support"):
-    """Write the synthetic workload as EVENT-schema JSONL for `agentpnl trace`."""
+    """Write the synthetic workload as EVENT-schema JSONL for `averth trace`."""
     _, events = generate(seed=seed, attempts=attempts, agent_name=agent_name,
                          record_events=True)
     with open(path, "w") as f:

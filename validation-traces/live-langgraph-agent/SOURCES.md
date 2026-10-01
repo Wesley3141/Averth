@@ -12,7 +12,7 @@ from the actual runs. Run log: `run_log.txt`.
 A real LangGraph `StateGraph`, instrumented with the 3-line integration:
 
     tracker = Tracker("live-langgraph-validation", budget_per_success=1.00)
-    handler = AgentPNLCallbackHandler(tracker)
+    handler = AverthCallbackHandler(tracker)
     app.invoke(state, config={"callbacks": [handler]})
 
 Graph: `plan` (LLM) -> fan-out via `Send` to `search_ddg` and
@@ -64,7 +64,7 @@ ledger as a real failed attempt, not re-run.
 - `stub_model.py` — deterministic local model stub (see above)
 - `ledger.json` — sanitized ledger via `importers.common.ledger_from_tracker`
 - `events.jsonl` — EVENT-schema reconstruction of every attempt (144 lines),
-  the exact input fed to `agentpnl.cli trace --format jsonl`
+  the exact input fed to `averth.cli trace --format jsonl`
 - `pnl.json` — in-process `tracker.pnl()` (ground truth for validation)
 - `run_log.txt` — per-run variant, wall-clock, outcome
 - `cli-report.html` — HTML report produced by the CLI round-trip run

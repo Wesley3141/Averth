@@ -11,8 +11,8 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from agentpnl.importers import otel, langsmith, jsonl
-from agentpnl.importers.common import (
+from averth.importers import otel, langsmith, jsonl
+from averth.importers.common import (
     events_to_tracker, ledger_from_tracker, tracker_from_ledger,
 )
 

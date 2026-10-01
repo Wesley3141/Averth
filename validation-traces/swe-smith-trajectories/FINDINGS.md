@@ -4,7 +4,7 @@
 hand-fixing of records.
 
 ## CLI outcome
-`python3 -m agentpnl.cli trace events.jsonl --format jsonl` — exit 0, clean
+`python3 -m averth.cli trace events.jsonl --format jsonl` — exit 0, clean
 parse, no crashes, no unpriced models (after the pricing fix below).
 
 - Attempts: 16, autonomous completions: 8 (50.0%)
@@ -21,7 +21,7 @@ parse, no crashes, no unpriced models (after the pricing fix below).
 1. [pricing gap, FIXED] `claude-3-7-sonnet-20250219` and
    `claude-3-5-sonnet-20241022` were missing from `pricing.MODEL_PRICES`
    and fell back to the documented estimate. Disposition: added both to
-   `agentpnl/pricing.py` at their published Anthropic list prices
+   `averth/pricing.py` at their published Anthropic list prices
    ($3.00/1M input, $15.00/1M output). Tests: `tests/test_pricing.py`
    (6 tests: list-price presence and no-fallback flow for all three
    validation-surfaced models).

@@ -6,7 +6,7 @@ publishes REAL per-instance recorded costs, so the meter can be checked
 against ground truth.
 
 ## CLI outcome
-`python3 -m agentpnl.cli trace events.jsonl --format jsonl` — exit 0, clean
+`python3 -m averth.cli trace events.jsonl --format jsonl` — exit 0, clean
 parse, no crashes, no unpriced models (after the pricing fix below).
 `--policy-cap 1.00` replay also runs clean: would have stopped 6 of 12 runs,
 exposing $14.36 (82% of metered spend).
@@ -23,7 +23,7 @@ exposing $14.36 (82% of metered spend).
 
 1. [pricing gap, FIXED] `claude-sonnet-4-20250514` was missing from
    `pricing.MODEL_PRICES` and fell back to the documented estimate.
-   Disposition: added to `agentpnl/pricing.py` at the published Anthropic
+   Disposition: added to `averth/pricing.py` at the published Anthropic
    list price ($3.00/1M input, $15.00/1M output). Tests:
    `tests/test_pricing.py`.
 

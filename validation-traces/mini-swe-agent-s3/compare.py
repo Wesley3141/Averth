@@ -2,7 +2,7 @@
 
 per_instance_details.json (from the SWE-bench leaderboard entry) records,
 per instance, the REAL cost the submitter measured and the REAL api_calls
-count. This script compares those against what agentpnl computed from the
+count. This script compares those against what averth computed from the
 converted trace. Token counts in the trace are mechanical estimates
 (chars/4), so this comparison measures how close the estimate lands, not
 whether the library arithmetic is right (that is covered by unit tests).
@@ -14,7 +14,7 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", ".."))
 
-from agentpnl.importers import jsonl, common  # noqa: E402
+from averth.importers import jsonl, common  # noqa: E402
 
 ledger = jsonl.load_jsonl(os.path.join(HERE, "events.jsonl"),
                           agent_name="mini-swe-agent/claude-sonnet-4")

@@ -2,17 +2,17 @@
 stub-model calls, and what model name/provider does it see?
 """
 import sys
-sys.path.insert(0, "/home/hatch/workspace/agentpnl")
-sys.path.insert(0, "/home/hatch/workspace/agentpnl/validation-traces/live-langgraph-agent")
+sys.path.insert(0, "/home/hatch/workspace/averth")
+sys.path.insert(0, "/home/hatch/workspace/averth/validation-traces/live-langgraph-agent")
 
 from langchain_core.messages import HumanMessage
-from agentpnl import Tracker
-from agentpnl.integrations import AgentPNLCallbackHandler
+from averth import Tracker
+from averth.integrations import AverthCallbackHandler
 from stub_model import StubChatModel
 
 seen = {}
 
-class Spy(AgentPNLCallbackHandler):
+class Spy(AverthCallbackHandler):
     def on_llm_start(self, serialized, prompts, run_id=None, parent_run_id=None, **kw):
         seen["serialized"] = serialized
         super().on_llm_start(serialized, prompts, run_id=run_id, parent_run_id=parent_run_id, **kw)

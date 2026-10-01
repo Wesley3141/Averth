@@ -1,7 +1,7 @@
-"""Live LangGraph validation agent for agentpnl.
+"""Live LangGraph validation agent for averth.
 
 Runs a REAL LangGraph graph against REAL read-only public HTTP APIs and
-meters it with AgentPNLCallbackHandler (the 3-line integration).
+meters it with AverthCallbackHandler (the 3-line integration).
 
 Graph shape (exercises everything the meter must handle):
     plan (stub LLM, non-streamed)
@@ -18,7 +18,7 @@ Variants:
 LLM situation: no model API key and no provider SDK credentials exist in
 this environment, so orchestration uses StubChatModel (stub_model.py), a
 deterministic local stand-in. Token counts are REAL tiktoken measurements
-of the actual prompt/completion strings; cost flows through agentpnl's
+of the actual prompt/completion strings; cost flows through averth's
 documented estimate fallback and is flagged in unpriced_models.
 Tool calls, latency, retries, parallelism, and failures are 100% real.
 
@@ -37,7 +37,7 @@ import sys
 import time
 import traceback
 
-sys.path.insert(0, "/home/hatch/workspace/agentpnl")
+sys.path.insert(0, "/home/hatch/workspace/averth")
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import requests
@@ -47,9 +47,9 @@ from langchain_core.tools import tool
 from langgraph.graph import StateGraph, END
 from langgraph.types import Send
 
-from agentpnl import Tracker
-from agentpnl.integrations import AgentPNLCallbackHandler
-from agentpnl.importers import common as importer_common
+from averth import Tracker
+from averth.integrations import AverthCallbackHandler
+from averth.importers import common as importer_common
 from stub_model import StubChatModel
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -80,7 +80,7 @@ def github_lookup(query: str) -> str:
     r = requests.get("https://api.github.com/search/repositories",
                      params={"q": query, "per_page": 3, "sort": "stars"},
                      headers={"Accept": "application/vnd.github+json",
-                              "User-Agent": "agentpnl-validation"},
+                              "User-Agent": "averth-validation"},
                      timeout=HTTP_TIMEOUT)
     r.raise_for_status()
     items = r.json().get("items", [])
@@ -271,7 +271,7 @@ def events_from_attempts(tracker):
 def main():
     global HANDLER
     tracker = Tracker("live-langgraph-validation", budget_per_success=1.00)
-    HANDLER = AgentPNLCallbackHandler(tracker)
+    HANDLER = AverthCallbackHandler(tracker)
     app = build_graph()
 
     log_lines = []

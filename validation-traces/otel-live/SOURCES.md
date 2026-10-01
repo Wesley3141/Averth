@@ -23,11 +23,11 @@ durations. Nothing is synthetic:
   `tests/fixtures/otel_spans.json`.
 
 One deliberate edge case: the exporter drops `endTimeUnixNano` for the span
-carrying the private attribute `agentpnl.test.drop_end_ts` (stripped before
+carrying the private attribute `averth.test.drop_end_ts` (stripped before
 emission), to exercise the importer's missing-timestamp path. That attribute
 is a generation-time test hook, not hand-fixing of the trace content.
 
 Both files were fed to the CLI exactly as written, with zero hand-fixing:
 
-    python3 -m agentpnl.cli trace trace-a-sequential-retry.json --format otel
-    python3 -m agentpnl.cli trace trace-b-parallel-fanout.json --format otel
+    python3 -m averth.cli trace trace-a-sequential-retry.json --format otel
+    python3 -m averth.cli trace trace-b-parallel-fanout.json --format otel

@@ -1,4 +1,4 @@
-# HOSTILE REVIEW — agentpnl `hardening-pass` branch
+# HOSTILE REVIEW — averth `hardening-pass` branch
 
 Reviewer posture: adversarial. Mission was to break the meter, not praise it.
 Baseline: master 27d82ee. Test suite: 112 passed before and after this review
@@ -40,7 +40,7 @@ the HTML finding cards do not — a reader summing finding dollars double-counts
 ## 2. MISATTRIBUTION — 4 concrete bugs
 
 ### M1 (High): dead branch's discarded work is booked as terminal/useful
-`agentpnl/tracker.py` — `end_attempt` marks waste only for steps logged
+`averth/tracker.py` — `end_attempt` marks waste only for steps logged
 *after* a retry marker. A branch-scoped `log_retry(branch="dead")` does not
 retroactively mark the dead branch's earlier steps, so the discarded output
 that the retry explicitly rejected lands in `terminal_model_cost`.
@@ -239,7 +239,7 @@ findings → "No material findings: spend is clean across all five layers."
    events behind them) survive `export_ledger` → `tracker_from_ledger`; the
    silent degradation to `'unknown'` in the top action is untested.
 
-Secondary gaps: OTel `agentpnl.success="false"` string parsing; CLI
+Secondary gaps: OTel `averth.success="false"` string parsing; CLI
 `--policy-cap 0`; zero-token first-step tax base; duplicate-`end` phantom
 attempts; LangSmith single-bad-run import failure; `low_yield` exactness vs
 approximation.
@@ -282,8 +282,8 @@ runs consumed 100%"); n=2 with one failure → three findings.
 
 ## 8. IMPORTER BUGS (beyond §3)
 
-- **I1 (High): OTel `agentpnl.success="false"` (string) → success=True.**
-  `otel.py:125`: `bool(attrs["agentpnl.success"])` — `bool("false")` is
+- **I1 (High): OTel `averth.success="false"` (string) → success=True.**
+  `otel.py:125`: `bool(attrs["averth.success"])` — `bool("false")` is
   `True`. OTLP attributes are commonly strings; a span explicitly marked
   failed is imported as a success. Repro in `/tmp/attack3.py` §F.
 - **I2 (Low): negative `business_value` rejected by JSONL but accepted by

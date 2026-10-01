@@ -1,11 +1,11 @@
-"""LangChain / LangGraph callback handler for agentpnl.
+"""LangChain / LangGraph callback handler for averth.
 
 Auto-captures into a Tracker: LLM calls (model, input/output tokens), tool
 calls (name, cost), chain start/end (attempt boundaries), and errors
 (retries / failed attempts).
 
-    from agentpnl import Tracker
-    from agentpnl.integrations import AgentPNLCallbackHandler
+    from averth import Tracker
+    from averth.integrations import AgentPNLCallbackHandler
 
     tracker = Tracker("support-agent", budget_per_success=2.00)
     handler = AgentPNLCallbackHandler(tracker)
@@ -21,7 +21,7 @@ without langchain installed.
 
 import time
 
-from agentpnl import pricing
+from averth import pricing
 
 try:
     from langchain_core.callbacks import BaseCallbackHandler
@@ -97,8 +97,8 @@ def _tool_name(serialized):
     return "unknown"
 
 
-class AgentPNLCallbackHandler(BaseCallbackHandler):
-    """Meters a LangChain/LangGraph agent run into an agentpnl Tracker.
+class AverthCallbackHandler(BaseCallbackHandler):
+    """Meters a LangChain/LangGraph agent run into an averth Tracker.
 
     Attach via config={"callbacks": [handler]}. The outermost chain start
     opens a Tracker attempt; chain end closes it (success), chain error
@@ -195,3 +195,7 @@ class AgentPNLCallbackHandler(BaseCallbackHandler):
             cost = pricing.estimated_model_cost(provider, model, in_tok, out_tok)
             self.tracker.log_model_cost_estimate(provider, model, cost,
                                                  in_tok, out_tok)
+
+
+# Backward-compatible alias (pre-rebrand name).
+AgentPNLCallbackHandler = AverthCallbackHandler

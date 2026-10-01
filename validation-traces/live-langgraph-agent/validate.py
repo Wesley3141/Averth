@@ -19,11 +19,11 @@ import json
 import os
 import sys
 
-sys.path.insert(0, "/home/hatch/workspace/agentpnl")
+sys.path.insert(0, "/home/hatch/workspace/averth")
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from agentpnl.importers import jsonl as jsonl_importer
-from agentpnl.importers import common as importer_common
+from averth.importers import jsonl as jsonl_importer
+from averth.importers import common as importer_common
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 FAILURES = []

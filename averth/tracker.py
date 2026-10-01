@@ -45,7 +45,7 @@ class BudgetBreach(Exception):
     NOTE: live enforcement is Phase-1, built only after a buyer confirms who
     owns that authority and will pay for it. The Phase-0 pilot is read-only:
     record with Tracker, export the ledger, and replay hypothetical policies
-    with agentpnl.policy.simulate_policy ("had policy X existed, these 37 runs
+    with averth.policy.simulate_policy ("had policy X existed, these 37 runs
     would have been stopped").
     """
 
