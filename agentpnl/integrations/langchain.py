@@ -102,21 +102,40 @@ class AgentPNLCallbackHandler(BaseCallbackHandler):
         self.auto_attempt = auto_attempt
         self._llm_runs = {}   # run_id -> {"model", "provider"}
         self._tool_runs = {}  # run_id -> {"name", "started"}
+        # Open chain run_ids, outermost first. LangGraph reuses one run_id
+        # for a whole graph run (nested callbacks share it), so the attempt
+        # must close only when the outermost chain finishes, not on the
+        # first nested chain end. Depth counting keeps this balanced.
+        self._chain_stack = []
 
     # ---- attempt boundaries ----
     def on_chain_start(self, serialized, inputs, run_id=None,
                        parent_run_id=None, **kwargs):
-        if self.auto_attempt and self.tracker._cur is None:
+        if not self.auto_attempt:
+            return
+        self._chain_stack.append(run_id)
+        if len(self._chain_stack) == 1 and self.tracker._cur is None:
             case_id = inputs.get("case_id") if isinstance(inputs, dict) else None
             self.tracker.start_attempt(case_id=case_id)
 
+    def _chain_done(self, run_id, success):
+        if not self.auto_attempt:
+            return
+        if run_id in self._chain_stack:
+            self._chain_stack.remove(run_id)
+        elif self._chain_stack:
+            self._chain_stack.pop()
+        # Only the outermost chain end/error closes the attempt. Nested
+        # chain ends (LangGraph nodes, sub-chains) must not close it early,
+        # or later tool/LLM events would be dropped or split into fragments.
+        if not self._chain_stack and self.tracker._cur is not None:
+            self.tracker.end_attempt(success=success)
+
     def on_chain_end(self, outputs, run_id=None, parent_run_id=None, **kwargs):
-        if self.tracker._cur is not None:
-            self.tracker.end_attempt(success=True)
+        self._chain_done(run_id, True)
 
     def on_chain_error(self, error, run_id=None, parent_run_id=None, **kwargs):
-        if self.tracker._cur is not None:
-            self.tracker.end_attempt(success=False)
+        self._chain_done(run_id, False)
 
     # ---- LLM calls ----
     def on_llm_start(self, serialized, prompts, run_id=None,
@@ -151,8 +170,13 @@ class AgentPNLCallbackHandler(BaseCallbackHandler):
             self.tracker.log_tool_call(name)
 
     def on_tool_error(self, error, run_id=None, parent_run_id=None, **kwargs):
-        self._tool_runs.pop(run_id, None)
+        info = self._tool_runs.pop(run_id, None) or {}
+        name = info.get("name") or "unknown"
         if self.tracker._cur is not None:
+            # The failed invocation still consumed the tool (network egress,
+            # provider metering), so its cost is recorded like a success;
+            # the retry marker classifies the waste separately.
+            self.tracker.log_tool_call(name)
             self.tracker.log_retry(reason="tool_error: " + type(error).__name__)
 
     # ---- internals ----

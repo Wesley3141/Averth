@@ -145,6 +145,26 @@ class TestJsonlImporter(unittest.TestCase):
 
 
 class TestCommonRoundtrip(unittest.TestCase):
+    def test_ledger_roundtrip_preserves_unpriced_models(self):
+        # Estimated model spend must stay flagged after export/import;
+        # otherwise reimported ledgers present estimates as exact prices.
+        t1 = events_to_tracker("flags", [
+            {"type": "model", "case_id": "f1", "model": "mystery-7b",
+             "input_tokens": 100, "output_tokens": 50},
+            {"type": "end", "case_id": "f1", "success": True},
+        ])
+        self.assertEqual(t1.pnl()["unpriced_models"], ["unknown:mystery-7b"])
+        ledger = ledger_from_tracker(t1)
+        self.assertEqual(ledger["unpriced_models"], ["unknown:mystery-7b"])
+        t2 = tracker_from_ledger(ledger)
+        self.assertEqual(t2.unpriced_models, {"unknown:mystery-7b"})
+        self.assertEqual(t2.pnl()["unpriced_models"], ["unknown:mystery-7b"])
+
+    def test_tracker_from_ledger_accepts_legacy_ledger_without_flags(self):
+        t2 = tracker_from_ledger({"agent": "old", "attempts": []})
+        self.assertEqual(t2.unpriced_models, set())
+        self.assertEqual(t2.pnl()["unpriced_models"], [])
+
     def test_ledger_roundtrip_preserves_pnl(self):
         events = [
             {"type": "model", "case_id": "r1", "provider": "openai",

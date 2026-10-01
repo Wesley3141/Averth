@@ -1,0 +1,17 @@
+live_langgraph_agent runs
+RUN-01 variant=clean outcome=success wall=1.92s 
+RUN-02 variant=clean outcome=success wall=2.54s 
+RUN-03 variant=clean outcome=success wall=2.59s 
+RUN-04 variant=clean outcome=FAILED wall=20.04s ReadTimeout: HTTPSConnectionPool(host='api.duckduckgo.com', port=443): Read timed out. (read timeout=20)
+RUN-05 variant=flaky outcome=success wall=35.73s 
+RUN-06 variant=flaky outcome=success wall=15.20s 
+RUN-07 variant=clean outcome=success wall=1.79s 
+RUN-08 variant=doomed outcome=FAILED wall=3.16s RuntimeError: flaky_fetch exhausted retries (flaky_fetch: upstream returned 500 (mode=doomed, attempt=2))
+RUN-09 variant=flaky outcome=success wall=3.86s 
+RUN-10 variant=clean outcome=success wall=2.42s 
+RUN-11 variant=flaky outcome=success wall=6.14s 
+RUN-12 variant=clean outcome=success wall=1.66s 
+RUN-13 variant=doomed outcome=FAILED wall=4.07s RuntimeError: flaky_fetch exhausted retries (flaky_fetch: upstream returned 500 (mode=doomed, attempt=2))
+RUN-14 variant=clean outcome=success wall=2.29s 
+RUN-15 variant=flaky outcome=success wall=3.35s 
+RUN-16 variant=doomed outcome=FAILED wall=4.13s RuntimeError: flaky_fetch exhausted retries (flaky_fetch: upstream returned 500 (mode=doomed, attempt=2))
