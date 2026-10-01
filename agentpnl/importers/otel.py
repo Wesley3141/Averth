@@ -8,10 +8,12 @@ Attribute mapping (documented here because vendors emit several dialects):
                   under their own span_id so nothing is silently merged)
   model name      gen_ai.request.model, gen_ai.response.model, or llm.model
   input tokens    gen_ai.usage.input_tokens, gen_ai.usage.prompt_tokens,
-                  llm.usage.input_tokens, llm.usage.prompt_tokens
+                  llm.usage.input_tokens, llm.usage.prompt_tokens,
+                  llm.token_count.prompt
                   (first non-empty value wins)
   output tokens   gen_ai.usage.output_tokens, gen_ai.usage.completion_tokens,
-                  llm.usage.output_tokens, llm.usage.completion_tokens
+                  llm.usage.output_tokens, llm.usage.completion_tokens,
+                  llm.token_count.completion
   tool call       attribute tool.name (or mcp.tool.name), or a span whose
                   name starts with "tool." (the part after the prefix is the
                   tool name). Span duration becomes the tool event's
@@ -71,6 +73,12 @@ def _num(value, default=0):
         return default
 
 
+def _nonneg(value, default=0):
+    """_num clamped at zero: negative counters are malformed attributes,
+    never legitimate economics (they would produce negative cost)."""
+    return max(0.0, _num(value, default))
+
+
 def _first(attrs, *keys):
     for key in keys:
         if attrs.get(key) not in (None, ""):
@@ -122,20 +130,22 @@ def load_otel(path, agent_name="otel-import"):
                                "reason": str(attrs["agentpnl.retry"])})
             if attrs.get("agentpnl.escalation_minutes") not in (None, ""):
                 events.append({"type": "escalation", "case_id": case_id,
-                               "minutes": _num(attrs["agentpnl.escalation_minutes"]),
+                               "minutes": _nonneg(attrs["agentpnl.escalation_minutes"]),
                                "reason": str(attrs.get("agentpnl.escalation_reason", ""))})
 
             model = _first(attrs, "gen_ai.request.model",
                            "gen_ai.response.model", "llm.model")
             if model:
-                in_tok = _num(_first(attrs, "gen_ai.usage.input_tokens",
-                                     "gen_ai.usage.prompt_tokens",
-                                     "llm.usage.input_tokens",
-                                     "llm.usage.prompt_tokens"))
-                out_tok = _num(_first(attrs, "gen_ai.usage.output_tokens",
-                                      "gen_ai.usage.completion_tokens",
-                                      "llm.usage.output_tokens",
-                                      "llm.usage.completion_tokens"))
+                in_tok = _nonneg(_first(attrs, "gen_ai.usage.input_tokens",
+                                        "gen_ai.usage.prompt_tokens",
+                                        "llm.usage.input_tokens",
+                                        "llm.usage.prompt_tokens",
+                                        "llm.token_count.prompt"))
+                out_tok = _nonneg(_first(attrs, "gen_ai.usage.output_tokens",
+                                         "gen_ai.usage.completion_tokens",
+                                         "llm.usage.output_tokens",
+                                         "llm.usage.completion_tokens",
+                                         "llm.token_count.completion"))
                 events.append({"type": "model", "case_id": case_id,
                                "provider": guess_provider(model), "model": model,
                                "input_tokens": in_tok, "output_tokens": out_tok})

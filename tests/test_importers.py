@@ -64,6 +64,85 @@ class TestOtelImporter(unittest.TestCase):
             os.unlink(tmp.name)
         self.assertEqual(len(ledger["attempts"]), 3)
 
+    def _write_spans(self, spans):
+        tmp = tempfile.NamedTemporaryFile("w", suffix=".json", delete=False)
+        json.dump({"spans": spans}, tmp)
+        tmp.close()
+        self.addCleanup(os.unlink, tmp.name)
+        return tmp.name
+
+    @staticmethod
+    def _span(name, trace_id, attrs, start=1758000000000000000,
+              dur_ns=500000000, status="STATUS_CODE_OK"):
+        return {
+            "traceId": trace_id,
+            "spanId": name,
+            "name": name,
+            "startTimeUnixNano": str(start),
+            "endTimeUnixNano": str(start + dur_ns),
+            "attributes": [{"key": k, "value": {"stringValue": v}
+                            if isinstance(v, str)
+                            else {"intValue": str(v)}}
+                           for k, v in attrs.items()],
+            "status": {"code": status},
+        }
+
+    def test_otel_openinference_token_dialect(self):
+        # spans using only llm.token_count.prompt/completion (OpenInference
+        # style) must import their tokens, not zero them out
+        path = self._write_spans([self._span(
+            "llm.chat", "trace-oi",
+            {"gen_ai.request.model": "gpt-5.6-mini",
+             "llm.token_count.prompt": 2000,
+             "llm.token_count.completion": 500})])
+        ledger = otel.load_otel(path)
+        a = ledger["attempts"][0]
+        self.assertEqual(a["total_tokens"], 2500)
+        self.assertAlmostEqual(
+            a["per_model"]["openai:gpt-5.6-mini"],
+            2000 / 1e6 * 0.30 + 500 / 1e6 * 1.20)
+
+    def test_otel_negative_tokens_clamped(self):
+        # malformed negative token counts must not produce negative cost
+        path = self._write_spans([self._span(
+            "llm.chat", "trace-neg",
+            {"gen_ai.request.model": "claude-haiku-4-5",
+             "gen_ai.usage.input_tokens": -500,
+             "gen_ai.usage.output_tokens": -40})])
+        ledger = otel.load_otel(path)
+        a = ledger["attempts"][0]
+        self.assertEqual(a["total_tokens"], 0)
+        self.assertGreaterEqual(a["per_model"]["anthropic:claude-haiku-4-5"], 0)
+        self.assertGreaterEqual(a["total_cost"], 0)
+
+    def test_otel_unpriced_models_survive_ledger_roundtrip(self):
+        # the flagged-estimate list must survive the ledger round-trip the
+        # CLI performs (load -> ledger -> tracker -> pnl)
+        path = self._write_spans([self._span(
+            "llm.chat", "trace-unpriced",
+            {"gen_ai.request.model": "deepseek-v3.2",
+             "gen_ai.usage.input_tokens": 1000,
+             "gen_ai.usage.output_tokens": 200})])
+        ledger = otel.load_otel(path)
+        tracker = tracker_from_ledger(ledger)
+        self.assertEqual(tracker.pnl()["unpriced_models"],
+                         ["unknown:deepseek-v3.2"])
+
+    def test_otel_tool_latency_preserved_in_ledger(self):
+        # real span durations become tool latency metadata, kept in the ledger
+        path = self._write_spans([
+            self._span("llm.chat", "trace-lat",
+                       {"gen_ai.request.model": "gpt-5.6-mini",
+                        "gen_ai.usage.input_tokens": 100,
+                        "gen_ai.usage.output_tokens": 50}),
+            self._span("tool.web_search", "trace-lat",
+                       {"tool.name": "web_search"},
+                       start=1758000001000000000, dur_ns=1300000000),
+        ])
+        ledger = otel.load_otel(path)
+        a = ledger["attempts"][0]
+        self.assertAlmostEqual(a["tool_latency_ms"], 1300.0)
+
 
 class TestLangsmithImporter(unittest.TestCase):
     def test_langsmith_fixture(self):
