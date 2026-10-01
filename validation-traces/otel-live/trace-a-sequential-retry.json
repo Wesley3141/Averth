@@ -1,0 +1,375 @@
+{
+  "spans": [
+    {
+      "traceId": "c8ceee35a9331396ab2d6fe404f0e413",
+      "spanId": "218a3a6337c9f0f7",
+      "name": "llm.plan",
+      "startTimeUnixNano": "1790817961303968377",
+      "attributes": [
+        {
+          "key": "gen_ai.system",
+          "value": {
+            "stringValue": "agentpnl-validation"
+          }
+        },
+        {
+          "key": "gen_ai.request.model",
+          "value": {
+            "stringValue": "claude-sonnet-4-5"
+          }
+        },
+        {
+          "key": "gen_ai.usage.input_tokens",
+          "value": {
+            "intValue": "2400"
+          }
+        },
+        {
+          "key": "gen_ai.usage.output_tokens",
+          "value": {
+            "intValue": "380"
+          }
+        }
+      ],
+      "status": {
+        "code": "STATUS_CODE_UNSET"
+      },
+      "endTimeUnixNano": "1790817961704146867"
+    },
+    {
+      "traceId": "c8ceee35a9331396ab2d6fe404f0e413",
+      "spanId": "f0b1a00bce430a7c",
+      "name": "tool.crm_lookup",
+      "startTimeUnixNano": "1790817961704457042",
+      "attributes": [
+        {
+          "key": "tool.name",
+          "value": {
+            "stringValue": "crm_lookup"
+          }
+        },
+        {
+          "key": "http.status_code",
+          "value": {
+            "intValue": "200"
+          }
+        },
+        {
+          "key": "http.response_bytes",
+          "value": {
+            "intValue": "332"
+          }
+        }
+      ],
+      "status": {
+        "code": "STATUS_CODE_UNSET"
+      },
+      "endTimeUnixNano": "1790817962977297140"
+    },
+    {
+      "traceId": "c8ceee35a9331396ab2d6fe404f0e413",
+      "spanId": "9d518faf0be2f3b5",
+      "name": "llm.draft",
+      "startTimeUnixNano": "1790817962977488177",
+      "attributes": [
+        {
+          "key": "gen_ai.system",
+          "value": {
+            "stringValue": "agentpnl-validation"
+          }
+        },
+        {
+          "key": "gen_ai.request.model",
+          "value": {
+            "stringValue": "claude-sonnet-4-5"
+          }
+        },
+        {
+          "key": "gen_ai.usage.input_tokens",
+          "value": {
+            "intValue": "3100"
+          }
+        },
+        {
+          "key": "gen_ai.usage.output_tokens",
+          "value": {
+            "intValue": "640"
+          }
+        }
+      ],
+      "status": {
+        "code": "STATUS_CODE_UNSET"
+      },
+      "endTimeUnixNano": "1790817963377727268"
+    },
+    {
+      "traceId": "c8ceee35a9331396ab2d6fe404f0e413",
+      "spanId": "89c2818c3b73f11c",
+      "name": "review.human",
+      "startTimeUnixNano": "1790817963377946507",
+      "attributes": [
+        {
+          "key": "agentpnl.escalation_minutes",
+          "value": {
+            "intValue": "3"
+          }
+        },
+        {
+          "key": "agentpnl.escalation_reason",
+          "value": {
+            "stringValue": "refund amount above auto-approve limit"
+          }
+        }
+      ],
+      "status": {
+        "code": "STATUS_CODE_UNSET"
+      },
+      "endTimeUnixNano": "1790817963578144025"
+    },
+    {
+      "traceId": "c8ceee35a9331396ab2d6fe404f0e413",
+      "spanId": "bf97b992b33a9dbb",
+      "name": "tool.refund_api",
+      "startTimeUnixNano": "1790817963578365948",
+      "attributes": [
+        {
+          "key": "tool.name",
+          "value": {
+            "stringValue": "refund_api"
+          }
+        },
+        {
+          "key": "agentpnl.retry",
+          "value": {
+            "stringValue": "refund_api connection refused"
+          }
+        }
+      ],
+      "status": {
+        "code": "STATUS_CODE_ERROR"
+      },
+      "endTimeUnixNano": "1790817963581500872"
+    },
+    {
+      "traceId": "c8ceee35a9331396ab2d6fe404f0e413",
+      "spanId": "e03fce7ff41206d9",
+      "name": "llm.retry_plan",
+      "startTimeUnixNano": "1790817963581618138",
+      "attributes": [
+        {
+          "key": "gen_ai.system",
+          "value": {
+            "stringValue": "agentpnl-validation"
+          }
+        },
+        {
+          "key": "gen_ai.request.model",
+          "value": {
+            "stringValue": "claude-sonnet-4-5"
+          }
+        },
+        {
+          "key": "llm.token_count.prompt",
+          "value": {
+            "intValue": "2900"
+          }
+        },
+        {
+          "key": "llm.token_count.completion",
+          "value": {
+            "intValue": "310"
+          }
+        }
+      ],
+      "status": {
+        "code": "STATUS_CODE_UNSET"
+      },
+      "endTimeUnixNano": "1790817963981775877"
+    },
+    {
+      "traceId": "c8ceee35a9331396ab2d6fe404f0e413",
+      "spanId": "d81c5a02f7e17e34",
+      "name": "tool.refund_api",
+      "startTimeUnixNano": "1790817963982000534",
+      "attributes": [
+        {
+          "key": "tool.name",
+          "value": {
+            "stringValue": "refund_api"
+          }
+        },
+        {
+          "key": "http.status_code",
+          "value": {
+            "intValue": "200"
+          }
+        },
+        {
+          "key": "http.response_bytes",
+          "value": {
+            "intValue": "320"
+          }
+        }
+      ],
+      "status": {
+        "code": "STATUS_CODE_UNSET"
+      },
+      "endTimeUnixNano": "1790817965212686281"
+    },
+    {
+      "traceId": "c8ceee35a9331396ab2d6fe404f0e413",
+      "spanId": "c63c506031f7001c",
+      "name": "llm.summarize",
+      "startTimeUnixNano": "1790817965213200423",
+      "attributes": [
+        {
+          "key": "gen_ai.system",
+          "value": {
+            "stringValue": "agentpnl-validation"
+          }
+        },
+        {
+          "key": "gen_ai.request.model",
+          "value": {
+            "stringValue": "claude-haiku-4-5"
+          }
+        },
+        {
+          "key": "gen_ai.usage.input_tokens",
+          "value": {
+            "intValue": "1200"
+          }
+        },
+        {
+          "key": "gen_ai.usage.output_tokens",
+          "value": {
+            "intValue": "210"
+          }
+        }
+      ],
+      "status": {
+        "code": "STATUS_CODE_UNSET"
+      },
+      "endTimeUnixNano": "1790817965613396309"
+    },
+    {
+      "traceId": "c8ceee35a9331396ab2d6fe404f0e413",
+      "spanId": "e4ad2fe5382f3b1a",
+      "name": "llm.audit",
+      "startTimeUnixNano": "1790817965613635217",
+      "attributes": [
+        {
+          "key": "gen_ai.system",
+          "value": {
+            "stringValue": "agentpnl-validation"
+          }
+        },
+        {
+          "key": "gen_ai.request.model",
+          "value": {
+            "stringValue": "deepseek-v3.2"
+          }
+        },
+        {
+          "key": "gen_ai.usage.input_tokens",
+          "value": {
+            "intValue": "-500"
+          }
+        },
+        {
+          "key": "gen_ai.usage.output_tokens",
+          "value": {
+            "intValue": "150"
+          }
+        }
+      ],
+      "status": {
+        "code": "STATUS_CODE_UNSET"
+      },
+      "endTimeUnixNano": "1790817965813965574"
+    },
+    {
+      "traceId": "c8ceee35a9331396ab2d6fe404f0e413",
+      "spanId": "40007fd12d0529f6",
+      "name": "tool.webhook",
+      "startTimeUnixNano": "1790817965814187167",
+      "attributes": [
+        {
+          "key": "http.status_code",
+          "value": {
+            "intValue": "200"
+          }
+        },
+        {
+          "key": "http.response_bytes",
+          "value": {
+            "intValue": "332"
+          }
+        }
+      ],
+      "status": {
+        "code": "STATUS_CODE_UNSET"
+      },
+      "endTimeUnixNano": "1790817966714519580"
+    },
+    {
+      "traceId": "c8ceee35a9331396ab2d6fe404f0e413",
+      "spanId": "b7fdb5fbc57d8537",
+      "name": "llm.untracked",
+      "startTimeUnixNano": "1790817966714766281",
+      "attributes": [
+        {
+          "key": "gen_ai.usage.input_tokens",
+          "value": {
+            "intValue": "800"
+          }
+        },
+        {
+          "key": "gen_ai.usage.output_tokens",
+          "value": {
+            "intValue": "120"
+          }
+        }
+      ],
+      "status": {
+        "code": "STATUS_CODE_UNSET"
+      },
+      "endTimeUnixNano": "1790817966814883878"
+    },
+    {
+      "traceId": "c8ceee35a9331396ab2d6fe404f0e413",
+      "spanId": "9495262b0197f60d",
+      "name": "debug.note",
+      "startTimeUnixNano": "1790817966815037608",
+      "attributes": [
+        {
+          "key": "note",
+          "value": {
+            "stringValue": "cache warm, no action"
+          }
+        }
+      ],
+      "status": {
+        "code": "STATUS_CODE_UNSET"
+      }
+    },
+    {
+      "traceId": "c8ceee35a9331396ab2d6fe404f0e413",
+      "spanId": "b6ddda78013a8911",
+      "name": "agent.run",
+      "startTimeUnixNano": "1790817961303877430",
+      "attributes": [
+        {
+          "key": "agentpnl.business_value",
+          "value": {
+            "doubleValue": 12.5
+          }
+        }
+      ],
+      "status": {
+        "code": "STATUS_CODE_UNSET"
+      },
+      "endTimeUnixNano": "1790817966915377018"
+    }
+  ]
+}

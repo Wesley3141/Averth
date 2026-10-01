@@ -1,0 +1,376 @@
+{
+  "spans": [
+    {
+      "traceId": "d9199a7ae00f7bfd31ee7222a2a2183e",
+      "spanId": "a0c2ddfc5c8ee7cf",
+      "name": "branch3.llm",
+      "startTimeUnixNano": "1790817966917295647",
+      "attributes": [
+        {
+          "key": "gen_ai.system",
+          "value": {
+            "stringValue": "agentpnl-validation"
+          }
+        },
+        {
+          "key": "gen_ai.request.model",
+          "value": {
+            "stringValue": "gpt-5.6-mini"
+          }
+        },
+        {
+          "key": "gen_ai.usage.input_tokens",
+          "value": {
+            "intValue": "-100"
+          }
+        },
+        {
+          "key": "gen_ai.usage.output_tokens",
+          "value": {
+            "intValue": "-40"
+          }
+        }
+      ],
+      "status": {
+        "code": "STATUS_CODE_UNSET"
+      },
+      "endTimeUnixNano": "1790817967117453906"
+    },
+    {
+      "traceId": "d9199a7ae00f7bfd31ee7222a2a2183e",
+      "spanId": "ffc3d5be643627ca",
+      "name": "branch0.llm",
+      "startTimeUnixNano": "1790817966916103649",
+      "attributes": [
+        {
+          "key": "gen_ai.system",
+          "value": {
+            "stringValue": "agentpnl-validation"
+          }
+        },
+        {
+          "key": "gen_ai.request.model",
+          "value": {
+            "stringValue": "gpt-5.6-mini"
+          }
+        },
+        {
+          "key": "gen_ai.usage.input_tokens",
+          "value": {
+            "intValue": "1800"
+          }
+        },
+        {
+          "key": "gen_ai.usage.output_tokens",
+          "value": {
+            "intValue": "260"
+          }
+        }
+      ],
+      "status": {
+        "code": "STATUS_CODE_UNSET"
+      },
+      "endTimeUnixNano": "1790817967316247497"
+    },
+    {
+      "traceId": "d9199a7ae00f7bfd31ee7222a2a2183e",
+      "spanId": "844651aecbeacea2",
+      "name": "branch1.llm",
+      "startTimeUnixNano": "1790817966916478061",
+      "attributes": [
+        {
+          "key": "gen_ai.system",
+          "value": {
+            "stringValue": "agentpnl-validation"
+          }
+        },
+        {
+          "key": "gen_ai.request.model",
+          "value": {
+            "stringValue": "gemini-3-flash"
+          }
+        },
+        {
+          "key": "llm.token_count.prompt",
+          "value": {
+            "intValue": "2200"
+          }
+        },
+        {
+          "key": "llm.token_count.completion",
+          "value": {
+            "intValue": "410"
+          }
+        }
+      ],
+      "status": {
+        "code": "STATUS_CODE_UNSET"
+      },
+      "endTimeUnixNano": "1790817967317485224"
+    },
+    {
+      "traceId": "d9199a7ae00f7bfd31ee7222a2a2183e",
+      "spanId": "d1d33b87d0a847a4",
+      "name": "branch2.llm",
+      "startTimeUnixNano": "1790817966917017350",
+      "attributes": [
+        {
+          "key": "gen_ai.system",
+          "value": {
+            "stringValue": "agentpnl-validation"
+          }
+        },
+        {
+          "key": "gen_ai.request.model",
+          "value": {
+            "stringValue": "grok-4"
+          }
+        },
+        {
+          "key": "gen_ai.usage.input_tokens",
+          "value": {
+            "intValue": "2600"
+          }
+        },
+        {
+          "key": "gen_ai.usage.output_tokens",
+          "value": {
+            "intValue": "520"
+          }
+        }
+      ],
+      "status": {
+        "code": "STATUS_CODE_UNSET"
+      },
+      "endTimeUnixNano": "1790817967318564384"
+    },
+    {
+      "traceId": "d9199a7ae00f7bfd31ee7222a2a2183e",
+      "spanId": "eac3e6a5ba74ed8c",
+      "name": "branch2.tool",
+      "startTimeUnixNano": "1790817967318655470",
+      "attributes": [
+        {
+          "key": "tool.name",
+          "value": {
+            "stringValue": "payment_api"
+          }
+        },
+        {
+          "key": "agentpnl.retry",
+          "value": {
+            "stringValue": "payment_api connection refused"
+          }
+        }
+      ],
+      "status": {
+        "code": "STATUS_CODE_ERROR"
+      },
+      "endTimeUnixNano": "1790817967320281030"
+    },
+    {
+      "traceId": "d9199a7ae00f7bfd31ee7222a2a2183e",
+      "spanId": "81a77a84e1da9483",
+      "name": "branch2.llm2",
+      "startTimeUnixNano": "1790817967320366208",
+      "attributes": [
+        {
+          "key": "gen_ai.system",
+          "value": {
+            "stringValue": "agentpnl-validation"
+          }
+        },
+        {
+          "key": "gen_ai.request.model",
+          "value": {
+            "stringValue": "grok-4"
+          }
+        },
+        {
+          "key": "gen_ai.usage.input_tokens",
+          "value": {
+            "intValue": "900"
+          }
+        },
+        {
+          "key": "gen_ai.usage.output_tokens",
+          "value": {
+            "intValue": "120"
+          }
+        }
+      ],
+      "status": {
+        "code": "STATUS_CODE_UNSET"
+      },
+      "endTimeUnixNano": "1790817967520481051"
+    },
+    {
+      "traceId": "d9199a7ae00f7bfd31ee7222a2a2183e",
+      "spanId": "6b438fea4ec98ca3",
+      "name": "branch2.tool_retry",
+      "startTimeUnixNano": "1790817967520673430",
+      "attributes": [
+        {
+          "key": "tool.name",
+          "value": {
+            "stringValue": "payment_api"
+          }
+        },
+        {
+          "key": "agentpnl.retry",
+          "value": {
+            "stringValue": "payment_api connection refused"
+          }
+        }
+      ],
+      "status": {
+        "code": "STATUS_CODE_ERROR"
+      },
+      "endTimeUnixNano": "1790817967522219250"
+    },
+    {
+      "traceId": "d9199a7ae00f7bfd31ee7222a2a2183e",
+      "spanId": "5b981ef172b2767e",
+      "name": "branch3.tool",
+      "startTimeUnixNano": "1790817967117699294",
+      "attributes": [
+        {
+          "key": "tool.name",
+          "value": {
+            "stringValue": "vector_retrieval"
+          }
+        },
+        {
+          "key": "http.status_code",
+          "value": {
+            "intValue": "200"
+          }
+        },
+        {
+          "key": "http.response_bytes",
+          "value": {
+            "intValue": "308"
+          }
+        }
+      ],
+      "status": {
+        "code": "STATUS_CODE_UNSET"
+      },
+      "endTimeUnixNano": "1790817967958601230"
+    },
+    {
+      "traceId": "d9199a7ae00f7bfd31ee7222a2a2183e",
+      "spanId": "36637679b4fa2336",
+      "name": "branch0.tool",
+      "startTimeUnixNano": "1790817967316437692",
+      "attributes": [
+        {
+          "key": "tool.name",
+          "value": {
+            "stringValue": "web_search"
+          }
+        },
+        {
+          "key": "http.status_code",
+          "value": {
+            "intValue": "200"
+          }
+        },
+        {
+          "key": "http.response_bytes",
+          "value": {
+            "intValue": "313"
+          }
+        }
+      ],
+      "status": {
+        "code": "STATUS_CODE_UNSET"
+      },
+      "endTimeUnixNano": "1790817969261656252"
+    },
+    {
+      "traceId": "d9199a7ae00f7bfd31ee7222a2a2183e",
+      "spanId": "7bc2f55fd6942d9f",
+      "name": "branch1.tool",
+      "startTimeUnixNano": "1790817967317599175",
+      "attributes": [
+        {
+          "key": "tool.name",
+          "value": {
+            "stringValue": "crm_lookup"
+          }
+        },
+        {
+          "key": "http.status_code",
+          "value": {
+            "intValue": "200"
+          }
+        },
+        {
+          "key": "http.response_bytes",
+          "value": {
+            "intValue": "329"
+          }
+        }
+      ],
+      "status": {
+        "code": "STATUS_CODE_UNSET"
+      },
+      "endTimeUnixNano": "1790817969890139771"
+    },
+    {
+      "traceId": "d9199a7ae00f7bfd31ee7222a2a2183e",
+      "spanId": "640bcdf8e7f7d8e3",
+      "name": "llm.merge",
+      "startTimeUnixNano": "1790817969892314935",
+      "attributes": [
+        {
+          "key": "gen_ai.system",
+          "value": {
+            "stringValue": "agentpnl-validation"
+          }
+        },
+        {
+          "key": "gen_ai.request.model",
+          "value": {
+            "stringValue": "gpt-5.6"
+          }
+        },
+        {
+          "key": "gen_ai.usage.input_tokens",
+          "value": {
+            "intValue": "4200"
+          }
+        },
+        {
+          "key": "gen_ai.usage.output_tokens",
+          "value": {
+            "intValue": "880"
+          }
+        }
+      ],
+      "status": {
+        "code": "STATUS_CODE_UNSET"
+      },
+      "endTimeUnixNano": "1790817970392467587"
+    },
+    {
+      "traceId": "d9199a7ae00f7bfd31ee7222a2a2183e",
+      "spanId": "aea20b67b993276c",
+      "name": "agent.run",
+      "startTimeUnixNano": "1790817966915512572",
+      "attributes": [
+        {
+          "key": "agentpnl.business_value",
+          "value": {
+            "doubleValue": 25.0
+          }
+        }
+      ],
+      "status": {
+        "code": "STATUS_CODE_UNSET"
+      },
+      "endTimeUnixNano": "1790817970392600606"
+    }
+  ]
+}
