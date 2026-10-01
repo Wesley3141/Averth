@@ -157,6 +157,7 @@ LEDGER_ATTEMPT_KEYS = (
     "human_min", "human_cost", "ai_cost", "total_cost",
     "total_tokens", "waste_tokens", "context_growth",
     "success", "reopened", "business_value", "per_model",
+    "tool_latency_ms",
 )
 
 
@@ -164,10 +165,13 @@ def ledger_from_tracker(tracker, agent_name=None):
     """Return the sanitized ledger dict for a Tracker (no file written).
 
     Same schema as policy.export_ledger: {"agent": name, "attempts": [...]},
-    metadata only, never prompts or customer data.
+    metadata only, never prompts or customer data. The unpriced_models flag
+    list is included so estimated (non-vendor) model spend stays flagged
+    as an estimate after the round trip instead of looking exact.
     """
     return {
         "agent": agent_name or tracker.agent_name,
+        "unpriced_models": sorted(tracker.unpriced_models),
         "attempts": [
             {k: a[k] for k in LEDGER_ATTEMPT_KEYS}
             for a in tracker.attempts
@@ -179,4 +183,7 @@ def tracker_from_ledger(ledger):
     """Rehydrate a Tracker from a ledger dict so pnl() works on imported data."""
     tracker = Tracker(ledger["agent"])
     tracker.attempts = [dict(a) for a in ledger["attempts"]]
+    # .get for backward compatibility with ledgers written before the
+    # unpriced_models flag was exported.
+    tracker.unpriced_models = set(ledger.get("unpriced_models", []))
     return tracker

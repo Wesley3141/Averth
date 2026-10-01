@@ -1,0 +1,39 @@
+{
+  "agent": "live-langgraph-validation",
+  "attempts": 16,
+  "successes": 12,
+  "success_rate": 0.75,
+  "reopened": 0,
+  "escalations": 0,
+  "retries": 21,
+  "cost_model": 0.00426,
+  "cost_tools": 0.17400000000000002,
+  "cost_retry": 0.0,
+  "cost_human": 0.0,
+  "cost_total": 0.17826000000000003,
+  "per_success": {
+    "model": 0.000355,
+    "tools": 0.0145,
+    "retry": 0.0,
+    "human": 0.0,
+    "fully_loaded": 0.014855000000000002
+  },
+  "yield_ratio": 0.7246376811594203,
+  "avg_context_growth": 3.2801654942279943,
+  "tail": {
+    "p50": 0.013091000000000002,
+    "p95": 0.013334,
+    "max": 0.013334,
+    "top5pct_share": 0.07480085268708626
+  },
+  "per_model": {
+    "unknown:StubChatModel": 0.00426
+  },
+  "unpriced_models": [
+    "unknown:StubChatModel"
+  ],
+  "business_value": 0.0,
+  "net_value": -0.17826000000000003,
+  "budget_per_success": 1.0,
+  "budget_breaches": 0
+}

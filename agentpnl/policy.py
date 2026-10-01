@@ -23,14 +23,19 @@ def export_ledger(tracker, path):
     """
     ledger = {
         "agent": tracker.agent_name,
+        # estimated (non-vendor) model spend stays flagged after export;
+        # without this, reimported ledgers would present estimates as exact
+        "unpriced_models": sorted(tracker.unpriced_models),
         "attempts": [
             {k: a[k] for k in (
                 "case_id", "model", "tools", "retry_cost", "retries",
                 "human_min", "human_cost", "ai_cost", "total_cost",
                 "total_tokens", "waste_tokens", "context_growth",
-                "success", "reopened", "business_value", "per_model")}
+                "success", "reopened", "business_value", "per_model",
+                "tool_latency_ms")}
             for a in tracker.attempts
         ],
+        "unpriced_models": sorted(tracker.unpriced_models),
     }
     with open(path, "w") as f:
         json.dump(ledger, f, indent=2)

@@ -43,6 +43,7 @@ class Tracker:
                      "human_min": 0.0, "events": [],
                      "steps": [],            # (input_tok, output_tok, cost, retry_path)
                      "in_retry_path": False,
+                     "tool_latency_ms": 0.0,
                      "per_model": {}}
 
     def log_model_call(self, provider, model, input_tokens, output_tokens):

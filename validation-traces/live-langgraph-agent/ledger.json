@@ -1,0 +1,344 @@
+{
+  "agent": "live-langgraph-validation",
+  "unpriced_models": [
+    "unknown:StubChatModel"
+  ],
+  "attempts": [
+    {
+      "case_id": "RUN-01",
+      "model": 0.000323,
+      "tools": 0.009000000000000001,
+      "retry_cost": 0.0,
+      "retries": 0,
+      "human_min": 0.0,
+      "human_cost": 0.0,
+      "ai_cost": 0.009323000000000001,
+      "total_cost": 0.009323000000000001,
+      "total_tokens": 137,
+      "waste_tokens": 0,
+      "context_growth": 3.888888888888889,
+      "success": true,
+      "reopened": false,
+      "business_value": 0.0,
+      "per_model": {
+        "unknown:StubChatModel": 0.000323
+      },
+      "tool_latency_ms": 0.0
+    },
+    {
+      "case_id": "RUN-02",
+      "model": 0.000331,
+      "tools": 0.009000000000000001,
+      "retry_cost": 0.0,
+      "retries": 0,
+      "human_min": 0.0,
+      "human_cost": 0.0,
+      "ai_cost": 0.009331,
+      "total_cost": 0.009331,
+      "total_tokens": 141,
+      "waste_tokens": 0,
+      "context_growth": 3.6,
+      "success": true,
+      "reopened": false,
+      "business_value": 0.0,
+      "per_model": {
+        "unknown:StubChatModel": 0.000331
+      },
+      "tool_latency_ms": 0.0
+    },
+    {
+      "case_id": "RUN-03",
+      "model": 0.000323,
+      "tools": 0.009000000000000001,
+      "retry_cost": 0.0,
+      "retries": 0,
+      "human_min": 0.0,
+      "human_cost": 0.0,
+      "ai_cost": 0.009323000000000001,
+      "total_cost": 0.009323000000000001,
+      "total_tokens": 137,
+      "waste_tokens": 0,
+      "context_growth": 3.888888888888889,
+      "success": true,
+      "reopened": false,
+      "business_value": 0.0,
+      "per_model": {
+        "unknown:StubChatModel": 0.000323
+      },
+      "tool_latency_ms": 0.0
+    },
+    {
+      "case_id": "RUN-04",
+      "model": 9.900000000000001e-05,
+      "tools": 0.007,
+      "retry_cost": 0.0,
+      "retries": 2,
+      "human_min": 0.0,
+      "human_cost": 0.0,
+      "ai_cost": 0.007099,
+      "total_cost": 0.007099,
+      "total_tokens": 39,
+      "waste_tokens": 0,
+      "context_growth": 1.0,
+      "success": false,
+      "reopened": false,
+      "business_value": 0.0,
+      "per_model": {
+        "unknown:StubChatModel": 9.900000000000001e-05
+      },
+      "tool_latency_ms": 0.0
+    },
+    {
+      "case_id": "RUN-05",
+      "model": 0.00031899999999999995,
+      "tools": 0.013000000000000001,
+      "retry_cost": 0.0,
+      "retries": 2,
+      "human_min": 0.0,
+      "human_cost": 0.0,
+      "ai_cost": 0.013319000000000001,
+      "total_cost": 0.013319000000000001,
+      "total_tokens": 135,
+      "waste_tokens": 98,
+      "context_growth": 4.375,
+      "success": true,
+      "reopened": false,
+      "business_value": 0.0,
+      "per_model": {
+        "unknown:StubChatModel": 0.00031899999999999995
+      },
+      "tool_latency_ms": 0.0
+    },
+    {
+      "case_id": "RUN-06",
+      "model": 0.00031899999999999995,
+      "tools": 0.013000000000000001,
+      "retry_cost": 0.0,
+      "retries": 2,
+      "human_min": 0.0,
+      "human_cost": 0.0,
+      "ai_cost": 0.013319000000000001,
+      "total_cost": 0.013319000000000001,
+      "total_tokens": 135,
+      "waste_tokens": 98,
+      "context_growth": 4.375,
+      "success": true,
+      "reopened": false,
+      "business_value": 0.0,
+      "per_model": {
+        "unknown:StubChatModel": 0.00031899999999999995
+      },
+      "tool_latency_ms": 0.0
+    },
+    {
+      "case_id": "RUN-07",
+      "model": 0.000323,
+      "tools": 0.009000000000000001,
+      "retry_cost": 0.0,
+      "retries": 0,
+      "human_min": 0.0,
+      "human_cost": 0.0,
+      "ai_cost": 0.009323000000000001,
+      "total_cost": 0.009323000000000001,
+      "total_tokens": 137,
+      "waste_tokens": 0,
+      "context_growth": 3.888888888888889,
+      "success": true,
+      "reopened": false,
+      "business_value": 0.0,
+      "per_model": {
+        "unknown:StubChatModel": 0.000323
+      },
+      "tool_latency_ms": 0.0
+    },
+    {
+      "case_id": "RUN-08",
+      "model": 9.099999999999999e-05,
+      "tools": 0.013000000000000001,
+      "retry_cost": 0.0,
+      "retries": 3,
+      "human_min": 0.0,
+      "human_cost": 0.0,
+      "ai_cost": 0.013091000000000002,
+      "total_cost": 0.013091000000000002,
+      "total_tokens": 35,
+      "waste_tokens": 0,
+      "context_growth": 1.0,
+      "success": false,
+      "reopened": false,
+      "business_value": 0.0,
+      "per_model": {
+        "unknown:StubChatModel": 9.099999999999999e-05
+      },
+      "tool_latency_ms": 0.0
+    },
+    {
+      "case_id": "RUN-09",
+      "model": 0.000334,
+      "tools": 0.013000000000000001,
+      "retry_cost": 0.0,
+      "retries": 2,
+      "human_min": 0.0,
+      "human_cost": 0.0,
+      "ai_cost": 0.013334,
+      "total_cost": 0.013334,
+      "total_tokens": 142,
+      "waste_tokens": 102,
+      "context_growth": 4.111111111111111,
+      "success": true,
+      "reopened": false,
+      "business_value": 0.0,
+      "per_model": {
+        "unknown:StubChatModel": 0.000334
+      },
+      "tool_latency_ms": 0.0
+    },
+    {
+      "case_id": "RUN-10",
+      "model": 0.00031500000000000007,
+      "tools": 0.009000000000000001,
+      "retry_cost": 0.0,
+      "retries": 0,
+      "human_min": 0.0,
+      "human_cost": 0.0,
+      "ai_cost": 0.009315,
+      "total_cost": 0.009315,
+      "total_tokens": 133,
+      "waste_tokens": 0,
+      "context_growth": 4.25,
+      "success": true,
+      "reopened": false,
+      "business_value": 0.0,
+      "per_model": {
+        "unknown:StubChatModel": 0.00031500000000000007
+      },
+      "tool_latency_ms": 0.0
+    },
+    {
+      "case_id": "RUN-11",
+      "model": 0.000311,
+      "tools": 0.013000000000000001,
+      "retry_cost": 0.0,
+      "retries": 2,
+      "human_min": 0.0,
+      "human_cost": 0.0,
+      "ai_cost": 0.013311000000000002,
+      "total_cost": 0.013311000000000002,
+      "total_tokens": 131,
+      "waste_tokens": 96,
+      "context_growth": 4.857142857142857,
+      "success": true,
+      "reopened": false,
+      "business_value": 0.0,
+      "per_model": {
+        "unknown:StubChatModel": 0.000311
+      },
+      "tool_latency_ms": 0.0
+    },
+    {
+      "case_id": "RUN-12",
+      "model": 0.00033200000000000005,
+      "tools": 0.009000000000000001,
+      "retry_cost": 0.0,
+      "retries": 0,
+      "human_min": 0.0,
+      "human_cost": 0.0,
+      "ai_cost": 0.009332000000000002,
+      "total_cost": 0.009332000000000002,
+      "total_tokens": 142,
+      "waste_tokens": 0,
+      "context_growth": 3.272727272727273,
+      "success": true,
+      "reopened": false,
+      "business_value": 0.0,
+      "per_model": {
+        "unknown:StubChatModel": 0.00033200000000000005
+      },
+      "tool_latency_ms": 0.0
+    },
+    {
+      "case_id": "RUN-13",
+      "model": 9.099999999999999e-05,
+      "tools": 0.013000000000000001,
+      "retry_cost": 0.0,
+      "retries": 3,
+      "human_min": 0.0,
+      "human_cost": 0.0,
+      "ai_cost": 0.013091000000000002,
+      "total_cost": 0.013091000000000002,
+      "total_tokens": 35,
+      "waste_tokens": 0,
+      "context_growth": 1.0,
+      "success": false,
+      "reopened": false,
+      "business_value": 0.0,
+      "per_model": {
+        "unknown:StubChatModel": 9.099999999999999e-05
+      },
+      "tool_latency_ms": 0.0
+    },
+    {
+      "case_id": "RUN-14",
+      "model": 0.00032199999999999997,
+      "tools": 0.009000000000000001,
+      "retry_cost": 0.0,
+      "retries": 0,
+      "human_min": 0.0,
+      "human_cost": 0.0,
+      "ai_cost": 0.009322,
+      "total_cost": 0.009322,
+      "total_tokens": 136,
+      "waste_tokens": 0,
+      "context_growth": 4.375,
+      "success": true,
+      "reopened": false,
+      "business_value": 0.0,
+      "per_model": {
+        "unknown:StubChatModel": 0.00032199999999999997
+      },
+      "tool_latency_ms": 0.0
+    },
+    {
+      "case_id": "RUN-15",
+      "model": 0.000328,
+      "tools": 0.013000000000000001,
+      "retry_cost": 0.0,
+      "retries": 2,
+      "human_min": 0.0,
+      "human_cost": 0.0,
+      "ai_cost": 0.013328000000000001,
+      "total_cost": 0.013328000000000001,
+      "total_tokens": 140,
+      "waste_tokens": 100,
+      "context_growth": 3.6,
+      "success": true,
+      "reopened": false,
+      "business_value": 0.0,
+      "per_model": {
+        "unknown:StubChatModel": 0.000328
+      },
+      "tool_latency_ms": 0.0
+    },
+    {
+      "case_id": "RUN-16",
+      "model": 9.900000000000001e-05,
+      "tools": 0.013000000000000001,
+      "retry_cost": 0.0,
+      "retries": 3,
+      "human_min": 0.0,
+      "human_cost": 0.0,
+      "ai_cost": 0.013099000000000001,
+      "total_cost": 0.013099000000000001,
+      "total_tokens": 39,
+      "waste_tokens": 0,
+      "context_growth": 1.0,
+      "success": false,
+      "reopened": false,
+      "business_value": 0.0,
+      "per_model": {
+        "unknown:StubChatModel": 9.900000000000001e-05
+      },
+      "tool_latency_ms": 0.0
+    }
+  ]
+}
