@@ -1,6 +1,6 @@
 """averth: the economic meter for enterprise agents.
 
-Instrument one agent, get its actual P&L:
+Instrument one workflow to measure its recorded cost structure:
 
     from averth import Tracker
 
@@ -17,9 +17,8 @@ Instrument one agent, get its actual P&L:
     print(report_text(t.pnl(), token_dashboard_per_success=1.91))
 
 The tracker records model spend, tool calls, retries, and human review time,
-then attributes it all to accepted business outcomes. The budget hook is the
-seed of governance: exceed per-outcome budget and the callback fires —
-downgrade the model, require approval, or kill the run.
+then attributes them to caller-labeled outcomes. The budget hook fires after
+an attempt ends; it does not interrupt a run in progress.
 """
 
 from .tracker import Tracker, BudgetBreach

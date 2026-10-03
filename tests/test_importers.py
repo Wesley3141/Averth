@@ -102,6 +102,23 @@ class TestOtelImporter(unittest.TestCase):
             a["per_model"]["openai:gpt-5.6-mini"],
             2000 / 1e6 * 0.30 + 500 / 1e6 * 1.20)
 
+    def test_otel_execution_status_is_not_an_accepted_outcome(self):
+        from averth.report import report_text
+
+        path = self._write_spans([
+            self._span("inferred", "trace-inferred",
+                       {"gen_ai.request.model": "gpt-5.6-mini",
+                        "gen_ai.usage.input_tokens": 100}),
+            self._span("labeled", "trace-labeled",
+                       {"gen_ai.request.model": "gpt-5.6-mini",
+                        "gen_ai.usage.input_tokens": 100,
+                        "averth.success": "true"}),
+        ])
+        ledger = otel.load_otel(path)
+        p = tracker_from_ledger(ledger).pnl()
+        self.assertEqual(p["inferred_outcomes"], 1)
+        self.assertIn("Join customer acceptance labels", report_text(p))
+
     def test_otel_negative_tokens_clamped(self):
         # malformed negative token counts must not produce negative cost
         path = self._write_spans([self._span(

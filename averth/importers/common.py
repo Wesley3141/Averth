@@ -236,12 +236,14 @@ def events_to_tracker(agent_name, events):
                 tracker.end_attempt(
                     success=ev.get("success", False),
                     business_value=ev.get("business_value", 0.0) or 0.0,
-                    reopened=ev.get("reopened", False))
+                    reopened=ev.get("reopened", False),
+                    outcome_inferred=ev.get("outcome_inferred",
+                                            "success" not in ev))
                 started = False
             else:
                 raise ValueError("unknown event type: %r" % (etype,))
         if started:
-            tracker.end_attempt(success=False)
+            tracker.end_attempt(success=False, outcome_inferred=True)
     return tracker
 
 
@@ -271,7 +273,8 @@ def ledger_from_tracker(tracker, agent_name=None):
         # C2: stamp which price table produced these dollars.
         "price_vintage": tracker.price_vintage,
         "attempts": [
-            {k: a[k] for k in LEDGER_ATTEMPT_KEYS}
+            {k: a.get(k, True) if k == "outcome_inferred" else a[k]
+             for k in LEDGER_ATTEMPT_KEYS}
             for a in tracker.attempts
         ],
     }
@@ -281,6 +284,10 @@ def tracker_from_ledger(ledger):
     """Rehydrate a Tracker from a ledger dict so pnl() works on imported data."""
     tracker = Tracker(ledger["agent"])
     tracker.attempts = [dict(a) for a in ledger["attempts"]]
+    # Older ledgers did not record whether outcome labels came from the
+    # customer's system of record. Treat unknown provenance conservatively.
+    for attempt in tracker.attempts:
+        attempt.setdefault("outcome_inferred", True)
     # .get for backward compatibility with ledgers written before the
     # unpriced_models flag was exported.
     tracker.unpriced_models = set(ledger.get("unpriced_models", []))

@@ -5,10 +5,10 @@ calls (name, cost), chain start/end (attempt boundaries), and errors
 (retries / failed attempts).
 
     from averth import Tracker
-    from averth.integrations import AgentPNLCallbackHandler
+    from averth.integrations import AverthCallbackHandler
 
     tracker = Tracker("support-agent", budget_per_success=2.00)
-    handler = AgentPNLCallbackHandler(tracker)
+    handler = AverthCallbackHandler(tracker)
     agent.invoke({"messages": messages}, config={"callbacks": [handler]})
     print(tracker.pnl()["per_success"]["fully_loaded"])
 
@@ -246,7 +246,3 @@ class AverthCallbackHandler(BaseCallbackHandler):
             cost = pricing.estimated_model_cost(provider, model, in_tok, out_tok)
             self.tracker.log_model_cost_estimate(provider, model, cost,
                                                  in_tok, out_tok)
-
-
-# Backward-compatible alias (pre-rebrand name).
-AgentPNLCallbackHandler = AverthCallbackHandler

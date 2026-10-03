@@ -1,5 +1,9 @@
 # averth validation report: real production-style traces
 
+Historical validation notes. The current policy screen reports historical
+spend on flagged completed runs, not counterfactual savings. See
+[PILOT.md](PILOT.md) for the current customer evidence standard.
+
 Date: 2026-09-30. Branch: `validation-fixes` (merged from three worker branches; NOT merged to master). Full suite: 70 passed (55 baseline + 15 new).
 
 Method: every trace was fed through the meter exactly as a customer would (`python3 -m averth.cli trace <file> --format otel|langsmith|jsonl`), with zero hand-fixing of trace content. Issues were classified as importer gap (real bug, fixed), pricing gap (unknown model/tool cost, flagged estimate), or trace-quality limitation (documented, not hacked around). Only real bugs were fixed; no features added.
@@ -52,7 +56,9 @@ Economic insight: the dead payment branch burned 44% of the attempt's cost ($0.0
 ### 5. live-langgraph-agent: real LangGraph agent against live public APIs
 A real LangGraph StateGraph (plan, parallel Send fan-out to two tools, fan-in, retry loop, streamed report), instrumented with the 3-line AverthCallbackHandler, run 16 times against DuckDuckGo instant-answer API, GitHub repo search, and httpbin (deliberate HTTP 500s). 16 attempts, 12 successes, 21 retries, $0.1783 total. Includes a genuine unplanned failure (both parallel tools hit real network timeouts). Model orchestration used a deterministic local stub (no model API key in this environment); token counts are real tiktoken measurements, tool calls/latency/retries/failures are 100% real. Dir: `validation-traces/live-langgraph-agent/`.
 
-Result: validated clean with zero hand-fixing. In-process pnl(), rehydrated ledger, and CLI output all agree on every bucket.
+Result: the archived events now reproduce the current ledger and P&L
+snapshots under the current failed-attempt accounting rule. This is a
+reproducibility check, not an independent in-process comparison.
 
 Economic insight: $0.174 of $0.178 total (97.6%) is external tool spend, the layer invisible on provider invoices, while 1,794 real tokens cost $0.0043. One-third of tool invocations failed, and before the fix those were metered at $0. Cost basis (read before trusting the dollars): the $0.174 is priced entirely at the meter's built-in per-call defaults ($0.005 web_search x16, $0.002 default x47) — the tools are free public APIs (DuckDuckGo instant-answer, GitHub repo search, httpbin), so no per-call vendor metering exists here and no actual tool spend occurred. Current reports flag this portion as estimates; this report predates the flag and states it here instead. For agentic workloads with genuinely per-call-priced tools, the lever is tool-call count and failure rate, not model selection.
 
@@ -71,7 +77,7 @@ Economic insight: $0.174 of $0.178 total (97.6%) is external tool spend, the lay
 8. `deepseek-v3.2` and the stub model flow through the documented fallback estimate, now flagged end-to-end via the fixed unpriced_models path. Deliberately NOT added to MODEL_PRICES: no verified vendor price, and inventing one would violate the flagged-estimate rule.
 
 ### Trace-quality issues (documented as known limitations, not hacked around)
-9. Prompt caching is not modeled. Against mini-SWE-agent's real recorded costs, the meter reads $17.49 vs $4.55 recorded (3.84x; per-instance 1.91x-4.47x, rising with run length). Implied prompt-cache hit rates of 0.48-0.90 reproduce the recorded costs exactly. The library prices all input tokens at list rate with no cache term; traces record no cache usage, so a cache-aware change could not be validated here. Recommended follow-up: add `cached_input_tokens` to the model event schema. This is the largest known accuracy gap and the top candidate for the next validation pass. Caveat: the metered numerator is itself built on chars//4 token estimates (see the trajectory sections), so the cache-hit-rate theory cannot be separated from token-estimation error — treat 0.48-0.90 as an upper bound on the caching effect, not a measurement.
+9. The mini-SWE-agent traces contain no cache-read counts and use chars/4 token estimates. Averth now supports `cached_input_tokens` when supplied, but it cannot infer them from these traces. Calculated list-price spend is $17.49 versus $4.55 in recorded costs (3.84x). The gap mixes token-estimation error, unknown cache usage, and any other billing differences; none can be isolated from these artifacts. Reconcile a customer's trace against its invoice before using precise dollars.
 10. An ERROR span marks the attempt failed even when a retry recovered it (the `averth.success` override exists for this).
 11. Retry-path waste marking is attempt-global, so under concurrency a productive later span (trace B's merge step) counts as waste.
 12. Usage-tokens-without-model spans are silently skipped.
@@ -102,7 +108,7 @@ before/after effect.
 
 **#9 — prompt caching is now modeled.** The model event schema (Tracker API,
 OTel `gen_ai.usage.cache_read_input_tokens`, LangSmith
-`agentpnl_cached_input_tokens` metadata, strict JSONL) accepts
+`averth_cached_input_tokens` metadata, strict JSONL) accepts
 `cached_input_tokens`. Cached tokens are priced at 10% of the input rate
 (`CACHE_READ_DISCOUNT = 0.10`), the rate Anthropic publishes for cache reads.
 This is a documented assumption, not invoice truth: the report's cache line
@@ -154,13 +160,10 @@ its own line. The old single model line mixed both; the token-dashboard
 multiple (fully loaded / model) is now computed against terminal model cost,
 which is the number a token dashboard actually shows.
 
-**Policy replay splits stopped runs into saved vs collateral spend.**
-`simulate_policy` now reports `would_stop_failed` (pure savings) and
-`would_stop_success` (collateral: good outcomes the policy would have
-destroyed) separately, instead of one "exposed spend" number. On the demo
-month, a $6.00/attempt cap with 50% yield floor would have "saved" $297.18
-while destroying $897.79 of successful outcomes — the old single number hid
-the collateral damage.
+**Current policy output is a historical screen.** `simulate_policy` flags
+completed runs whose final cost or yield crosses a threshold and reports
+their recorded spend by outcome. The earlier saved/collateral figures were
+counterfactual claims made without intervention-time data and are withdrawn.
 
 **Prompt-cache discount is a flagged assumption**, surfaced in reports as
 "priced at the documented discount" and never presented as the provider's
@@ -258,7 +261,7 @@ by `pnl()`'s graceful defaults. Full suite now 130 passed
   subsequent steps waste; if it discards early work, terminal spend is
   overstated. Use `branch=` when the discarded scope is known.
 - Importers emit global retries by default (M4); branch attribution needs
-  the `averth.branch` / `agentpnl_branch` metadata.
+  the `averth.branch` / `averth_branch` metadata.
 - OTel start-time vs causal ordering (M5): spans are ordered by start time;
   pathological clock skew could misorder retry markers.
 - Uniform-cost pathology: a workload where every attempt costs the same and

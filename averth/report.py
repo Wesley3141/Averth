@@ -26,6 +26,13 @@ def report_text(p, token_dashboard_per_success=None):
                      "dollar figures" % vint["stale_after_days"])
     else:
         L.append("Price table: vintage unknown (legacy ledger)")
+    L.append("MODEL COST BASIS: versioned list prices and reported token/cache usage; "
+             "reconcile against the customer's invoice before calling this actual spend.")
+    if p.get("inferred_outcomes", 0):
+        L.append("WARNING: %d of %d outcomes were inferred from trace completion/error status. "
+                 "Join customer acceptance labels before treating cost per success "
+                 "as cost per accepted outcome."
+                 % (p["inferred_outcomes"], p["attempts"]))
     L.append("")
     top = findings(p)[:1]
     if top:
@@ -265,6 +272,20 @@ def write_html(path, tracker, policy_sim=None, token_dashboard_per_success=None)
             % (len(missing_models), "s" if len(missing_models) != 1 else "",
                _html.escape(", ".join(missing_models))))
 
+    inferred_outcome_banner = ""
+    if p.get("inferred_outcomes", 0):
+        inferred_outcome_banner = (
+            '<div class="warn"><b>Outcome labels needed:</b> %d of %d '
+            'outcomes were inferred from trace completion/error status. '
+            'Join customer acceptance labels before treating cost per '
+            'success as cost per accepted outcome.</div>'
+            % (p["inferred_outcomes"], p["attempts"]))
+
+    model_basis_banner = (
+        '<div class="warn"><b>Model cost basis:</b> versioned list prices '
+        'and reported token/cache usage. Reconcile against the customer&#x27;s '
+        'invoice before calling this actual spend.</div>')
+
     # C2: stamp the price vintage on every report; stale tables warn loudly.
     vint = p.get("price_vintage")
     if vint:
@@ -343,17 +364,17 @@ def write_html(path, tracker, policy_sim=None, token_dashboard_per_success=None)
     if policy_sim is not None:
         pol = policy_sim["policy"]
         policy_section = (
-            '<h2>Policy replay (read only)</h2>'
-            '<p class="lede">Had this policy existed, <b>%d runs</b> would have '
-            'been stopped: <b>%d failed</b> (pure savings <b>$%s</b>) and '
-            '<b>%d that went on to succeed</b> (collateral <b>$%s</b> — good '
-            'outcomes the policy would have destroyed).</p>'
+            '<h2>Historical policy screen (read only)</h2>'
+            '<p class="lede"><b>%d completed runs</b> crossed these thresholds: '
+            '<b>%d failed</b> ($%s historical spend) and '
+            '<b>%d successful</b> ($%s historical spend).</p>'
             '<p class="s">Policy tested: max cost per attempt $%s, yield floor %s. '
-            'No enforcement was applied; this is a replay of recorded history.</p>'
-            % (policy_sim["would_stop"], policy_sim["would_stop_failed"],
-               "{:,.2f}".format(policy_sim["saved_spend"]),
-               policy_sim["would_stop_success"],
-               "{:,.2f}".format(policy_sim["collateral_spend"]),
+            'Final outcomes and costs identify runs for review; this screen '
+            'does not estimate savings, intervention timing, or lost outcomes.</p>'
+            % (policy_sim["flagged_runs"], policy_sim["flagged_failed"],
+               "{:,.2f}".format(policy_sim["flagged_failed_spend"]),
+               policy_sim["flagged_success"],
+               "{:,.2f}".format(policy_sim["flagged_success_spend"]),
                _html.escape(str(pol["max_cost_per_attempt"])),
                _html.escape(str(pol["yield_floor"]))))
         if policy_sim["worst"]:
@@ -413,13 +434,15 @@ footer { margin-top: 24px; font-size: 12px; color: #8a94a1; text-align: center; 
 </head>
 <body>
 <main>
-<h1>Agent P&L: %(agent)s</h1>
+<h1>Averth: %(agent)s</h1>
 <p class="meta">%(attempts)s attempts &middot; %(successes)s autonomous completions &middot;
 %(success_rate)s success rate &middot; %(escalations)s escalations &middot; %(reopened)s reopened<br>
 <span class="s">%(vintage_line)s</span></p>
 %(unpriced_banner)s
 %(tool_est_banner)s
 %(missing_usage_banner)s
+%(inferred_outcome_banner)s
+%(model_basis_banner)s
 %(stale_banner)s
 <div class="cards">
 <div class="card"><div class="k">Fully loaded</div><div class="v">$%(fully_loaded)s</div>
@@ -472,6 +495,8 @@ Context tax: <b>$%(context_tax)s</b> (%(tax_share).0f%% of model spend) vs a fla
         "unpriced_banner": unpriced_banner,
         "tool_est_banner": tool_est_banner,
         "missing_usage_banner": missing_usage_banner,
+        "inferred_outcome_banner": inferred_outcome_banner,
+        "model_basis_banner": model_basis_banner,
         "stale_banner": stale_banner,
         "vintage_line": vintage_line,
         "human_note": human_note,

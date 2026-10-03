@@ -114,7 +114,7 @@ def test_policy_cap_zero_stops_everything():
     t.end_attempt(success=True)
     ledger = common.ledger_from_tracker(t)
     sim = policy.simulate_policy(ledger, max_cost_per_attempt=0)
-    assert sim["would_stop"] == 1
+    assert sim["flagged_runs"] == 1
 
 
 # ---- duplicate end (C6) ----

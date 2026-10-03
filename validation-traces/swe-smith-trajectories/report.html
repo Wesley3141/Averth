@@ -3,23 +3,34 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Agent P&L report: SWE-agent/claude-3-7 (SWE-smith)</title>
+<title>Averth report: SWE-agent/claude-3-7</title>
 <style>
 body { font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; color: #1f2933;
   max-width: 860px; margin: 0 auto; padding: 24px; background: #f7f8fa; }
 main { background: #fff; border: 1px solid #e2e6ec; border-radius: 10px; padding: 28px; }
 h1 { margin: 0 0 4px; font-size: 26px; }
 .meta { color: #5b6470; margin: 0 0 20px; }
+.warn { background: #fff8e6; border: 1px solid #e8c547; border-radius: 8px;
+  padding: 10px 14px; font-size: 13px; margin: 14px 0; }
 .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
   gap: 12px; margin: 18px 0; }
 .card { border: 1px solid #e2e6ec; border-radius: 8px; padding: 12px 14px; background: #fafbfc; }
 .card .k { font-size: 12px; color: #5b6470; text-transform: uppercase; letter-spacing: .04em; }
 .card .v { font-size: 24px; font-weight: 700; margin: 4px 0; }
 .card .s { font-size: 12px; color: #5b6470; }
+.findings { display: grid; gap: 10px; margin: 12px 0; }
+.finding { border-radius: 8px; padding: 12px 14px; border: 1px solid #e2e6ec; }
+.finding.high { border-left: 5px solid #b3261e; background: #fdf3f2; }
+.finding.medium { border-left: 5px solid #e0a32e; background: #fdf9f0; }
+.finding.info { border-left: 5px solid #4a7fd4; background: #f2f6fd; }
+.finding .fk { font-size: 11px; font-weight: 700; letter-spacing: .05em; color: #5b6470; }
+.finding .ft { font-size: 15px; font-weight: 700; margin: 4px 0; }
+.finding .fs { font-size: 13px; color: #3c4450; }
+.finding .fa { font-size: 13px; margin-top: 6px; font-weight: 600; }
 h2 { font-size: 18px; margin: 26px 0 10px; border-bottom: 1px solid #eef1f4; padding-bottom: 6px; }
 .lede { font-size: 15px; }
 .brow { display: flex; align-items: center; gap: 10px; margin: 6px 0; }
-.blabel { width: 130px; font-size: 13px; }
+.blabel { width: 170px; font-size: 13px; }
 .btrack { flex: 1; height: 18px; background: #eef1f4; border-radius: 9px; overflow: hidden; }
 .bfill { height: 100%; }
 .bval { width: 90px; text-align: right; font-variant-numeric: tabular-nums; font-size: 13px; }
@@ -34,20 +45,31 @@ footer { margin-top: 24px; font-size: 12px; color: #8a94a1; text-align: center; 
 </head>
 <body>
 <main>
-<h1>Agent P&L: SWE-agent/claude-3-7 (SWE-smith)</h1>
+<h1>Averth: SWE-agent/claude-3-7</h1>
 <p class="meta">16 attempts &middot; 8 autonomous completions &middot;
-50.0% success rate &middot; 0 escalations &middot; 0 reopened</p>
+50.0% success rate &middot; 0 escalations &middot; 0 reopened<br>
+<span class="s">Price table v2 &middot; verified 2026-10-02 &middot; 1 days old</span></p>
+
+<div class="warn"><b>Estimated tool spend:</b> $0.88 of tool spend uses built-in per-call estimates (for bash, str_replace_editor, submit) — measure your tool costs and pass them explicitly to log_tool_call.</div>
+
+
+<div class="warn"><b>Model cost basis:</b> versioned list prices and reported token/cache usage. Reconcile against the customer&#x27;s invoice before calling this actual spend.</div>
+
 <div class="cards">
 <div class="card"><div class="k">Fully loaded</div><div class="v">$3.10</div>
 <div class="s">per accepted outcome</div></div>
 
-<div class="card"><div class="k">Yield ratio</div><div class="v">26%</div>
+<div class="card"><div class="k">Yield ratio</div><div class="v">11%</div>
 <div class="s">terminal-path tokens / total</div></div>
 <div class="card"><div class="k">Top 5% tail share</div><div class="v">22%</div>
 <div class="s">of total spend in costliest runs</div></div>
+<div class="card"><div class="k">Failed-run waste</div><div class="v">$13.06</div>
+<div class="s">53% of spend, zero outcomes</div></div>
 </div>
+<h2>What to do Monday morning</h2><div class="findings"><div class="finding high"><div class="fk">HIGH FINDING &middot; $21.54</div><div class="ft">Retry loops burned $21.54 (87% of spend)</div><div class="fs">Yield is 11%: 36 retries across 16 attempts, and the discarded paths cost real money, not just tokens. Top culprit: &#x27;tool error&#x27; (36 retries).</div><div class="fa">&rarr; Fix the top retry reason before touching models: &#x27;tool error&#x27;. One validation fix upstream is worth more than a cheaper model.</div></div><div class="finding medium"><div class="fk">MEDIUM FINDING &middot; $21.03</div><div class="ft">Only 11% of tokens were on a terminal path</div><div class="fs">Failed attempts and retry paths together discarded 89% of all tokens ($21.03 of model spend). Token dashboards report this as usage; it is waste.</div><div class="fa">&rarr; Terminate attempts that cross the retry-count or cost threshold where historical yield collapses.</div></div><div class="finding medium"><div class="fk">MEDIUM FINDING &middot; $20.42</div><div class="ft">Context growth added $20.42 (85% of model spend)</div><div class="fs">Input state grew 22.0x first-to-last step on average; the marginal late step costs multiples of the first. Dashboards show the tokens but not the compounding.</div><div class="fa">&rarr; Compact or summarize carried state between steps. Measure the tax again after: it should drop faster than token count.</div></div></div><p class="fineprint">Waste figures are overlapping lenses on the same spend, not additive partitions — do not sum them.</p>
 <h2>Cost per successful outcome</h2>
-<div class="brow"><span class="blabel">Model / API</span><div class="btrack"><div class="bfill" style="width:96.4%;background:#4a7fd4;"></div></div><span class="bval">$2.99</span></div><div class="brow"><span class="blabel">Tool calls</span><div class="btrack"><div class="bfill" style="width:3.6%;background:#7ab648;"></div></div><span class="bval">$0.11</span></div><div class="brow"><span class="blabel">Retries</span><div class="btrack"><div class="bfill" style="width:0.0%;background:#e0a32e;"></div></div><span class="bval">$0.00</span></div><div class="brow"><span class="blabel">Human review</span><div class="btrack"><div class="bfill" style="width:0.0%;background:#c25bb5;"></div></div><span class="bval">$0.00</span></div>
+<div class="brow"><span class="blabel">Model / API (terminal)</span><div class="btrack"><div class="bfill" style="width:11.6%;background:#4a7fd4;"></div></div><span class="bval">$0.36</span></div><div class="brow"><span class="blabel">Retry path</span><div class="btrack"><div class="bfill" style="width:84.8%;background:#e0a32e;"></div></div><span class="bval">$2.63</span></div><div class="brow"><span class="blabel">Tool calls</span><div class="btrack"><div class="bfill" style="width:3.6%;background:#7ab648;"></div></div><span class="bval">$0.11</span></div><div class="brow"><span class="blabel">Human review</span><div class="btrack"><div class="bfill" style="width:0.0%;background:#c25bb5;"></div></div><span class="bval">$0.00</span></div>
+<p class="s">Human review costed at $70.20/hr loaded — <b>default assumption</b>, not a measured number. Pass human_cost_per_min=... with your real loaded rate.</p>
 <h2>Per-attempt cost distribution</h2>
 <svg viewBox="0 0 640 220" role="img" aria-label="Histogram of per-attempt costs">
 <rect x="58.0" y="30.0" width="52.4" height="156.0" fill="#4a7fd4"><title>7 attempts in bucket</title></rect>
@@ -60,27 +82,31 @@ footer { margin-top: 24px; font-size: 12px; color: #8a94a1; text-align: center; 
 <rect x="452.8" y="186.0" width="52.4" height="0.0" fill="#4a7fd4"><title>0 attempts in bucket</title></rect>
 <rect x="509.2" y="186.0" width="52.4" height="0.0" fill="#4a7fd4"><title>0 attempts in bucket</title></rect>
 <rect x="565.6" y="163.7" width="52.4" height="22.3" fill="#4a7fd4"><title>1 attempts in bucket</title></rect>
-<line x1="145.6" y1="30" x2="145.6" y2="186" stroke="#1c5c2a" stroke-width="2" stroke-dasharray="5,3"/><text x="145.6" y="20" fill="#1c5c2a" font-size="12" text-anchor="middle">p50 $1.24</text>
-<line x1="620.0" y1="30" x2="620.0" y2="186" stroke="#b3261e" stroke-width="2" stroke-dasharray="5,3"/><text x="620.0" y="20" fill="#b3261e" font-size="12" text-anchor="middle">p95 $5.48</text>
-<text x="56" y="212" font-size="11" fill="#555">$0.43</text><text x="620" y="212" font-size="11" fill="#555" text-anchor="end">$5.48</text><text x="56" y="24" font-size="11" fill="#555">7 attempts max bucket</text>
+<line x1="135.6" y1="30" x2="135.6" y2="186" stroke="#1c5c2a" stroke-width="2" stroke-dasharray="5,3"/><text x="135.6" y="20" fill="#1c5c2a" font-size="12" text-anchor="middle">p50 $1.15</text>
+<line x1="371.3" y1="30" x2="371.3" y2="186" stroke="#b3261e" stroke-width="2" stroke-dasharray="5,3"/><text x="371.3" y="20" fill="#b3261e" font-size="12" text-anchor="middle">p95 $3.26</text>
+<text x="56" y="212" font-size="11" fill="#555">$0.43</text><text x="620" y="212" font-size="11" fill="#555" text-anchor="end">$5.48</text><text x="56" y="24.0" font-size="11" fill="#555">7 attempts max bucket</text>
 </svg>
-<p class="s">p50 $1.24 &middot; p95 $5.48 &middot; max $5.48 per attempt</p>
+<p class="s">p50 $1.15 &middot; p95 $3.26 &middot; max $5.48 per attempt</p>
 <h2>The five layers</h2>
 <ul class="layers">
-<li><b>Context compounding:</b> 22.0x input growth, first to last step
-(state accumulation tax).</li>
+<li><b>Context compounding:</b> 22.0x input growth, first to last step.
+Context tax: <b>$20.42</b> (85% of model spend) vs a flat-context counterfactual.</li>
 <li><b>External tool spend:</b> $0.88 total, $0.11 per success
 (invisible on provider invoices).</li>
-<li><b>Yield ratio:</b> 26% of tokens on the terminal path,
-74% burned on retries and dead ends.</li>
-<li><b>Heavy tail:</b> p50 $1.24 / p95 $5.48 / max $5.48 per attempt;
-top 5% of attempts consumed 22% of budget.</li>
-<li><b>Model mix:</b> $23.91 total model spend (see table).</li>
+<li><b>Yield ratio:</b> 11% of tokens on the terminal path,
+89% burned on retries and failed runs.</li>
+<li><b>Heavy tail:</b> p50 $1.15 / p95 $3.26 / max $5.48 per attempt;
+the costliest run consumed 22% of budget.</li>
+<li><b>Model mix:</b> $23.91 total model spend (see table).
+</li>
 </ul>
 <h2>Top cost drivers (per model)</h2>
 <table><tr><th>Model</th><th class="r">Spend</th><th class="r">Share</th></tr><tr><td>anthropic:claude-3-7-sonnet-20250219</td><td class="r">$18.11</td><td class="r">76% of model spend</td></tr><tr><td>anthropic:claude-3-5-sonnet-20241022</td><td class="r">$5.80</td><td class="r">24% of model spend</td></tr></table>
+<h2>Costliest attempts</h2>
+<table><tr><th>Run</th><th class="r">Cost</th><th>Outcome</th><th class="r">Retries</th><th class="r">Human</th></tr><tr><td>Project-MONAI__MONAI.a09c1f08.pr_6147.02e4bqrh</td><td class="r">$5.48</td><td>success</td><td class="r">14</td><td class="r">0.0 min</td></tr><tr><td>mahmoud__glom.fb3c4e76.lm_rewrite__oke2ge7f.j5egnwy4</td><td class="r">$2.51</td><td>FAILED</td><td class="r">5</td><td class="r">0.0 min</td></tr><tr><td>pyupio__safety.7654596b.pr_661.y1wve1wy</td><td class="r">$2.27</td><td>FAILED</td><td class="r">0</td><td class="r">0.0 min</td></tr><tr><td>oauthlib__oauthlib.1fd52536.lm_rewrite__13gudrrm.j2lokqk2</td><td class="r">$2.13</td><td>success</td><td class="r">2</td><td class="r">0.0 min</td></tr><tr><td>pyupio__safety.7654596b.pr_552.cgtij4d9</td><td class="r">$2.10</td><td>FAILED</td><td class="r">1</td><td class="r">0.0 min</td></tr><tr><td>cantools__cantools.0c6a7871.combine_file__c733290x.dmq8pmyc</td><td class="r">$1.94</td><td>FAILED</td><td class="r">1</td><td class="r">0.0 min</td></tr><tr><td>paramiko__paramiko.23f92003.lm_rewrite__cykywr51.weksawyg</td><td class="r">$1.68</td><td>FAILED</td><td class="r">2</td><td class="r">0.0 min</td></tr><tr><td>graphql-python__graphene.82903263.combine_module__yld0o48g.3qdud4nz</td><td class="r">$1.24</td><td>success</td><td class="r">2</td><td class="r">0.0 min</td></tr><tr><td>pyupio__safety.7654596b.lm_rewrite__69lwggz1.568io0wn</td><td class="r">$1.06</td><td>FAILED</td><td class="r">1</td><td class="r">0.0 min</td></tr><tr><td>scanny__python-pptx.278b47b1.func_pm_class_rm_base__mxaugr3h.0i4fwnp7</td><td class="r">$0.88</td><td>success</td><td class="r">3</td><td class="r">0.0 min</td></tr></table>
+<h2>Retry reasons</h2><table><tr><th class="r">Count</th><th>Reason</th></tr><tr><td class="r">36x</td><td>tool error</td></tr></table>
 
 </main>
-<footer>Generated locally by agentpnl. No data leaves your environment.</footer>
+<footer>Generated locally by averth. No data leaves your environment.</footer>
 </body>
 </html>

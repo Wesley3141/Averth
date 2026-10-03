@@ -80,6 +80,7 @@ for i in range(CASES):
 
 p = t.pnl()
 dashboard_per_success = p["cost_model"] / p["successes"] if p["successes"] else 0.0
+print("SYNTHETIC DEMO — these tickets, outcomes, and business values are simulated.")
 print(report_text(p, token_dashboard_per_success=dashboard_per_success))
 print()
 print(f"Budget breaches captured by on_breach hook: {len(breaches)}")
@@ -87,8 +88,8 @@ print()
 print("=" * 60)
 print("PHASE-0 PILOT FLOW: customer runs the meter locally, exports the")
 print("sanitized ledger (cost/token/timing metadata only: no prompts,")
-print("completions, or tool payloads), we replay")
-print("policies offline. No live enforcement.")
+print("completions, or tool payloads), we screen")
+print("completed runs offline. No live enforcement or savings estimate.")
 print("=" * 60)
 from averth import policy as P
 

@@ -46,7 +46,7 @@ def test_trace_policy_flags(tmp_path, monkeypatch, capsys):
                "--html", str(tmp_path / "custom.html")])
     out = capsys.readouterr().out
     assert rc == 0
-    assert "Policy replay" in out
+    assert "Historical policy screen" in out
     assert (tmp_path / "custom.html").exists()
 
 
@@ -80,8 +80,7 @@ def test_bad_html_path_exit2(tmp_path, capsys):
 def test_console_script_entry_point_resolves():
     # pyproject declares [project.scripts] averth = "averth.cli:main".
     # The installed entry point must resolve to a callable; a stale or
-    # missing install (the pre-rename agentpnl dist-info shipped in .venv
-    # for a while) silently breaks the documented `averth` command.
+    # missing install silently breaks the documented `averth` command.
     from importlib.metadata import distribution, PackageNotFoundError
     try:
         dist = distribution("averth")

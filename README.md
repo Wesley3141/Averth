@@ -1,6 +1,12 @@
 # Averth
 
-The economic meter for enterprise agents. Instrument one agent, get its actual P&L.
+The economic meter for enterprise agents. Instrument one workflow to measure
+its cost per accepted outcome and identify expensive failure paths.
+
+For customer pilots, collect accepted-outcome labels and actual billing inputs
+using [PILOT.md](PILOT.md). Trace completion alone is not an accepted outcome.
+For change history and review expectations, see [CHANGELOG.md](CHANGELOG.md)
+and [RELEASE_PROCESS.md](RELEASE_PROCESS.md).
 
 ## Installation
 
@@ -20,9 +26,10 @@ Requires Python 3.9+.
 ## Read-only posture
 
 The meter makes no network calls and exfiltrates no data: it records
-cost/token/timing metadata only; the sanitized ledger contains no prompts,
-no completions, no tool payloads, and no customer data. The library has no
-network dependencies in its core; extras pull in only what they need.
+cost/token/timing metadata only; the ledger contains no prompts,
+completions, or tool payloads. Caller-provided case IDs and reasons can
+contain customer data and must be redacted before sharing. The library has
+no network dependencies in its core; extras pull in only what they need.
 
 ## Instrument
 
@@ -66,8 +73,8 @@ is recorded first, so no data is lost). It does not stop a run mid-flight:
 live enforcement (kill-switch authority during the run) is Phase-1, built
 only after a buyer confirms who owns that authority and will pay for it.
 The Phase-0 pilot is read-only: the customer runs the meter inside their own
-environment, exports a sanitized ledger, and we replay hypothetical policies
-offline:
+environment, exports a sanitized ledger, and we screen completed runs against
+proposed thresholds offline:
 
 ```python
 from averth import policy as P
@@ -76,15 +83,15 @@ P.export_ledger(t, "ledger.json")   # cost/token/timing metadata only:
 ledger = P.load_ledger("ledger.json")
 sim = P.simulate_policy(ledger, max_cost_per_attempt=6.00, yield_floor=0.50)
 print(P.policy_text(sim))
-# On the demo ledger (python3 demo.py: 2,000 runs) this prints:
-# "Would have stopped 1020 of 2000 runs: 426 failed (pure savings $297.18)
-#  and 594 that went on to succeed (collateral $897.79 — good outcomes this
-#  policy would have destroyed)."
+# On the demo ledger, this flags costly completed runs and reports their
+# historical spend by outcome. It does not estimate savings.
 ```
 
-Pitch: "No write access. No raw prompts or customer data leave your
-environment." Business value in dollars is optional in V1 (see report.py):
-cost per accepted outcome is objectively measurable; value often is not.
+Pitch: "Read-only measurement in your environment. The meter records no
+prompts, completions, or tool payloads; redact free-text metadata before
+sharing a ledger." Business value in dollars is optional in V1 (see
+report.py). Cost per accepted outcome requires customer acceptance labels;
+business value also needs a defensible baseline.
 
 Run `python3 demo.py` for a simulated 2,000-ticket month across all five cost layers. The demo's punchline: the token dashboard says $0.20 per success; the fully loaded number is $0.82 (4.1x), with 4.7x context compounding across steps, a 6% token yield ratio (failed runs and retry paths burn the rest), and the top 5% of attempts consuming 61% of the budget.
 
@@ -182,11 +189,25 @@ averth trace trace.otel.json --format otel --agent support-agent \
 `--format` is one of `otel`, `langsmith`, `jsonl`. The text report prints to
 stdout; an HTML report is always written alongside (pass `--html PATH` to
 choose where, otherwise `<inputfile>.html` in the current directory).
-`--policy-cap` and `--policy-yield` replay a hypothetical offline policy
-and print what it would have stopped.
+`--policy-cap` and `--policy-yield` screen completed runs against proposed
+thresholds. A final outcome or yield does not reveal
+when a live policy could intervene, so this screen does not project savings.
 
 ## License
 
 MIT. See `LICENSE`.
+
+## Local verification
+
+```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install -e '.[dev,langchain,openai]'
+.venv/bin/python -m pytest -q
+.venv/bin/python validation-traces/otel-live/verify_expected.py
+.venv/bin/python validation-traces/live-langgraph-agent/validate.py
+```
+
+The archived LangGraph check verifies that the saved event stream reproduces
+the current ledger and report metrics; it does not make a live provider call.
 
 This is the pilot instrument for the agent-P&L thesis: read-only telemetry in, P&L report out.
