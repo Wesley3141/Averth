@@ -49,14 +49,14 @@ def test_negative_business_value_allowed():
     assert a["business_value"] == -5.0
 
 
-def test_export_is_valid_json_after_rejection():
+def test_export_is_valid_json_after_rejection(tmp_path):
     # a rejected NaN must not leave the ledger in a state that exports NaN
     # (Python's json emits NaN, which is invalid JSON and poisons reimport)
     t = make_tracker()
     t.start_attempt()
     t.log_model_call("openai", "gpt-5-nano", 1000, 100)
     t.end_attempt(success=True)
-    blob = policy.export_ledger(t, "/tmp/review2-ledger.json")
+    blob = policy.export_ledger(t, str(tmp_path / "review2-ledger.json"))
     raw = open(blob).read()
     assert "NaN" not in raw and "Infinity" not in raw
     parsed = json.loads(raw)  # strict parse

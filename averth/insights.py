@@ -17,6 +17,11 @@ def _finding(fid, severity, title, detail, dollars, action):
             "detail": detail, "dollars": dollars, "action": action}
 
 
+def _plural(n, singular, plural=None):
+    """User-facing counts must agree: "1 failed run", "2 failed runs"."""
+    return "%d %s" % (n, singular if n == 1 else (plural or singular + "s"))
+
+
 def findings(p):
     """Rank behavior-changing findings for a pnl() dict, by dollars."""
     import math
@@ -39,10 +44,11 @@ def findings(p):
             "Failed runs burned $%s (%s of spend) for zero outcomes"
             % ("{:,.2f}".format(p["cost_failed"]),
                "%.0f%%" % (p["failed_spend_share"] * 100)),
-            "%d of %d attempts never produced an accepted outcome, yet "
+            "%s of %s never produced an accepted outcome, yet "
             "consumed $%s. Every dollar is waste by definition — there is no "
             "terminal path without an outcome."
-            % (n_failed, p["attempts"], "{:,.2f}".format(p["cost_failed"])),
+            % (_plural(n_failed, "attempt"), _plural(p["attempts"], "attempt"),
+               "{:,.2f}".format(p["cost_failed"])),
             p["cost_failed"],
             "Cap per-attempt spend near p95 ($%.2f) and replay the policy: "
             "runs that blow past it are overwhelmingly failed runs."
@@ -55,8 +61,8 @@ def findings(p):
         n_tail = max(1, int(n * 0.05))
         out.append(_finding(
             "tail_concentration", HIGH,
-            "The costliest %d runs consumed %.0f%% of the budget"
-            % (n_tail, t["top5pct_share"] * 100),
+            "The costliest %s consumed %.0f%% of the budget"
+            % (_plural(n_tail, "run"), t["top5pct_share"] * 100),
             "p50 is $%.2f but p95 is $%.2f and max is $%.2f. Median unit "
             "economics look fine; the tail is where the budget goes."
             % (t["p50"], t["p95"], t["max"]),
@@ -72,8 +78,8 @@ def findings(p):
     retry_share = retry_dollars / total if total else 0.0
     if retry_share >= 0.20 and retry_dollars > 0:
         top = p["top_retry_reasons"][0] if p["top_retry_reasons"] else None
-        reason_bit = (" Top culprit: '%s' (%d retries)."
-                      % (top[0], top[1])) if top else ""
+        reason_bit = (" Top culprit: '%s' (%s)."
+                      % (top[0], _plural(top[1], "retry", "retries"))) if top else ""
         action = ("Fix the top retry reason before touching models: '%s'. One "
                   "validation fix upstream is worth more than a cheaper model."
                   % top[0]) if top else \
@@ -83,23 +89,33 @@ def findings(p):
             "retry_waste", HIGH if retry_share >= 0.35 else MEDIUM,
             "Retry loops burned $%s (%.0f%% of spend)"
             % ("{:,.2f}".format(retry_dollars), retry_share * 100),
-            "Yield is %.0f%%: %d retries across %d attempts, and the "
+            "Yield is %.0f%%: %s across %s, and the "
             "discarded paths cost real money, not just tokens.%s"
-            % (p["yield_ratio"] * 100, p["retries"], n, reason_bit),
+            % (p["yield_ratio"] * 100, _plural(p["retries"], "retry", "retries"),
+               _plural(n, "attempt"), reason_bit),
             retry_dollars, action))
 
     # 4. Human labor dominance.
+    # C3: the dollars here ride on the loaded labor rate. When the default
+    # assumption is in effect the finding says so — it must never read as
+    # a measured fact about the prospect's workforce.
     human_share = p["cost_human"] / total if total else 0.0
     if human_share >= 0.50 and p["cost_human"] > 0:
         per_esc = p["cost_human"] / max(p["escalations"], 1)
+        rate_note = ""
+        if p.get("human_rate_assumed", True):
+            rate_note = (" Labor is costed at $%.2f/hr loaded (default "
+                         "assumption — set your real rate with "
+                         "human_cost_per_min)." % (p.get("human_cost_per_min",
+                                                          1.17) * 60))
         out.append(_finding(
             "human_dominance", HIGH,
             "Human review is %.0f%% of fully-loaded cost ($%s)"
             % (human_share * 100, "{:,.2f}".format(p["cost_human"])),
-            "%d escalations at $%.2f loaded each. The model bill ($%s) is a "
-            "rounding error next to the labor it summons."
-            % (p["escalations"], per_esc,
-               "{:,.2f}".format(p["cost_model"])),
+            "%s at $%.2f loaded each. The model bill ($%s) is a "
+            "rounding error next to the labor it summons.%s"
+            % (_plural(p["escalations"], "escalation"), per_esc,
+               "{:,.2f}".format(p["cost_model"]), rate_note),
             p["cost_human"],
             "Attack escalation rate, not model price: tighten auto-resolve "
             "confidence, or add a cheaper first review tier."))
@@ -120,19 +136,34 @@ def findings(p):
             "Renegotiate, cache, or batch the top tool calls by spend; "
             "model-price tuning cannot move this number."))
 
-    # 4c. Budget breaches: the per-success budget was blown, repeatedly.
-    if p.get("budget_breaches", 0) > 0 and p["successes"] > 0:
+    # 4c. Budget breaches: the spend envelope was blown, repeatedly.
+    # C1: breaches now count EVERY over-envelope attempt (failed runaways
+    # included), consistent with the live hook. Failed-run breaches are
+    # pure waste and are named separately.
+    if p.get("budget_breaches", 0) > 0:
         n_br = p["budget_breaches"]
+        n_br_failed = p.get("budget_breaches_failed", 0)
+        n_br_ok = n_br - n_br_failed
+        if n_br_failed == 1:
+            failed_bit = " 1 of them was a failed run (pure waste)."
+        elif n_br_failed > 1:
+            failed_bit = (" %d of them were failed runs (pure waste)."
+                          % n_br_failed)
+        else:
+            failed_bit = ""
         out.append(_finding(
-            "budget_breach", HIGH if n_br >= p["successes"] * 0.10 else MEDIUM,
-            "%d of %d accepted outcomes blew the $%.2f per-success budget"
-            % (n_br, p["successes"], p.get("budget_per_success") or 0.0),
-            "Unit economics are not just high on average — %.0f%% of "
-            "individual outcomes exceeded the budget you set, burning $%s."
-            % (n_br / p["successes"] * 100,
-               "{:,.2f}".format(p.get("budget_breach_spend", 0.0))),
+            "budget_breach", HIGH if n_br >= max(p["attempts"], 1) * 0.10 else MEDIUM,
+            "%s of %s blew the $%.2f spend envelope"
+            % (_plural(n_br, "attempt"), _plural(p["attempts"], "attempt"),
+               p.get("budget_per_success") or 0.0),
+            "%s and %s exceeded the envelope "
+            "you set, burning $%s.%s"
+            % (_plural(n_br_ok, "accepted outcome"),
+               _plural(n_br_failed, "failed run"),
+               "{:,.2f}".format(p.get("budget_breach_spend", 0.0)),
+               failed_bit),
             p.get("budget_breach_spend", 0.0),
-            "Treat the budget as a kill-switch threshold in Phase 1, or "
+            "Treat the envelope as a kill-switch threshold in Phase 1, or "
             "replay a tighter envelope with the policy simulator."))
 
     # 5. Context tax.
@@ -152,25 +183,45 @@ def findings(p):
 
     # 6. Reopened cases: the fix didn't stick. Counts only successful
     # attempts (H7): a failed+reopened attempt was never an accepted outcome.
+    # H1: the gate fires on reopened_spend_share, which includes failed-redo
+    # spend — when no reopened attempt succeeded, the text must not claim
+    # anything was "booked as success".
     reopened_ok = p.get("reopened_successful", p["reopened"])
     if p["reopened_spend_share"] >= 0.10 and p["cost_reopened"] > 0:
+        n_reopened = p["reopened"]
+        if reopened_ok:
+            verb = "was" if reopened_ok == 1 else "were"
+            poss = "Its" if reopened_ok == 1 else "Their"
+            reopened_detail = (
+                "%s %s reopened. %s first-pass cost was "
+                "booked as success, then the work repeated."
+                % (_plural(reopened_ok, "accepted outcome"), verb, poss))
+        else:
+            verb = "was" if n_reopened == 1 else "were"
+            reopened_detail = (
+                "%s %s reopened but every redo failed — nothing was "
+                "booked as success, yet the repeated work still burned "
+                "spend."
+                % (_plural(n_reopened, "attempt"), verb))
         out.append(_finding(
             "reopened", MEDIUM,
             "Reopened cases cost $%s (%.0f%% of spend)"
             % ("{:,.2f}".format(p["cost_reopened"]),
                p["reopened_spend_share"] * 100),
-            "%d accepted outcomes were reopened. Their first-pass cost was "
-            "booked as success, then the work repeated."
-            % reopened_ok,
+            reopened_detail,
             p["cost_reopened"],
             "Track reopen reasons the way retries are tracked: a reopen is "
             "a retry with a longer fuse."))
 
     # 7. Yield below the healthy band. Dollars are EXACT, not a ratio
-    # approximation (H1): model spend minus terminal-path model spend is
-    # precisely the model dollars off the terminal path.
+    # approximation (H1): cost_retry_path is precisely the model dollars off
+    # the terminal path — retry-flagged steps PLUS the extra_model_cost
+    # passed to log_retry(), which the tracker books as model-side waste
+    # outside the per-step model spend (C1: cost_model - cost_model_terminal
+    # silently excludes extra_model_cost and understates the waste by
+    # exactly that amount).
     if p["yield_ratio"] < 0.60 and total > 0:
-        waste_model_dollars = p["cost_model"] - p["cost_model_terminal"]
+        waste_model_dollars = p["cost_retry_path"]
         out.append(_finding(
             "low_yield", MEDIUM,
             "Only %.0f%% of tokens were on a terminal path"
@@ -191,8 +242,9 @@ def findings(p):
             "unpriced_spend", INFO,
             "$%s of model spend is estimated, not vendor-priced"
             % "{:,.2f}".format(p["unpriced_spend"]),
-            "Models without a pricing-table entry (%s%s) were costed at "
-            "the documented fallback estimate."
+            "Models without a pricing-table entry (%s%s) were costed by "
+            "estimate — a caller-supplied dollar figure, or the documented "
+            "fallback estimate where the caller supplied none."
             % (models, ", ..." if len(p["unpriced_models"]) > 5 else ""),
             p["unpriced_spend"],
             "Add verified per-1M prices to pricing.MODEL_PRICES; the flag "
@@ -200,11 +252,13 @@ def findings(p):
 
     # 9. Cache: credit where due.
     if p["cached_tokens"] > 0 and p["cache_savings"] > 0:
+        cached = p["cached_tokens"]
+        tokens_bit = ("1 input token" if cached == 1
+                      else "%s input tokens" % "{:,}".format(cached))
         out.append(_finding(
             "cache_savings", INFO,
-            "Prompt cache saved $%s on %s input tokens"
-            % ("{:,.2f}".format(p["cache_savings"]),
-               "{:,}".format(p["cached_tokens"])),
+            "Prompt cache saved $%s on %s"
+            % ("{:,.2f}".format(p["cache_savings"]), tokens_bit),
             "Cache-read tokens were priced at the documented discount "
             "instead of full input price. Without caching this run would "
             "have cost $%s more in model spend."

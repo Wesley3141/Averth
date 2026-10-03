@@ -56,6 +56,14 @@ def _check_finite(name, value):
     types are rejected too (bool is not a number here)."""
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise ValueError("%s must be a number, got %r" % (name, value))
+    if isinstance(value, int):
+        # Python ints are unbounded and always finite: math.isfinite would
+        # raise OverflowError on ints > ~1.8e308 BEFORE returning False, so
+        # the documented ValueError contract would leak a raw OverflowError
+        # on exactly the adversarial input the magnitude cap exists for.
+        # Magnitude is checked downstream (e.g. the _MAX_TOKENS cap in
+        # _check_nonneg_int); a huge int is finite, just implausible.
+        return value
     if not math.isfinite(value):
         raise ValueError("%s must be finite, got %r" % (name, value))
     return value
@@ -67,12 +75,27 @@ def _check_finite(name, value):
 _MAX_TOKENS = 10 ** 12
 
 
+# Sentinel for "no explicit price vintage assigned": the tracker reads the
+# live price table on every access. Distinct from an assigned None, which
+# means "vintage unknown" (legacy ledger rehydration via
+# tracker_from_ledger) and must stay None — collapsing the two would
+# silently restamp old ledgers with today's table.
+_UNSET_VINTAGE = object()
+
+
 def _check_nonneg_int(name, value):
     _check_finite(name, value)
     if value < 0:
         raise ValueError("%s must be >= 0, got %r" % (name, value))
     if value > _MAX_TOKENS:
         raise ValueError("%s implausibly large: %r" % (name, value))
+    # Token counts are integers: a float with a fractional part is a
+    # caller bug (e.g. a per-second rate passed as a count), not a count.
+    # Integral floats (100.0) are accepted; 100.9 is rejected loudly rather
+    # than silently truncated to 100.
+    if isinstance(value, float) and not value.is_integer():
+        raise ValueError("%s must be an integer token count, got %r"
+                         % (name, value))
     return int(value)
 
 
@@ -80,7 +103,13 @@ def _check_nonneg(name, value):
     _check_finite(name, value)
     if value < 0:
         raise ValueError("%s must be >= 0, got %r" % (name, value))
-    return float(value)
+    try:
+        return float(value)
+    except OverflowError:
+        # Huge ints pass _check_finite (they are finite) but cannot become
+        # floats; convert to the documented ValueError rather than leaking
+        # the raw OverflowError to callers.
+        raise ValueError("%s too large to represent, got %r" % (name, value))
 
 
 def _percentile(sorted_values, p):
@@ -105,16 +134,74 @@ class Tracker:
     def __init__(self, agent_name, budget_per_success=None, on_breach=None,
                  human_cost_per_min=None, cache_read_discount=None):
         self.agent_name = agent_name
+        # None disables the envelope; 0.0 means "no spend allowed" and is a
+        # live value, never a disabled one (falsy-trap class: `is not None`,
+        # not truthiness, everywhere this field is tested).
+        if budget_per_success is not None:
+            _check_nonneg("budget_per_success", budget_per_success)
         self.budget_per_success = budget_per_success
         self.on_breach = on_breach
-        self.human_cost_per_min = human_cost_per_min or pricing.HUMAN_COST_PER_MIN
-        self.cache_read_discount = (pricing.CACHE_READ_DISCOUNT
-                                    if cache_read_discount is None
-                                    else cache_read_discount)
+        # C3/M3: the loaded labor rate is a per-deployment parameter, never
+        # a silent default. Explicit 0 is honored (is None check, not `or`).
+        # pnl() reports whether the default assumption is in effect so
+        # reports and findings can label it instead of presenting it as data.
+        if human_cost_per_min is None:
+            self.human_cost_per_min = pricing.HUMAN_COST_PER_MIN
+            self._human_rate_explicit = False
+        else:
+            self.human_cost_per_min = _check_nonneg("human_cost_per_min",
+                                                    human_cost_per_min)
+            self._human_rate_explicit = True
+        # The cache discount is a multiplier on the full input price: 1.0
+        # means full price, 0.1 means cached reads cost 10%. Stored raw in
+        # an earlier pass, which let NaN/negative/>1 values silently corrupt
+        # every cost in the ledger; now validated at init like the labor rate.
+        if cache_read_discount is None:
+            self.cache_read_discount = pricing.CACHE_READ_DISCOUNT
+        else:
+            _check_finite("cache_read_discount", cache_read_discount)
+            if not 0.0 <= cache_read_discount <= 1.0:
+                raise ValueError(
+                    "cache_read_discount must be between 0 and 1 (fraction "
+                    "of the full input price), got %r" % (cache_read_discount,))
+            self.cache_read_discount = float(cache_read_discount)
+        # C2: which price table this tracker meters with. Read-through: the
+        # property below returns pricing.price_vintage() fresh on every
+        # access, so a month-long pilot never stamps a stale freshness
+        # claim (H-PNL1). No eager stamp here — the override starts unset;
+        # assigning tracker.price_vintage pins an explicit vintage (ledger
+        # rehydration restores the table the dollars were computed under).
+        self._price_vintage_override = _UNSET_VINTAGE
         self.attempts = []
         # "provider:model" keys priced by estimate (unknown to pricing.MODEL_PRICES)
         self.unpriced_models = set()
+        # "provider:model" keys whose calls reported no token usage (streamed
+        # responses without usage, LangSmith exports without token_usage):
+        # their $0.00 is missing data, not free inference. Importers add keys
+        # here; pnl() surfaces them so reports warn instead of presenting
+        # $0 as a measured fact.
+        self.missing_usage = set()
         self._cur = None
+
+    @property
+    def price_vintage(self):
+        """Which price table this tracker's dollars assume (H-PNL1).
+
+        Read-through: unless an explicit vintage was assigned, every access
+        returns pricing.price_vintage() computed NOW, so a long-lived
+        tracker stamps each pnl() with the current table's age/staleness
+        instead of a frozen construction-time claim. An assigned value is
+        returned verbatim (ledger rehydration restores the vintage the
+        dollars were computed under; an assigned None means "vintage
+        unknown" for legacy ledgers and stays None).
+        """
+        if self._price_vintage_override is _UNSET_VINTAGE:
+            return pricing.price_vintage()
+        return self._price_vintage_override
+
+    @price_vintage.setter
+    def price_vintage(self, value):
+        self._price_vintage_override = value
 
     # ---- per-attempt lifecycle ----
     def start_attempt(self, case_id=None):
@@ -216,15 +303,23 @@ class Tracker:
     def log_tool_call(self, name, cost=None, branch=None):
         """Record a tool call. branch= tags which parallel branch made the
         call so retry-path tool spend is attributed to the discarded path
-        instead of vanishing into the tools total."""
+        instead of vanishing into the tools total.
+
+        H2: pass cost= explicitly whenever you know it. When cost is omitted
+        the built-in TOOL_PRICES estimate is used and the call is flagged
+        (explicit_cost=False) so pnl()/reports can surface the estimated
+        portion instead of presenting it as measured.
+        """
         self._req()
-        c = cost if cost is not None else pricing.tool_call_cost(name)
+        explicit = cost is not None
+        c = cost if explicit else pricing.tool_call_cost(name)
         c = _check_nonneg("tool cost", c)
         cur = self._cur
         cur["tools"] += c
         cur["tool_steps"].append({
             "name": name, "cost": c,
             "retry": self._step_is_waste(branch), "branch": branch,
+            "explicit_cost": explicit,
         })
         cur["events"].append(("tool", name, c))
 
@@ -297,13 +392,21 @@ class Tracker:
         # so taxing them at full price would overstate compounding.
         base_in = steps[0]["in"] if steps else 0
         tax = 0.0
-        d = self.cache_read_discount
-        for s in steps[1:]:
-            if s["in"] <= 0 or s["in_price"] <= 0:
-                continue
-            cached_frac = min(s["cached"] / s["in"], 1.0)
-            eff_price = s["in_price"] * (1.0 - cached_frac * (1.0 - d))
-            tax += (s["in"] - base_in) / 1e6 * eff_price
+        # HOSTILE_REVIEW H2 (second half): a zero-token first step — exactly
+        # what the OpenAI wrapper logs for streaming calls with no usage —
+        # is not a baseline. Without this guard the entire second step's
+        # input spend books as "tax" (100% of input spend) while the guarded
+        # context_growth ratio above simultaneously reports no compounding.
+        # With no first-step baseline there is no counterfactual, so the
+        # tax is $0.00 rather than a contradiction.
+        if base_in > 0:
+            d = self.cache_read_discount
+            for s in steps[1:]:
+                if s["in"] <= 0 or s["in_price"] <= 0:
+                    continue
+                cached_frac = min(s["cached"] / s["in"], 1.0)
+                eff_price = s["in_price"] * (1.0 - cached_frac * (1.0 - d))
+                tax += (s["in"] - base_in) / 1e6 * eff_price
         a["context_tax"] = tax
         # layer 3: yield — terminal-path tokens vs total. Retry-path tokens
         # are waste; every token of a failed attempt is waste (no terminal
@@ -334,10 +437,18 @@ class Tracker:
                                    if ts["retry"])
         self.attempts.append(a)
         self._cur = None
-        if success and self.budget_per_success and a["total_cost"] > self.budget_per_success:
+        # C1: the hook fires on ANY attempt over the envelope — including
+        # failed runaways, which are the costliest shape the meter exists to
+        # catch. A failed attempt has no "success" to budget against, so the
+        # envelope is read as a per-attempt spend cap: no single attempt
+        # should cost more than budget_per_success, whatever its outcome.
+        # (Previously `if success and ...` left failed runaways silent.)
+        if (self.budget_per_success is not None
+                and a["total_cost"] > self.budget_per_success):
             breach = BudgetBreach(
-                "%s: case cost $%.2f exceeded budget $%.2f"
-                % (self.agent_name, a["total_cost"], self.budget_per_success))
+                "%s: case cost $%.2f exceeded budget $%.2f%s"
+                % (self.agent_name, a["total_cost"], self.budget_per_success,
+                   "" if success else " (failed attempt)"))
             if self.on_breach:
                 self.on_breach(a, breach)
             else:
@@ -403,7 +514,7 @@ class Tracker:
         # layer 5: per-model attribution
         per_model = {}
         for a in atts:
-            for k, v in a["per_model"].items():
+            for k, v in a.get("per_model", {}).items():
                 per_model[k] = per_model.get(k, 0.0) + v
 
         # retry reasons: the operational lever behind retry-path spend.
@@ -428,10 +539,27 @@ class Tracker:
         unpriced_spend = sum(v for k, v in per_model.items()
                              if k in self.unpriced_models)
 
-        breaches = sum(1 for a in ok
-                       if self.budget_per_success and a["total_cost"] > self.budget_per_success)
-        breach_spend = sum(a["total_cost"] for a in ok
-                           if self.budget_per_success and a["total_cost"] > self.budget_per_success)
+        # C1: breaches count EVERY over-envelope attempt, not just
+        # successes — the hook fires on failed runaways too, and the count
+        # must agree with the hook. budget_breaches_failed splits out the
+        # failed-run portion (pure waste) for the report.
+        over = [a for a in atts
+                if self.budget_per_success is not None
+                and a["total_cost"] > self.budget_per_success]
+        breaches = len(over)
+        breach_spend = sum(a["total_cost"] for a in over)
+        breaches_failed = sum(1 for a in over if not a["success"])
+
+        # H2: tool spend priced from the built-in TOOL_PRICES estimates
+        # (not caller-supplied costs) is flagged, never presented as
+        # measured. .get default True: ledgers written before this flag
+        # existed are treated as explicit to avoid false warnings.
+        default_tool_spend = sum(
+            ts["cost"] for a in atts for ts in a.get("tool_steps", [])
+            if not ts.get("explicit_cost", True))
+        default_tool_names = sorted({
+            ts["name"] for a in atts for ts in a.get("tool_steps", [])
+            if not ts.get("explicit_cost", True)})
         return {
             "agent": self.agent_name,
             "attempts": n,
@@ -475,6 +603,9 @@ class Tracker:
                      "tail_label": tail_label},
             "per_model": per_model,
             "unpriced_models": sorted(self.unpriced_models),
+            # model keys whose calls reported no token usage: $0.00 here is
+            # missing data, not free inference (see missing_usage).
+            "missing_usage_models": sorted(self.missing_usage),
             "top_retry_reasons": [(r, c) for r, c in top_retry_reasons],
             "costliest_attempts": costliest_attempts,
             "business_value": value,
@@ -482,4 +613,16 @@ class Tracker:
             "budget_per_success": self.budget_per_success,
             "budget_breaches": breaches,
             "budget_breach_spend": breach_spend,
+            "budget_breaches_failed": breaches_failed,
+            # C2: which price table produced these dollars.
+            "price_vintage": self.price_vintage,
+            # C3: the loaded labor rate in effect and whether it is the
+            # default assumption (callers should pass their measured rate).
+            "human_cost_per_min": self.human_cost_per_min,
+            "human_rate_assumed": not self._human_rate_explicit,
+            # H2: tool spend from built-in estimates vs measured costs.
+            "tools_default_priced_spend": default_tool_spend,
+            "tools_default_priced_names": default_tool_names,
+            # H3: the cache-read discount rate in effect (vendor-specific).
+            "cache_read_discount": self.cache_read_discount,
         }

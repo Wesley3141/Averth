@@ -18,9 +18,24 @@ that delegates everything except the two metered create() methods. Calls
 are timed around the SDK invocation. Models missing from the pricing table
 fall back to an estimated price and are flagged in
 pnl()["unpriced_models"], so estimated spend is visible, never hidden.
+
+Streaming: with stream=True the SDK returns an iterator immediately, so no
+usage exists at call time. The wrapper returns a lightweight iterator proxy:
+chunks pass through to the caller unchanged, and when the stream is fully
+consumed the usage reported on the final chunk
+(stream_options={"include_usage": True}) is logged through the normal
+path. If the stream is exhausted without ever reporting usage, NO
+zero-cost step is logged; instead the "provider:model" key is added to
+tracker.missing_usage so the gap is visible in
+pnl()["missing_usage_models"]. A stream that is abandoned before
+exhaustion records nothing. Async clients are not supported: create()
+returning an awaitable raises TypeError immediately, before anything is
+logged.
 """
 
+import inspect
 import time
+from types import SimpleNamespace
 
 from averth import pricing
 
@@ -54,22 +69,30 @@ def _usage_tokens(usage):
 
 
 def _usage_cached_tokens(usage):
-    """Cached input tokens from usage.prompt_tokens_details (dict or object).
+    """Cached input tokens from usage details (dict or object).
 
-    OpenAI's API reports these as measured data; when absent this returns 0
-    and pricing proceeds without a cache term.
+    Chat Completions reports them at usage.prompt_tokens_details; the
+    Responses API reports them at usage.input_tokens_details. Both shapes
+    are read (first non-None wins). OpenAI's API reports these as measured
+    data; when absent this returns 0 and pricing proceeds without a cache
+    term.
     """
     if usage is None:
         return 0
-    if isinstance(usage, dict):
-        details = usage.get("prompt_tokens_details")
-    else:
-        details = getattr(usage, "prompt_tokens_details", None)
-    if details is None:
-        return 0
-    if isinstance(details, dict):
-        return _int_or_zero(details.get("cached_tokens"))
-    return _int_or_zero(getattr(details, "cached_tokens", None))
+    for attr in ("prompt_tokens_details", "input_tokens_details"):
+        if isinstance(usage, dict):
+            details = usage.get(attr)
+        else:
+            details = getattr(usage, attr, None)
+        if details is None:
+            continue
+        if isinstance(details, dict):
+            value = details.get("cached_tokens")
+        else:
+            value = getattr(details, "cached_tokens", None)
+        if value is not None:
+            return _int_or_zero(value)
+    return 0
 
 
 def _capture(tracker, provider, model, resp):
@@ -86,6 +109,67 @@ def _capture(tracker, provider, model, resp):
                                         cached_input_tokens=cached_tok)
 
 
+class _StreamWrapper:
+    """Iterator proxy for stream=True responses.
+
+    Chunks pass through to the caller unchanged. Usage arrives, if at all,
+    on the final chunk (stream_options={"include_usage": True}); when the
+    stream is exhausted the real token counts are logged through the normal
+    path. If the stream ends without ever reporting usage, no zero-cost
+    step is logged — the "provider:model" key goes to
+    tracker.missing_usage instead, so the gap is visible rather than
+    presented as $0.00 of measured spend.
+    """
+
+    def __init__(self, stream, tracker, provider, model):
+        self._stream = iter(stream)
+        self._tracker = tracker
+        self._provider = provider
+        self._model = model
+        self._usage = None
+        self._finished = False
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        try:
+            chunk = next(self._stream)
+        except StopIteration:
+            self._finish()
+            raise
+        usage = getattr(chunk, "usage", None)
+        if usage is not None:
+            self._usage = usage
+        return chunk
+
+    def _finish(self):
+        if self._finished:
+            return
+        self._finished = True
+        if self._usage is not None:
+            _capture(self._tracker, self._provider, self._model,
+                     SimpleNamespace(model=self._model, usage=self._usage))
+        else:
+            self._tracker.missing_usage.add(
+                "%s:%s" % (self._provider, self._model or "unknown"))
+
+    def __getattr__(self, name):
+        return getattr(self._stream, name)
+
+
+def _is_stream_response(resp, kwargs):
+    """True when create() returned a streaming iterator rather than a response.
+
+    The explicit stream=True kwarg is the primary signal; a duck-typed
+    fallback catches iterators with no .usage attribute.
+    """
+    if kwargs.get("stream"):
+        return True
+    return (getattr(resp, "usage", None) is None
+            and hasattr(resp, "__next__"))
+
+
 class _CreateMethod:
     """Wraps one create() method: times the call, captures model + usage."""
 
@@ -98,6 +182,25 @@ class _CreateMethod:
         started = time.time()
         resp = self._create_fn(*args, **kwargs)
         _ = time.time() - started  # latency observed; spend is the Phase-0 record
+        if inspect.isawaitable(resp):
+            # Async clients are not supported: the coroutine carries no
+            # usage, so capturing here would log a phantom $0.00 step while
+            # the real spend (visible only after await) went unrecorded.
+            # Refuse loudly before logging anything.
+            close = getattr(resp, "close", None)
+            if callable(close):
+                try:
+                    close()
+                except Exception:
+                    pass
+            raise TypeError(
+                "averth's OpenAI wrapper does not support async clients: "
+                "create() returned an awaitable, which carries no usage to "
+                "capture. Use the synchronous openai.OpenAI client instead. "
+                "Nothing was logged.")
+        if _is_stream_response(resp, kwargs):
+            return _StreamWrapper(resp, self._tracker, self._provider,
+                                  kwargs.get("model"))
         _capture(self._tracker, self._provider, kwargs.get("model"), resp)
         return resp
 
@@ -172,5 +275,8 @@ def wrap_openai_client(client, tracker, provider="openai"):
     chat.completions.create and responses.create are timed and their model
     plus token usage is captured into tracker. The original client object
     is not mutated. No import of openai; the client is duck-typed.
+    stream=True calls return a metering iterator proxy (usage is logged when
+    the stream is fully consumed; see the module docstring). Async clients
+    are not supported and raise TypeError.
     """
     return _ClientProxy(client, tracker, provider)

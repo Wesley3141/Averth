@@ -182,11 +182,11 @@ def test_per_model_attribution():
     t = make_tracker()
     t.start_attempt(case_id="C-1")
     t.log_model_call("openai", "gpt-5-nano", 1_000_000, 0)      # 0.05
-    t.log_model_call("anthropic", "claude-haiku-4-5", 1_000_000, 0)  # 0.80
+    t.log_model_call("anthropic", "claude-haiku-4-5", 1_000_000, 0)  # 1.00
     t.end_attempt(success=True)
     pm = t.pnl()["per_model"]
     assert pm["openai:gpt-5-nano"] == pytest.approx(0.05)
-    assert pm["anthropic:claude-haiku-4-5"] == pytest.approx(0.80)
+    assert pm["anthropic:claude-haiku-4-5"] == pytest.approx(1.00)
 
 
 def test_unknown_model_raises():

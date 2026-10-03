@@ -97,7 +97,9 @@ def test_cli_simulate_exit0(tmp_path, capsys):
                "--html", html])
     assert rc == 0
     out = capsys.readouterr().out
-    assert "TOP FINDING" in out or "No material findings" in out
+    # The report leads with exactly one of: the top finding, or an explicit
+    # no-findings statement. XOR: the test fails if both or neither appear.
+    assert ("TOP FINDING" in out) != ("No material findings" in out)
     assert "Fully loaded" in out
     body = open(html, encoding="utf-8").read()
-    assert "What to do Monday morning" in body or "Averth" in body
+    assert "What to do Monday morning" in body

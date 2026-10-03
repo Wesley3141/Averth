@@ -5,13 +5,16 @@ Usage:
                  [--policy-cap FLOAT] [--policy-yield FLOAT] [--agent NAME]
     averth simulate --attempts N --seed S [--jsonl PATH] [--html PATH]
                  [--agent NAME]
+    averth pricing
 
 Parses an agent trace into a cost ledger, prints the text P&L report to
 stdout, and writes a shareable one-page HTML report. `simulate` generates
 adversarial synthetic production traffic (retries, escalations, heavy-tail
 runaways, context growth, cache hits, parallel branches) so you can see what
 the report looks like on production-shaped data before instrumenting anything
-real. Imports of the trace-importer modules are deferred to main() so this
+real. `pricing` shows the price-table version, verification date, and
+staleness status behind every dollar figure. Imports of the trace-importer
+modules are deferred to main() so this
 module always imports cleanly.
 """
 
@@ -62,6 +65,10 @@ def build_parser():
                    help="HTML report output path (default: simulate.html in cwd).")
     s.add_argument("--agent", default="synthetic-support", metavar="NAME",
                    help="Agent name shown in the report.")
+
+    sub.add_parser("pricing",
+                   help="Show the price-table version, verification date, "
+                        "and staleness status.")
     return p
 
 
@@ -79,7 +86,15 @@ def _report_and_html(tracker, html_path, policy_sim=None):
         print()
         print(policy.policy_text(policy_sim))
     html_path = os.path.abspath(html_path)
-    write_html(html_path, tracker, policy_sim=policy_sim)
+    try:
+        write_html(html_path, tracker, policy_sim=policy_sim)
+    except Exception as e:
+        # A bad --html path must honor the CLI's error contract (clean
+        # "averth: error:" on stderr, exit 2), not dump a traceback after
+        # printing a report that reads like success.
+        print("averth: error: cannot write HTML report to %s: %s"
+              % (html_path, e), file=sys.stderr)
+        return 2
     print("\nHTML report written to %s" % html_path)
     return 0
 
@@ -92,10 +107,42 @@ def _cmd_simulate(args):
     tracker, _ = stress.generate(seed=args.seed, attempts=args.attempts,
                                  agent_name=args.agent)
     if args.jsonl:
-        stress.write_jsonl(args.jsonl, seed=args.seed,
-                           attempts=args.attempts, agent_name=args.agent)
+        try:
+            stress.write_jsonl(args.jsonl, seed=args.seed,
+                               attempts=args.attempts, agent_name=args.agent)
+        except Exception as e:
+            print("averth: error: cannot write JSONL to %s: %s"
+                  % (args.jsonl, e), file=sys.stderr)
+            return 2
         print("Synthetic JSONL written to %s" % os.path.abspath(args.jsonl))
     return _report_and_html(tracker, args.html or "simulate.html")
+
+
+def _cmd_pricing(args):
+    """One-command visibility into the price table (C2).
+
+    The meter has no network code by design, so there is no live price
+    feed; this command shows exactly which table the dollars come from and
+    how stale it is, and tells the operator how to update it.
+    """
+    from averth import pricing
+    v = pricing.price_vintage()
+    w = pricing.staleness_warning()
+    print("Averth price table v%s" % v["version"])
+    print("  last verified : %s (%d days ago)" % (v["updated"], v["age_days"]))
+    print("  source        : %s" % pricing.PRICE_TABLE_SOURCE)
+    print("  models priced : %d" % len(pricing.MODEL_PRICES))
+    print("  tools priced  : %d" % len(pricing.TOOL_PRICES))
+    print("  human default : $%.2f/min (~$%.0f/hr loaded, assumption)"
+          % (pricing.HUMAN_COST_PER_MIN, pricing.HUMAN_COST_PER_MIN * 60))
+    print("  status        : %s" % ("STALE — " + w if w else
+                                    "fresh (warns after %d days)"
+                                    % v["stale_after_days"]))
+    print()
+    print("To update: edit averth/pricing.py, bump PRICE_TABLE_VERSION,")
+    print("set PRICE_TABLE_UPDATED to today, and add a regression test")
+    print("pinning the changed price.")
+    return 0
 
 
 def main(argv=None):
@@ -104,6 +151,8 @@ def main(argv=None):
 
     if args.cmd == "simulate":
         return _cmd_simulate(args)
+    if args.cmd == "pricing":
+        return _cmd_pricing(args)
 
     path = args.file
     if not os.path.isfile(path):

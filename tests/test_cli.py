@@ -1,11 +1,6 @@
-"""Tests for averth.cli.main.
-
-If averth.importers is not ready yet, the fixture path is exercised via
-monkeypatched stand-ins rather than failing the suite.
-"""
+"""Tests for averth.cli.main."""
 
 import json
-import sys
 
 import pytest
 
@@ -32,72 +27,9 @@ def _fixture_jsonl(path):
     return str(path)
 
 
-def _fake_tracker():
-    from averth import Tracker
-    t = Tracker("fixture-bot")
-    t.start_attempt(case_id="F-1")
-    t.log_model_call("anthropic", "claude-sonnet-4-5", 3200, 850)
-    t.log_tool_call("crm_lookup")
-    t.end_attempt(success=True, business_value=11.20)
-    t.start_attempt(case_id="F-2")
-    t.log_model_call("openai", "gpt-5.6-mini", 20000, 3000)
-    t.end_attempt(success=False)
-    return t
-
-
-def _install_fake_importer(monkeypatch):
-    """Install stand-in importer modules; returns the tracker built."""
-    import types
-    import averth.cli as cli_mod
-
-    ledger_holder = {}
-
-    def fake_load_jsonl(path):
-        with open(path) as f:
-            events = [json.loads(l) for l in f if l.strip()]
-        t = _fake_tracker()
-        from averth.policy import export_ledger
-        import tempfile
-        tmp = tempfile.mktemp(suffix=".json")
-        export_ledger(t, tmp)
-        ledger = json.load(open(tmp))
-        ledger_holder["tracker"] = t
-        return ledger
-
-    jsonl_mod = types.ModuleType("averth.importers.jsonl")
-    jsonl_mod.load_jsonl = fake_load_jsonl
-    common_mod = types.ModuleType("averth.importers.common")
-    common_mod.tracker_from_ledger = lambda ledger: ledger_holder["tracker"]
-
-    importers_pkg = types.ModuleType("averth.importers")
-    importers_pkg.jsonl = jsonl_mod
-    importers_pkg.common = common_mod
-
-    monkeypatch.setitem(sys.modules, "averth.importers", importers_pkg)
-    monkeypatch.setitem(sys.modules, "averth.importers.jsonl", jsonl_mod)
-    monkeypatch.setitem(sys.modules, "averth.importers.common", common_mod)
-    monkeypatch.setattr(cli_mod, "_importer_for",
-                        lambda fmt: (fake_load_jsonl, "averth.importers.jsonl")
-                        if fmt == "jsonl" else (_ for _ in ()).throw(
-                            ValueError("unsupported format")))
-
-
-def _try_real_importer(monkeypatch):
-    """Prefer the real importer path; fall back to fakes when absent."""
-    try:
-        import importlib
-        importlib.import_module("averth.importers.jsonl")
-        importlib.import_module("averth.importers.common")
-        return True
-    except ImportError:
-        _install_fake_importer(monkeypatch)
-        return False
-
-
 def test_trace_jsonl_exit0(tmp_path, monkeypatch, capsys):
     trace = _fixture_jsonl(tmp_path / "trace.jsonl")
     monkeypatch.chdir(tmp_path)
-    _try_real_importer(monkeypatch)
     rc = main(["trace", trace, "--format", "jsonl", "--agent", "fixture-bot"])
     out = capsys.readouterr().out
     assert rc == 0
@@ -110,7 +42,6 @@ def test_trace_jsonl_exit0(tmp_path, monkeypatch, capsys):
 def test_trace_policy_flags(tmp_path, monkeypatch, capsys):
     trace = _fixture_jsonl(tmp_path / "trace2.jsonl")
     monkeypatch.chdir(tmp_path)
-    _try_real_importer(monkeypatch)
     rc = main(["trace", trace, "--format", "jsonl", "--policy-cap", "0.01",
                "--html", str(tmp_path / "custom.html")])
     out = capsys.readouterr().out
@@ -133,3 +64,43 @@ def test_bad_format_flag_exit2(capsys):
         assert e.code == 2
     else:
         raise AssertionError("expected SystemExit(2) from bad --format")
+
+
+def test_bad_html_path_exit2(tmp_path, capsys):
+    # A typo'd --html directory must honor the CLI error contract: clean
+    # "averth: error:" on stderr and exit 2, never a traceback.
+    trace = _fixture_jsonl(tmp_path / "trace3.jsonl")
+    rc = main(["trace", trace, "--format", "jsonl",
+               "--html", "/no/such/dir/x.html"])
+    err = capsys.readouterr().err
+    assert rc == 2
+    assert "averth: error: cannot write HTML report" in err
+
+
+def test_console_script_entry_point_resolves():
+    # pyproject declares [project.scripts] averth = "averth.cli:main".
+    # The installed entry point must resolve to a callable; a stale or
+    # missing install (the pre-rename agentpnl dist-info shipped in .venv
+    # for a while) silently breaks the documented `averth` command.
+    from importlib.metadata import distribution, PackageNotFoundError
+    try:
+        dist = distribution("averth")
+    except PackageNotFoundError:
+        pytest.skip("averth not installed in this interpreter")
+    eps = [ep for ep in dist.entry_points if ep.name == "averth"]
+    assert eps, "averth console script not installed"
+    assert callable(eps[0].load())
+
+
+def test_pricing_exit0(capsys):
+    # The C2 user-facing fix: `averth pricing` shows the table version,
+    # verification date, and staleness status.
+    from averth import pricing
+    rc = main(["pricing"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert ("Averth price table v%s" % pricing.PRICE_TABLE_VERSION) in out
+    assert pricing.PRICE_TABLE_UPDATED in out
+    assert "models priced : %d" % len(pricing.MODEL_PRICES) in out
+    assert "tools priced  : %d" % len(pricing.TOOL_PRICES) in out
+    assert "To update:" in out

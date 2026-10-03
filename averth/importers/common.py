@@ -7,9 +7,10 @@ then hands them to events_to_tracker().
 Event types (each event is a plain dict):
 
     {"type": "start", "case_id": str}
-        Optional explicit attempt boundary. events_to_tracker() auto-starts
-        an attempt on the first event seen for a case, so "start" is a no-op
-        marker kept for readability.
+        Pure no-op readability marker. events_to_tracker() SKIPS "start"
+        events entirely: an attempt auto-starts on the first real event
+        for a case. A lone "start" with no other events creates nothing
+        (it must not fabricate a phantom failed attempt).
 
     {"type": "model", "case_id": str, "model": str,
      "provider": str (optional), "input_tokens": number (default 0),
@@ -33,10 +34,14 @@ Event types (each event is a plain dict):
 
     {"type": "retry", "case_id": str, "reason": str (optional),
      "branch": str (optional)}
-        With "branch", declares that branch's work in the attempt discarded:
-        all of that branch's steps, past and future, count as retry-path
-        waste. Without "branch", marks the following steps as retry-path
-        (earlier steps are assumed to stand — see Tracker.log_retry).
+        With "branch", declares that branch's work SO FAR in the attempt
+        discarded: the branch's existing (past) steps are retroactively
+        marked as retry-path waste. Work logged on the branch AFTER the
+        retry is the redo and starts fresh — it is NOT pre-tainted (this
+        matches Tracker.log_retry semantics exactly; an earlier version of
+        this docstring wrongly said "past and future"). Without "branch",
+        marks the following steps as retry-path (earlier steps are assumed
+        to stand — see Tracker.log_retry).
 
     {"type": "escalation", "case_id": str, "minutes": number,
      "reason": str (optional)}
@@ -54,15 +59,32 @@ in tracker.unpriced_models so the caller can review and add real prices.
 """
 
 from ..tracker import Tracker
+from .. import pricing
+# Single source of truth for the ledger attempt keys (extracted here from
+# policy.py so the dict-form export in ledger_from_tracker and the file
+# export in policy.export_ledger can never drift).
+from ..policy import LEDGER_ATTEMPT_KEYS
 
 
 # USD per 1M tokens (input, output) used when pricing.MODEL_PRICES has no
 # entry for a model. Documented estimate, never a real vendor price.
-FALLBACK_PRICE = (1.00, 3.00)
+# M1: single source of truth — was duplicated here and in pricing.py.
+FALLBACK_PRICE = pricing.ESTIMATED_MODEL_PRICES
 
 
 def guess_provider(model_name):
-    """Guess the pricing provider key from a model name."""
+    """Guess the pricing provider key from a model name.
+
+    M2 HEURISTIC WARNING: this is name-guessing, not identification. A
+    fine-tuned, proxied, or renamed model containing "gpt" (e.g.
+    "gpt-custom" via a gateway) gets OpenAI list prices applied SILENTLY —
+    the dollars look exact but the vendor attribution may be wrong. Always
+    pass an explicit "provider" in the event (or model registry) for
+    production traces; treat guessed-provider spend as lower-confidence.
+    Returns "unknown" when nothing matches, which prices the call at the
+    documented fallback estimate and flags it in unpriced_models (honest)
+    instead of inventing a vendor (dishonest).
+    """
     name = (model_name or "").lower()
     if "gpt" in name or "o1" in name or "o3" in name:
         return "openai"
@@ -75,15 +97,41 @@ def guess_provider(model_name):
     return "unknown"
 
 
+def _parse_bool_tristate(value):
+    """Parse a marker attribute as True / False / None (tri-state).
+
+    Accepts real booleans and the strings "true"/"false"/"yes"/"no"/
+    "1"/"0" (case-insensitive, whitespace stripped). Anything else —
+    including None, numbers, and free text — yields None: present but
+    not a boolean claim. Importers use this so an explicit "not a
+    retry" / "not a failure" marker can never be truthiness-flipped
+    into an event (bool("false") is True), while non-boolean values
+    are left for each caller's own gate logic.
+    """
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        s = value.strip().lower()
+        if s in ("true", "yes", "1"):
+            return True
+        if s in ("false", "no", "0"):
+            return False
+    return None
+
+
 def _apply_model_cost(tracker, provider, model, input_tokens, output_tokens,
-                      cost, cached_tokens=0, branch=None):
+                      cost, cached_tokens=0, cache_saving=0.0, branch=None):
     """Apply a model call to the open attempt with an explicit cost.
 
     Mirrors Tracker.log_model_call's bookkeeping for the fallback path where
-    pricing has no entry for the model.
+    pricing has no entry for the model. Cached tokens are priced at the
+    Tracker's cache_read_discount (same discount math as log_model_call)
+    and the saving is recorded, so the EVENT-schema docstring holds on the
+    fallback path too.
     """
     cur = tracker._cur
     cur["model"] += cost
+    cur["cache_savings"] += cache_saving
     cur["steps"].append({
         "in": input_tokens, "out": output_tokens, "cost": cost,
         "retry": tracker._step_is_waste(branch), "in_price": 0.0,
@@ -105,11 +153,22 @@ def _log_model_call(tracker, provider, model, input_tokens, output_tokens,
     except KeyError:
         key = "%s:%s" % (provider, model)
         tracker.unpriced_models.add(key)
-        cost = (input_tokens / 1e6 * FALLBACK_PRICE[0]
-                + output_tokens / 1e6 * FALLBACK_PRICE[1])
+        # H-A: the fallback path applies the same cache-discount math as
+        # log_model_call (priced at tracker.cache_read_discount, saving
+        # recorded) — cached tokens were previously priced at the full
+        # fallback rate with saving 0.0, contradicting the EVENT schema
+        # docstring. cached > input is clamped like log_model_call.
+        d = tracker.cache_read_discount
+        pin, pout = FALLBACK_PRICE
+        cached = min(cached_tokens, input_tokens)
+        cost = ((input_tokens - cached) / 1e6 * pin
+                + cached / 1e6 * pin * d
+                + output_tokens / 1e6 * pout)
+        saving = cached / 1e6 * pin * (1.0 - d)
         _apply_model_cost(tracker, provider, model,
                           input_tokens, output_tokens, cost,
-                          cached_tokens=cached_tokens, branch=branch)
+                          cached_tokens=cached, cache_saving=saving,
+                          branch=branch)
 
 
 def events_to_tracker(agent_name, events):
@@ -136,19 +195,25 @@ def events_to_tracker(agent_name, events):
 
     for cid in order:
         started = False
+        start_seen = False
         for ev in groups[cid]:
             etype = ev["type"]
-            # C6: never auto-start on an "end" event. A duplicate end (or a
-            # stray end with no open attempt) is ignored instead of
-            # fabricating a phantom zero-cost attempt.
-            if etype == "end" and not started:
+            # H-B: "start" is a pure readability marker and never creates an
+            # attempt by itself — a lone "start" creates nothing. We remember
+            # it only so a later "end" for the same case still closes a real
+            # (possibly zero-cost) attempt instead of being dismissed as a
+            # stray end.
+            if etype == "start":
+                start_seen = True
+                continue
+            # C6: a stray "end" with no "start" and no open attempt is
+            # ignored instead of fabricating a phantom zero-cost attempt.
+            if etype == "end" and not started and not start_seen:
                 continue
             if not started:
                 tracker.start_attempt(case_id=cid)
                 started = True
-            if etype == "start":
-                pass  # auto-start already handled this
-            elif etype == "model":
+            if etype == "model":
                 provider = ev.get("provider") or guess_provider(ev.get("model"))
                 _log_model_call(tracker, provider, ev["model"],
                                 ev.get("input_tokens", 0) or 0,
@@ -180,34 +245,31 @@ def events_to_tracker(agent_name, events):
     return tracker
 
 
-# Attempt keys kept in the exported ledger. Must match the key list in
-# policy.export_ledger (same schema, dict form here instead of a file).
-LEDGER_ATTEMPT_KEYS = (
-    "case_id", "model", "tools", "retry_cost", "retries",
-    "human_min", "human_cost", "ai_cost", "total_cost",
-    "total_tokens", "waste_tokens", "context_growth",
-    "context_tax", "retry_path_cost", "retry_tool_cost",
-    "terminal_model_cost",
-    "cached_tokens", "cache_savings",
-    "success", "reopened", "business_value", "per_model",
-    "tool_latency_ms",
-    # events carry no prompts or customer data (cost/token/timing metadata
-    # only) and preserve retry reasons across export -> reimport (H5)
-    "events", "tool_steps",
-)
-
+# Attempt keys kept in the exported ledger: imported from policy.py
+# (single source of truth — the same tuple policy.export_ledger uses,
+# so the two export paths share one schema).
+# "missing_usage_models" is a top-level ledger key, not an attempt key.
 
 def ledger_from_tracker(tracker, agent_name=None):
     """Return the sanitized ledger dict for a Tracker (no file written).
 
     Same schema as policy.export_ledger: {"agent": name, "attempts": [...]},
-    metadata only, never prompts or customer data. The unpriced_models flag
+    cost/token/timing metadata only — never prompts, completions, or tool
+    payloads. Caller-provided free text (case_id, tool names,
+    retry/escalation reasons) is included verbatim and may contain customer
+    data; redact before sharing. The unpriced_models flag
     list is included so estimated (non-vendor) model spend stays flagged
     as an estimate after the round trip instead of looking exact.
     """
     return {
         "agent": agent_name or tracker.agent_name,
         "unpriced_models": sorted(tracker.unpriced_models),
+        # Models whose calls reported no token usage: $0.00 here is missing
+        # data, not free inference. getattr so foreign tracker-likes that
+        # predate the field still export.
+        "missing_usage_models": sorted(getattr(tracker, "missing_usage", [])),
+        # C2: stamp which price table produced these dollars.
+        "price_vintage": tracker.price_vintage,
         "attempts": [
             {k: a[k] for k in LEDGER_ATTEMPT_KEYS}
             for a in tracker.attempts
@@ -222,4 +284,25 @@ def tracker_from_ledger(ledger):
     # .get for backward compatibility with ledgers written before the
     # unpriced_models flag was exported.
     tracker.unpriced_models = set(ledger.get("unpriced_models", []))
+    # Same for ledgers written before the missing_usage flag was exported.
+    tracker.missing_usage = set(ledger.get("missing_usage_models", []))
+    # C2: restore the price vintage the dollars were computed under, so
+    # reports on old ledgers stamp the old vintage instead of today's.
+    # None (legacy ledgers) means "vintage unknown" — reports say so.
+    # A wrong-typed or key-missing vintage is rejected loudly here, at
+    # the rehydrate boundary, instead of detonating two layers later in
+    # report_text with an opaque TypeError.
+    vintage = ledger.get("price_vintage")
+    if vintage is not None:
+        if not isinstance(vintage, dict):
+            raise ValueError(
+                "ledger has a malformed price_vintage: expected a dict, "
+                "got %r" % (vintage,))
+        missing = [k for k in ("version", "updated", "age_days", "stale",
+                               "stale_after_days") if k not in vintage]
+        if missing:
+            raise ValueError(
+                "ledger has a malformed price_vintage: missing key(s) %s"
+                % ", ".join(missing))
+    tracker.price_vintage = vintage
     return tracker

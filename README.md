@@ -40,6 +40,9 @@ t.log_escalation(4.5, "low confidence")
 t.end_attempt(success=True, business_value=11.20)
 
 print(report_text(t.pnl(), token_dashboard_per_success=0.03))
+# 0.03 above is an illustrative placeholder for whatever your own token
+# dashboard reports per success — substitute your real number. (Current
+# demo.py output: dashboard $0.20 vs fully-loaded $0.82.)
 ```
 
 What it meters: model spend (per-provider pricing tables, with prompt-cache
@@ -52,22 +55,28 @@ separate lines), context tax in dollars, cache savings, failed-run and
 reopened waste lenses, top retry reasons, costliest attempts, business value,
 net value, and budget breaches.
 
-It implements the five cost layers (see `../research/agent-pnl/five-cost-layers.md`):
-context compounding per step, external tool spend, yield ratio (terminal-path
-tokens / total), heavy-tail isolation (p50/p95/max, top-5% budget share), and
-per-model attribution plus loaded human-review cost.
+It implements the five cost layers: context compounding per step, external
+tool spend, yield ratio (terminal-path tokens / total), heavy-tail isolation
+(p50/p95/max, top-5% budget share), and per-model attribution plus loaded
+human-review cost.
 
-The `budget_per_success` + `on_breach` hook is Phase-1 (built only after a
-buyer confirms who owns that authority and will pay for it). The Phase-0
-pilot is read-only: the customer runs the meter inside their own environment,
-exports a sanitized ledger, and we replay hypothetical policies offline:
+The `budget_per_success` + `on_breach` hook fires post-hoc at `end_attempt`
+(raises `BudgetBreach` into your stack, or calls your callback — the attempt
+is recorded first, so no data is lost). It does not stop a run mid-flight:
+live enforcement (kill-switch authority during the run) is Phase-1, built
+only after a buyer confirms who owns that authority and will pay for it.
+The Phase-0 pilot is read-only: the customer runs the meter inside their own
+environment, exports a sanitized ledger, and we replay hypothetical policies
+offline:
 
 ```python
 from averth import policy as P
-P.export_ledger(t, "ledger.json")   # metadata only: no prompts, no customer data
+P.export_ledger(t, "ledger.json")   # cost/token/timing metadata only:
+                                    # no prompts, completions, or tool payloads
 ledger = P.load_ledger("ledger.json")
 sim = P.simulate_policy(ledger, max_cost_per_attempt=6.00, yield_floor=0.50)
 print(P.policy_text(sim))
+# On the demo ledger (python3 demo.py: 2,000 runs) this prints:
 # "Would have stopped 1020 of 2000 runs: 426 failed (pure savings $297.18)
 #  and 594 that went on to succeed (collateral $897.79 — good outcomes this
 #  policy would have destroyed)."
@@ -86,9 +95,11 @@ mean a single-digit yield when the failures are the expensive runs.
 ## Adversarial simulation
 
 `averth simulate` generates a seeded hostile workload — quick resolutions,
-retry storms, escalations, clean failures, reopened tickets, and 2% runaways
-that burn most of the budget — with 1.15-1.6x context growth, multi-model
-routing (a 70% cache-hit triage router), and parallel 3-branch fan-out:
+retry storms, escalations, clean failures, reopened tickets, and 2% runaways —
+with 1.15-1.6x context growth, multi-model routing (a 70% cache-hit triage router),
+and parallel 3-branch fan-out. The runaways plus retry storms form the heavy
+tail: the costliest 5% of attempts burn roughly three-quarters of spend
+(seed-dependent; 72–79% across measured seeds):
 
 ```bash
 averth simulate --attempts 2000 --seed 42 --html sim.html
@@ -99,7 +110,8 @@ averth trace --format jsonl sim.jsonl   # reproduces the identical P&L
 Same seed always produces the identical P&L to the cent. The JSONL round-trip
 through the real importer is asserted in the test suite
 (`tests/test_stress.py`). Use it to stress the meter before trusting it on a
-customer trace: 20k attempts meter in about a second.
+customer trace: 20k attempts meter in a few seconds on a laptop
+(`averth simulate` end-to-end; `pnl()` alone is sub-second).
 
 ## Known limits (honest, not marketing)
 
@@ -114,7 +126,13 @@ customer trace: 20k attempts meter in about a second.
   `cached_input_tokens > input_tokens`); the live Tracker API clamps or
   ignores instead of raising, because it must never break an agent run.
 - Pre-hardening ledgers load without crashing; new fields degrade to
-  documented defaults (retry-path cost unknown, context tax $0).
+  documented defaults (retry-path cost $0, context tax $0, per-model
+  attribution empty).
+- Model and tool prices come from a dated, versioned table
+  (`averth pricing` shows the version, verification date, and staleness);
+  every report stamps the table vintage, and a loud warning fires when the
+  table is older than 90 days. Dollar figures are never silently
+  misattributed to the wrong price era.
 
 ## LangChain integration
 
@@ -147,7 +165,9 @@ tracker = common.tracker_from_ledger(ledger)      # back into a Tracker
 
 OpenTelemetry and LangSmith work the same way via `otel.load_otel` and
 `langsmith.load_langsmith`. Imported ledgers contain no prompts, completions,
-or customer data.
+or tool payloads — but caller-provided free text (case IDs, tool names,
+retry reasons) is exported verbatim, so redact anything sensitive before
+the ledger leaves your environment.
 
 ## CLI
 
@@ -160,13 +180,13 @@ averth trace trace.otel.json --format otel --agent support-agent \
 ```
 
 `--format` is one of `otel`, `langsmith`, `jsonl`. The text report prints to
-stdout; `--html` writes a one-page HTML report (defaults to
-`<inputfile>.html` in the current directory). `--policy-cap` and
-`--policy-yield` replay a hypothetical offline policy and print what it would
-have stopped.
+stdout; an HTML report is always written alongside (pass `--html PATH` to
+choose where, otherwise `<inputfile>.html` in the current directory).
+`--policy-cap` and `--policy-yield` replay a hypothetical offline policy
+and print what it would have stopped.
 
 ## License
 
 MIT. See `LICENSE`.
 
-This is the pilot instrument for the agent-P&L thesis: read-only telemetry in, P&L report out. See `~/workspace/research/agent-pnl/PLAN.md`.
+This is the pilot instrument for the agent-P&L thesis: read-only telemetry in, P&L report out.

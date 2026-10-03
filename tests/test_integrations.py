@@ -55,7 +55,11 @@ class LangChainHandlerTest(unittest.TestCase):
     def test_nested_chain_start_does_not_double_open(self):
         h = self.h
         h.on_chain_start({}, {}, run_id="r-outer")
-        h.on_chain_start({}, {}, run_id="r-inner")  # LangGraph sub-chain
+        # A legitimate nested sub-chain carries its parent's run_id (this is
+        # what real LangChain emits); a new run_id with no parent in the
+        # stack is treated as a concurrent top-level run and now raises
+        # RuntimeError instead of merging spend (see review round 5, H2).
+        h.on_chain_start({}, {}, run_id="r-inner", parent_run_id="r-outer")
         h.on_chain_end({}, run_id="r-inner")
         h.on_chain_end({}, run_id="r-outer")
         self.assertEqual(self.tracker.pnl()["attempts"], 1)

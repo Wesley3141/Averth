@@ -14,12 +14,35 @@ def report_text(p, token_dashboard_per_success=None):
     t = p["tail"]
     L = []
     L.append("Averth: %s" % p["agent"])
+    # C2: every report stamps which price table produced its dollars, plus
+    # a loud warning when the table is stale. No silent price-era confusion.
+    vint = p.get("price_vintage")
+    if vint:
+        L.append("Price table: v%s (verified %s, %d days old)"
+                 % (vint["version"], vint["updated"], vint["age_days"]))
+        if vint["stale"]:
+            L.append("WARNING: pricing table is stale (>%d days) — vendor "
+                     "prices may have changed; verify before trusting "
+                     "dollar figures" % vint["stale_after_days"])
+    else:
+        L.append("Price table: vintage unknown (legacy ledger)")
     L.append("")
     top = findings(p)[:1]
     if top:
         f = top[0]
         L.append("TOP FINDING [%s]: %s" % (f["severity"].upper(), f["title"]))
-        L.append("  %s" % f["detail"])
+        detail = f["detail"]
+        # C3: the TOP FINDING is the first thing a VP Finance reads. When it
+        # is the human-dominance finding AND the labor rate is the default
+        # assumption, the headline number carries the caveat on the line
+        # itself — a skimming reader must never take an assumption-driven
+        # dollar figure as measured data.
+        if (p.get("human_rate_assumed", True)
+                and f.get("id") == "human_dominance"):
+            detail += (" [ASSUMPTION: the labor rate driving this number is "
+                       "the default, not measured — pass human_cost_per_min "
+                       "with your real rate.]")
+        L.append("  %s" % detail)
         L.append("  -> %s" % f["action"])
         L.append("")
     L.append("Attempts:              %s" % "{:,}".format(p["attempts"]))
@@ -34,7 +57,18 @@ def report_text(p, token_dashboard_per_success=None):
     L.append("  Model/API (terminal): $%.2f" % ps["model"])
     L.append("  Retry path:           $%.2f" % ps["retry_path"])
     L.append("  Tool calls:           $%.2f" % ps["tools"])
-    L.append("  Human review:         $%.2f" % ps["human"])
+    # C3: the labor rate is a per-deployment parameter. When the default
+    # assumption is in effect the report says so loudly — a VP Finance
+    # reader must never mistake it for a measured number.
+    if p.get("human_rate_assumed", True):
+        L.append("  Human review:         $%.2f  (at $%.2f/hr loaded — "
+                 "ASSUMPTION, not measured; pass human_cost_per_min=... "
+                 "with your real rate)" % (ps["human"],
+                                            p.get("human_cost_per_min", 0) * 60))
+    else:
+        L.append("  Human review:         $%.2f  (at $%.2f/hr loaded, "
+                 "caller-supplied)" % (ps["human"],
+                                       p.get("human_cost_per_min", 0) * 60))
     L.append("  Fully loaded:         $%.2f" % ps["fully_loaded"])
     if token_dashboard_per_success is not None:
         mult = (ps["fully_loaded"] / token_dashboard_per_success
@@ -64,9 +98,14 @@ def report_text(p, token_dashboard_per_success=None):
         L.append("       %s: $%s (%.0f%% of model spend)"
                  % (k, "{:,.2f}".format(v), v / tot_model * 100))
     if p["cached_tokens"] and p["cache_savings"] > 0:
-        L.append("     Prompt cache: %s input tokens cached, saving $%s"
+        # H3: name the discount rate — it is vendor-specific (10% is
+        # Anthropic's published rate), not a universal constant.
+        L.append("     Prompt cache: %s input tokens cached, saving $%s "
+                 "(priced at %.0f%% of input rate; override per vendor via "
+                 "cache_read_discount=...)"
                  % ("{:,}".format(p["cached_tokens"]),
-                    "{:,.2f}".format(p["cache_savings"])))
+                    "{:,.2f}".format(p["cache_savings"]),
+                    p.get("cache_read_discount", 0.10) * 100))
     # Waste lenses, not additive partitions: a failed attempt's retry-path
     # spend appears in both the failed-runs and retry-path lines by design.
     L.append("")
@@ -91,6 +130,24 @@ def report_text(p, token_dashboard_per_success=None):
                  "price for: %s)"
                  % ("{:,.2f}".format(p["unpriced_spend"]),
                     ", ".join(p["unpriced_models"])))
+    # H2: tool spend from built-in per-call estimates is flagged, never
+    # presented as measured. Pass explicit costs to log_tool_call to clear.
+    if p.get("tools_default_priced_spend", 0.0) > 0:
+        L.append("")
+        L.append("  WARNING: $%s of tool spend uses built-in per-call "
+                 "ESTIMATES (for: %s) — measure your tool costs and pass "
+                 "them explicitly"
+                 % ("{:,.2f}".format(p["tools_default_priced_spend"]),
+                    ", ".join(p.get("tools_default_priced_names", []))))
+    # missing usage data is not free inference: warn so the $0.00
+    # per-model lines above are never read as genuinely free.
+    if p.get("missing_usage_models"):
+        models = p["missing_usage_models"]
+        L.append("")
+        L.append("  WARNING: usage data missing for %d model%s (%s) — "
+                 "their $0.00 is missing data, not free inference"
+                 % (len(models), "s" if len(models) != 1 else "",
+                    ", ".join(models)))
     L.append("")
     if p["business_value"] > 0:
         L.append("Business value:        $%s" % "{:,.2f}".format(p["business_value"]))
@@ -102,7 +159,7 @@ def report_text(p, token_dashboard_per_success=None):
         # fully and leave value for deployments with a clean baseline.
         L.append("Total cost:            $%s" % "{:,.2f}".format(p["cost_total"]))
         L.append("Business value:        not baselined (optional in V1)")
-    if p["budget_per_success"]:
+    if p.get("budget_per_success") is not None:
         L.append("Budget: $%.2f/success, breaches: %d"
                  % (p["budget_per_success"], p["budget_breaches"]))
     return "\n".join(L)
@@ -186,6 +243,47 @@ def write_html(path, tracker, policy_sim=None, token_dashboard_per_success=None)
             % ("{:,.2f}".format(p["unpriced_spend"]),
                _html.escape(", ".join(p["unpriced_models"]))))
 
+    # H2: tool spend from built-in estimates is flagged, never hidden.
+    tool_est_banner = ""
+    if p.get("tools_default_priced_spend", 0.0) > 0:
+        tool_est_banner = (
+            '<div class="warn"><b>Estimated tool spend:</b> $%s of tool spend '
+            'uses built-in per-call estimates (for %s) — measure your tool '
+            'costs and pass them explicitly to log_tool_call.</div>'
+            % ("{:,.2f}".format(p["tools_default_priced_spend"]),
+               _html.escape(", ".join(p.get("tools_default_priced_names", [])))))
+
+    # missing usage data is not free inference: warn loudly so the $0.00
+    # per-model rows are never read as genuinely free.
+    missing_usage_banner = ""
+    missing_models = p.get("missing_usage_models")
+    if missing_models:
+        missing_usage_banner = (
+            '<div class="warn"><b>Missing usage data:</b> usage data is '
+            'missing for %d model%s (%s) — their $0.00 is missing data, '
+            'not free inference.</div>'
+            % (len(missing_models), "s" if len(missing_models) != 1 else "",
+               _html.escape(", ".join(missing_models))))
+
+    # C2: stamp the price vintage on every report; stale tables warn loudly.
+    vint = p.get("price_vintage")
+    if vint:
+        vintage_line = ("Price table v%s &middot; verified %s &middot; %d days old"
+                        % (_html.escape(str(vint["version"])),
+                           _html.escape(vint["updated"]),
+                           vint["age_days"]))
+        stale_banner = ""
+        if vint["stale"]:
+            stale_banner = (
+                '<div class="warn"><b>Stale pricing:</b> price table v%s is %d '
+                'days old (last verified %s). Vendor prices may have changed '
+                '— verify before trusting dollar figures.</div>'
+                % (_html.escape(str(vint["version"])), vint["age_days"],
+                   _html.escape(vint["updated"])))
+    else:
+        vintage_line = "Price table vintage unknown (legacy ledger)"
+        stale_banner = ""
+
     insight_cards = ""
     top_findings = findings(p)[:3]
     if top_findings:
@@ -211,6 +309,16 @@ def write_html(path, tracker, policy_sim=None, token_dashboard_per_success=None)
         _bar("Tool calls", ps["tools"], ps_total, "#7ab648"),
         _bar("Human review", ps["human"], ps_total, "#c25bb5"),
     ])
+    # C3: never let the default labor assumption pass silently in the
+    # visual report either.
+    if p.get("human_rate_assumed", True):
+        human_note = (
+            '<p class="s">Human review costed at $%.2f/hr loaded — '
+            '<b>default assumption</b>, not a measured number. Pass '
+            'human_cost_per_min=... with your real loaded rate.</p>'
+            % (p.get("human_cost_per_min", 0) * 60))
+    else:
+        human_note = ""
 
     tot_model = p["cost_model"] or 1
     model_rows = "".join(
@@ -246,7 +354,8 @@ def write_html(path, tracker, policy_sim=None, token_dashboard_per_success=None)
                "{:,.2f}".format(policy_sim["saved_spend"]),
                policy_sim["would_stop_success"],
                "{:,.2f}".format(policy_sim["collateral_spend"]),
-               pol["max_cost_per_attempt"], pol["yield_floor"]))
+               _html.escape(str(pol["max_cost_per_attempt"])),
+               _html.escape(str(pol["yield_floor"]))))
         if policy_sim["worst"]:
             policy_section += (
                 '<table><tr><th>Run</th><th>Cost</th><th>Outcome</th><th>Reason</th></tr>' +
@@ -306,8 +415,12 @@ footer { margin-top: 24px; font-size: 12px; color: #8a94a1; text-align: center; 
 <main>
 <h1>Agent P&L: %(agent)s</h1>
 <p class="meta">%(attempts)s attempts &middot; %(successes)s autonomous completions &middot;
-%(success_rate)s success rate &middot; %(escalations)s escalations &middot; %(reopened)s reopened</p>
+%(success_rate)s success rate &middot; %(escalations)s escalations &middot; %(reopened)s reopened<br>
+<span class="s">%(vintage_line)s</span></p>
 %(unpriced_banner)s
+%(tool_est_banner)s
+%(missing_usage_banner)s
+%(stale_banner)s
 <div class="cards">
 <div class="card"><div class="k">Fully loaded</div><div class="v">$%(fully_loaded)s</div>
 <div class="s">per accepted outcome</div></div>
@@ -322,6 +435,7 @@ footer { margin-top: 24px; font-size: 12px; color: #8a94a1; text-align: center; 
 %(insight_cards)s
 <h2>Cost per successful outcome</h2>
 %(breakdown)s
+%(human_note)s
 <h2>Per-attempt cost distribution</h2>
 %(histogram)s
 <p class="s">p50 $%(p50).2f &middot; p95 $%(p95).2f &middot; max $%(max).2f per attempt</p>
@@ -356,8 +470,12 @@ Context tax: <b>$%(context_tax)s</b> (%(tax_share).0f%% of model spend) vs a fla
         "escalations": "{:,}".format(p["escalations"]),
         "reopened": "{:,}".format(p["reopened"]),
         "unpriced_banner": unpriced_banner,
-        "fully_loaded": "{:,.2f}".format(ps["fully_loaded"]),
-        "mult_card": mult_card,
+        "tool_est_banner": tool_est_banner,
+        "missing_usage_banner": missing_usage_banner,
+        "stale_banner": stale_banner,
+        "vintage_line": vintage_line,
+        "human_note": human_note,
+        "fully_loaded": "{:,.2f}".format(ps["fully_loaded"]),        "mult_card": mult_card,
         "yield_ratio": "%.0f%%" % (p["yield_ratio"] * 100),
         "tail_share": "%.0f%%" % (t["top5pct_share"] * 100),
         "tail_label": "the %s" % t["tail_label"],
@@ -376,8 +494,11 @@ Context tax: <b>$%(context_tax)s</b> (%(tax_share).0f%% of model spend) vs a fla
         "waste": (1 - p["yield_ratio"]) * 100,
         "model_total": "{:,.2f}".format(p["cost_model"]),
         "cache_line": ("Prompt cache: {:,} input tokens cached, saving "
-                       "${:,.2f}.".format(p["cached_tokens"],
-                                          p["cache_savings"])
+                       "${:,.2f} (priced at {:.0f}% of input rate — "
+                       "vendor-specific; override via "
+                       "cache_read_discount).".format(p["cached_tokens"],
+                                          p["cache_savings"],
+                                          p.get("cache_read_discount", 0.10) * 100)
                        ) if p["cached_tokens"] and p["cache_savings"] > 0 else "",
         "model_rows": model_rows,
         "costliest_rows": costliest_rows,

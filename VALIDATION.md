@@ -11,35 +11,50 @@ Method: every trace was fed through the meter exactly as a customer would (`pyth
 
 Result: 16/16 processed clean, exit 0, zero hand-fixing.
 
-Economic insight: the 8 failed runs (50%) consumed $13.06 of $24.79 total (53% of spend) for zero outcomes; 74% of all tokens burned on the retry path. The lever is early termination of retry-tail runs, not cheaper models.
+Economic insight: the 8 failed runs (50%) consumed $13.06 of $24.79 total (53% of spend) for zero outcomes; 89% of all tokens burned on retries and failed runs (11% yield under the hardened failed-attempts-are-waste rule; the pre-hardening report quoted 74% retry-path). The lever is early termination of retry-tail runs, not cheaper models.
 
 ### 2. mini-swe-agent-s3 (public SWE-bench submission runs)
 12 real `.traj.json` runs, model claude-sonnet-4-20250514, every tool failure backed by a recorded nonzero return code. The submission publishes real per-instance recorded costs, so the meter was cross-checked against ground truth. Dir: `validation-traces/mini-swe-agent-s3/`.
 
 Result: 12/12 processed clean, exit 0, zero hand-fixing. Policy-cap replay and malformed-input handling (exit 2, line-numbered error) verified on real data.
 
-Economic insight: one failed 63-turn run (django__django-11265) was the single costliest run ($3.92 metered / $0.92 recorded); 3 failed runs (25%) took 36% of spend. Against real recorded costs: $4.55 total, $0.51 per resolved instance.
+Economic insight: one failed 63-turn run (django__django-11265) was the single costliest run ($3.92 metered / $0.92 recorded); 3 failed runs (25%) took 36% of spend. Against real recorded costs: $4.55 total, $0.51 per resolved instance. Token-basis caveat: the metered side is built on chars//4 estimates (see the dir's SOURCES.md), so the metered-vs-recorded gap mixes token-estimation error with any prompt-caching effect — the two cannot be separated from these figures alone.
+
+Token counts in these trajectories are mechanical estimates (characters/4
+of accumulated message text — see the dir's SOURCES.md), so the metered
+dollar figures are estimates built on estimated tokens; the retry share and
+cost structure are the real signal.
 
 ### 3. otel-live trace A: sequential support run with retry and failure
-13 real OpenTelemetry SDK spans (real timestamps, real HTTP calls, a real recorded ConnectionRefusedError with ERROR status and retry), plus malformed spans (unpriced model with negative input tokens, usage-tokens-but-no-model span, span with no end timestamp, tool identified by name prefix only). Dir: `validation-traces/otel-live/`, file `trace-a-sequential-retry.json`.
+13 real OpenTelemetry SDK spans (real timestamps, real HTTP calls; a real
+ConnectionRefusedError was raised at generation time against localhost:9 and
+is recorded as an ERROR span status plus a retry-reason attribute — the
+exception event itself was lost in JSON serialization and is not in the
+shipped artifact), plus malformed spans (unpriced model with negative input
+tokens, usage-tokens-but-no-model span, span with no end timestamp, tool
+identified by name prefix only). Dir: `validation-traces/otel-live/`, file `trace-a-sequential-retry.json`.
 
 Result: processed clean, exit 0, zero hand-fixing.
 
-Economic insight: the 3-minute human escalation ($3.51) is 98.5% of the fully-loaded $3.57 attempt; the refund_api failure's retry loop made model spend 1.39x a clean run and put 42% of all tokens on the retry path.
+Economic insight: the 3-minute human escalation ($3.51) is 98.4% of the
+fully-loaded $3.57 attempt; the refund_api failure's retry loop made model
+spend 1.38x a clean run. The attempt failed, so under the hardened
+failed-attempts-are-waste rule 100% of its tokens classify as waste (the
+pre-hardening report quoted a 42% retry-path share).
 
 ### 4. otel-live trace B: parallel fan-out with a dead branch
-12 real SDK spans, 4 concurrent branches via ThreadPoolExecutor, one branch fails twice and stays dead, fan-in merge LLM call. File `trace-b-parallel-fanout.json`.
+12 real SDK spans, 4 concurrent branches via ThreadPoolExecutor at generation time (the shipped JSON records no thread attributes; branch attribution below is reconstructed from span names/timing, not from branch metadata in the trace), one branch fails twice and stays dead, fan-in merge LLM call. File `trace-b-parallel-fanout.json`.
 
 Result: processed clean, exit 0, zero hand-fixing.
 
-Economic insight: the dead payment branch burned 44% of the attempt's cost ($0.024 of $0.055) for zero terminal value; yield reads 56% but overstates waste under concurrency because the productive merge step is counted as retry-path waste.
+Economic insight: the dead payment branch burned 44% of the attempt's cost ($0.024 of $0.055) for zero terminal value. The attempt failed, so under the hardened failed-attempts-are-waste rule its yield is 0% and all tokens classify as waste (the pre-hardening report quoted 56% yield and a "merge step counted as waste" mechanism that no longer describes the code).
 
 ### 5. live-langgraph-agent: real LangGraph agent against live public APIs
 A real LangGraph StateGraph (plan, parallel Send fan-out to two tools, fan-in, retry loop, streamed report), instrumented with the 3-line AverthCallbackHandler, run 16 times against DuckDuckGo instant-answer API, GitHub repo search, and httpbin (deliberate HTTP 500s). 16 attempts, 12 successes, 21 retries, $0.1783 total. Includes a genuine unplanned failure (both parallel tools hit real network timeouts). Model orchestration used a deterministic local stub (no model API key in this environment); token counts are real tiktoken measurements, tool calls/latency/retries/failures are 100% real. Dir: `validation-traces/live-langgraph-agent/`.
 
 Result: validated clean with zero hand-fixing. In-process pnl(), rehydrated ledger, and CLI output all agree on every bucket.
 
-Economic insight: $0.174 of $0.178 total (97.6%) is external tool spend, the layer invisible on provider invoices, while 1,794 real tokens cost $0.0043. One-third of tool invocations failed, and before the fix those were metered at $0. For agentic workloads with per-call-priced tools, the lever is tool-call count and failure rate, not model selection.
+Economic insight: $0.174 of $0.178 total (97.6%) is external tool spend, the layer invisible on provider invoices, while 1,794 real tokens cost $0.0043. One-third of tool invocations failed, and before the fix those were metered at $0. Cost basis (read before trusting the dollars): the $0.174 is priced entirely at the meter's built-in per-call defaults ($0.005 web_search x16, $0.002 default x47) — the tools are free public APIs (DuckDuckGo instant-answer, GitHub repo search, httpbin), so no per-call vendor metering exists here and no actual tool spend occurred. Current reports flag this portion as estimates; this report predates the flag and states it here instead. For agentic workloads with genuinely per-call-priced tools, the lever is tool-call count and failure rate, not model selection.
 
 ## Issues found and dispositions
 
@@ -56,7 +71,7 @@ Economic insight: $0.174 of $0.178 total (97.6%) is external tool spend, the lay
 8. `deepseek-v3.2` and the stub model flow through the documented fallback estimate, now flagged end-to-end via the fixed unpriced_models path. Deliberately NOT added to MODEL_PRICES: no verified vendor price, and inventing one would violate the flagged-estimate rule.
 
 ### Trace-quality issues (documented as known limitations, not hacked around)
-9. Prompt caching is not modeled. Against mini-SWE-agent's real recorded costs, the meter reads $17.49 vs $4.55 recorded (3.84x; per-instance 1.91x-4.47x, rising with run length). Implied prompt-cache hit rates of 0.48-0.90 reproduce the recorded costs exactly. The library prices all input tokens at list rate with no cache term; traces record no cache usage, so a cache-aware change could not be validated here. Recommended follow-up: add `cached_input_tokens` to the model event schema. This is the largest known accuracy gap and the top candidate for the next validation pass.
+9. Prompt caching is not modeled. Against mini-SWE-agent's real recorded costs, the meter reads $17.49 vs $4.55 recorded (3.84x; per-instance 1.91x-4.47x, rising with run length). Implied prompt-cache hit rates of 0.48-0.90 reproduce the recorded costs exactly. The library prices all input tokens at list rate with no cache term; traces record no cache usage, so a cache-aware change could not be validated here. Recommended follow-up: add `cached_input_tokens` to the model event schema. This is the largest known accuracy gap and the top candidate for the next validation pass. Caveat: the metered numerator is itself built on chars//4 token estimates (see the trajectory sections), so the cache-hit-rate theory cannot be separated from token-estimation error — treat 0.48-0.90 as an upper bound on the caching effect, not a measurement.
 10. An ERROR span marks the attempt failed even when a retry recovered it (the `averth.success` override exists for this).
 11. Retry-path waste marking is attempt-global, so under concurrency a productive later span (trace B's merge step) counts as waste.
 12. Usage-tokens-without-model spans are silently skipped.
@@ -101,11 +116,15 @@ recorded cache-hit rates.
 
 **#11 — retry waste is branch-scoped under concurrency.** `log_retry` and all
 model/estimate logging accept `branch=`; a retry with `branch="research"`
-marks only later "research" steps as waste, and the merge step stays terminal.
-A retry with no branch keeps the old attempt-global behavior. OTel reads
-`averth.branch`; the strict JSONL schema accepts it. The trace-B case from
-the first pass (productive merge step counted as waste) now attributes
-correctly: only the dead branch's tokens count as waste.
+marks that branch's *existing* steps (model and tool calls so far) as waste
+retroactively — work logged on the branch *after* the retry is the redo and
+starts fresh, and the productive merge step stays terminal. A retry with no
+branch keeps the old attempt-global behavior. OTel reads
+`averth.branch`; the strict JSONL schema accepts it. On successful attempts
+with a dead branch, only the dead branch's tokens count as waste; the
+trace-B case from the first pass itself failed, so under the
+failed-attempts-are-waste rule all of its tokens classify as waste
+regardless of branch scoping.
 
 **#14 — the "$0.00 retries beside 32 retries" absurdity is fixed.**
 `end_attempt` now computes `retry_path_cost` (waste-marked model steps +
@@ -165,9 +184,9 @@ invoice figure.
 ### Scorecard after the hardening pass
 
 - Full suite: 112 passed (70 baseline + 42 new), zero failures.
-- Stress scenarios run: seeds 1/5/7/9/42/123/124 at N=50..20,000; determinism
-  verified (same seed -> identical P&L to the cent); 20k attempts meter in
-  ~1.2s with no performance cliff.
+- Stress scenarios run: seeds 1/7/42/123/124 at N=50..2,000 in the test
+  suite; determinism verified (same seed -> identical P&L to the cent);
+  20k attempts meter in ~2s with no performance cliff (machine-dependent).
 - New bugs found by the stress harness and fixed: legacy-ledger KeyError in
   `pnl()`; report template `%`-formatting crashes (2); OTel branch propagation
   on retry events was verified working end-to-end.
@@ -177,9 +196,11 @@ invoice figure.
 
 ## Appendix: hostile-review round 2 (2026-10-01, branch `hardening-pass`)
 
-A second hostile review (20 findings, `HOSTILE_REVIEW.md`) attacked the
-hardened code. Disposition: 14 fixed in code, 4 documented as known
-limitations, 2 were non-issues on re-examination. Full suite now 130 passed
+A second hostile review (22 findings, `HOSTILE_REVIEW.md`: M1-M4, C1-C10,
+H1-H8) attacked the hardened code. Disposition: 15 fixed in code (listed
+below), 4 documented as known limitations, 2 were non-issues on
+re-examination, and C7 (legacy-ledger `context_growth` KeyError) is handled
+by `pnl()`'s graceful defaults. Full suite now 130 passed
 (112 + 18 new in `tests/test_review_round2.py`).
 
 ### Fixed
@@ -209,8 +230,11 @@ limitations, 2 were non-issues on re-examination. Full suite now 130 passed
   validated non-negative numeric.
 - **JSONL (C4):** `business_value` may be negative (a bad outcome can destroy
   value); tool events accept `branch`.
-- **Insights honesty:** `low_yield` dollars are now exact
-  (`cost_model - cost_model_terminal`), not a token-ratio approximation;
+- **Insights honesty:** `low_yield` dollars are now exact (`cost_retry_path`:
+  all model spend off the terminal path, *including* `extra_model_cost`
+  from retries — corrected in review pass 2; the round-2 formula
+  `cost_model - cost_model_terminal` missed the extra retry cost and
+  understated waste), not a token-ratio approximation;
   new `tool_dominance` and `budget_breach` findings (layer 2 finally has a
   finding); $1.00 materiality floor (no finding fires on dust);
   `tail_concentration` requires n>=20 (below that the report says

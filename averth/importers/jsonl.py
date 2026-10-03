@@ -28,8 +28,11 @@ Field rules, enforced strictly:
     latency_ms, minutes) must be int/float (not bool), finite, and >= 0;
     business_value must be finite but may be negative
   - cached_input_tokens may not exceed input_tokens
-  - "branch" (model, retry events) scopes retry-path waste marking to one
-    parallel branch; omit for attempt-global marking
+  - "branch" (model, tool, retry events) scopes retry-path waste marking
+    to one parallel branch; omit for attempt-global marking. On tool
+    events it tags which branch made the call, so retry-path tool spend
+    is attributed to the discarded path (an untagged tool step survives
+    a branch-scoped retry unmarked).
   - "success" and "reopened" must be real booleans, not 0/1
   - unknown keys are rejected
   - a case with no "end" line is auto-ended with success=False
@@ -93,7 +96,10 @@ def _validate(line_no, ev):
         raise ValueError("line %d: expected a JSON object, got %r"
                          % (line_no, ev))
     etype = ev.get("type")
-    if etype not in _SPECS:
+    # H1: the membership test alone raises bare TypeError for unhashable
+    # "type" values (e.g. a list); the documented contract is ValueError
+    # naming the offending line number.
+    if not isinstance(etype, str) or etype not in _SPECS:
         raise ValueError("line %d: unknown event type %r (expected one of %s)"
                          % (line_no, etype, ", ".join(sorted(_SPECS))))
     required, optional = _SPECS[etype]

@@ -4,13 +4,15 @@ Exercises all five cost layers:
   1. context compounding — input tokens grow across steps in an attempt
   2. external tool spend — enrichment/search/sandbox calls outside the LLM bill
   3. yield vs waste      — retries mark dead-end token paths
-  4. heavy tail          — 2% of attempts go runaway and burn 60%+ of budget
+  4. heavy tail          — ~2% of attempts go runaway; the top 5% of
+     attempts consume ~61% of spend (measured, seed 42)
   5. multi-model + labor — haiku triage, sonnet planning, opus fallback, humans
 """
 
 import random
 import sys
 import json
+import os
 sys.path.insert(0, ".")
 
 from averth import Tracker
@@ -84,15 +86,23 @@ print(f"Budget breaches captured by on_breach hook: {len(breaches)}")
 print()
 print("=" * 60)
 print("PHASE-0 PILOT FLOW: customer runs the meter locally, exports the")
-print("sanitized ledger (metadata only, no prompts/customer data), we replay")
+print("sanitized ledger (cost/token/timing metadata only: no prompts,")
+print("completions, or tool payloads), we replay")
 print("policies offline. No live enforcement.")
 print("=" * 60)
 from averth import policy as P
 
-P.export_ledger(t, "/tmp/averth-ledger.json")
-ledger = P.load_ledger("/tmp/averth-ledger.json")
+_ledger_path = "/tmp/averth-ledger.json"
+# The demo must never follow a planted symlink (CWE-59): a symlink at the
+# ledger path would redirect the write into an attacker-chosen file.
+if os.path.islink(_ledger_path) or os.path.ismount(_ledger_path):
+    raise SystemExit("refusing to write through %s: not a regular file"
+                     % _ledger_path)
+P.export_ledger(t, _ledger_path)
+ledger = P.load_ledger(_ledger_path)
 print(f"Ledger exported: {len(ledger['attempts'])} attempts, "
-      f"{len(json.dumps(ledger)):,} bytes, no prompts or customer data.")
+      f"{len(json.dumps(ledger)):,} bytes, no prompts, completions, or "
+      f"tool payloads.")
 print()
 sim = P.simulate_policy(ledger, max_cost_per_attempt=6.00, yield_floor=0.50)
 print(P.policy_text(sim))

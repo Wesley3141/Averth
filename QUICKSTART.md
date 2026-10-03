@@ -3,7 +3,9 @@
 Meter one production agent for two weeks. Read-only. The meter runs inside
 your environment and records cost/token/timing metadata only. It makes no
 network calls and exfiltrates no data: the sanitized ledger contains no
-prompts, no completions, no tool payloads, and no customer data.
+prompts, no completions, and no tool payloads. (Caller-provided free text —
+case IDs, tool names, retry/escalation reasons — is exported verbatim, so
+redact anything sensitive before the ledger leaves your environment.)
 
 ## 1. Install (30 seconds)
 
@@ -25,7 +27,13 @@ Use the Tracker directly around each resolved case:
 ```python
 from averth import Tracker
 
-t = Tracker("support-agent", budget_per_success=6.00)
+# budget_per_success arms a post-hoc hook: end_attempt() raises BudgetBreach
+# (or calls your on_breach callback) when a single attempt costs more than
+# this. The attempt is recorded before the raise, so no data is lost — but
+# plan for the exception in your loop, or pass on_breach= to handle it
+# without raising.
+t = Tracker("support-agent", budget_per_success=6.00,
+            on_breach=lambda attempt, breach: print("over budget:", breach))
 
 # per resolved case:
 t.start_attempt(case_id="case-12345")
@@ -42,7 +50,8 @@ loops, human review minutes, and whether the case was accepted/resolved.
 Failed runs, reopens, and escalations are first-class: end with
 `success=False` or `reopened=True`.
 
-On LangChain, the same data is captured with three lines, no manual calls:
+On LangChain, model calls, tool use, and errors are captured with three
+lines, no manual calls:
 
 ```python
 from averth.integrations.langchain import AverthCallbackHandler
@@ -50,6 +59,13 @@ from averth.integrations.langchain import AverthCallbackHandler
 handler = AverthCallbackHandler(tracker)
 agent.invoke(..., config={"callbacks": [handler]})
 ```
+
+Scope note: the handler meters what the framework exposes — model token
+counts, tool calls (counted, and costed at documented estimates unless you
+log explicit costs), and chain errors. It cannot see business value, human
+review minutes, retry costs, or reopened flags; for fully loaded cost per
+accepted outcome on those dimensions, use the manual API above alongside
+the handler.
 
 Prefer existing traces? Import one instead of instrumenting:
 
@@ -67,11 +83,13 @@ P.export_ledger(t, "averth-ledger.json")
 ```
 
 The ledger is cost metadata only: per-attempt tokens, tool spend, timings,
-success flags. No prompts, no completions, no payloads, no customer data.
+success flags. No prompts, no completions, no payloads. (Case IDs, tool
+names, and retry/escalation reasons are exported verbatim — redact anything
+sensitive before sharing.)
 
 ## 4. Send us the ledger
 
-Email the JSON to the pilot address. We return within 48 hours:
+Email the JSON to wesleyd3141@gmail.com. We return within 48 hours:
 
 - fully loaded cost per accepted outcome (model + tools + retries + human review)
 - yield ratio and tail concentration (which % of runs burn which % of budget)

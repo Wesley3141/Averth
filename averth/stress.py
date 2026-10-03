@@ -4,7 +4,7 @@ Generates long-horizon support-agent traffic with the pathologies real
 production traces have: retry storms, human escalations, multi-model routing,
 per-call-priced tools (some failing), heavy-tail runaways, quadratic-ish
 context growth, prompt-cache hits, parallel branch fan-out, and
-failed-then-reopened runs. Seeded for reproducibility: the same seed always
+accepted-then-reopened runs. Seeded for reproducibility: the same seed always
 produces the same ledger.
 
 This is the stress harness the meter is validated against, and it ships so a
@@ -56,8 +56,10 @@ RETRY_REASONS = [
 class _Gen:
     """Drives a Tracker and mirrors every call as an EVENT-schema dict."""
 
-    def __init__(self, tracker, rng, record_events):
+    def __init__(self, tracker, rng, record_events,
+                 value_per_case=HUMAN_VALUE_PER_CASE):
         self.t = tracker
+        self.value_per_case = value_per_case
         self.rng = rng
         self.record_events = record_events
         self.events = []
@@ -127,7 +129,12 @@ class _Gen:
                                 "case_id": self.t._cur["case_id"],
                                 "minutes": minutes, "reason": reason})
 
-    def end(self, success, reopened=False, value=HUMAN_VALUE_PER_CASE):
+    def end(self, success, reopened=False, value=None):
+        # value_per_case is the assumed business value of a resolved ticket
+        # (same assumption class as the labor rate: a per-deployment
+        # parameter, defaulted here for the synthetic workload).
+        if value is None:
+            value = self.value_per_case
         self.t.end_attempt(success=success,
                            business_value=value if success else 0.0,
                            reopened=reopened)
@@ -210,15 +217,18 @@ class _Gen:
 
 
 def generate(seed=42, attempts=2000, agent_name="synthetic-support",
-            record_events=False):
+            record_events=False, human_value_per_case=HUMAN_VALUE_PER_CASE):
     """Drive a Tracker with adversarial synthetic production traffic.
 
     Returns (tracker, events). events is None unless record_events=True.
-    Deterministic for a fixed seed.
+    Deterministic for a fixed seed. human_value_per_case is the assumed
+    dollar value of a resolved ticket credited as business_value on
+    successes — an explicit parameter, not a hidden constant.
     """
     rng = random.Random(seed)
     tracker = Tracker(agent_name)
-    g = _Gen(tracker, rng, record_events)
+    g = _Gen(tracker, rng, record_events,
+             value_per_case=human_value_per_case)
     for i in range(attempts):
         g.start("S-%05d" % i)
         r = rng.random()

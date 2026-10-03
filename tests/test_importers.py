@@ -152,12 +152,14 @@ class TestLangsmithImporter(unittest.TestCase):
         tracker = tracker_from_ledger(ledger)
         p = tracker.pnl()
         self.assertEqual(p["attempts"], 3)
-        self.assertEqual(p["successes"], 2)
+        self.assertEqual(p["successes"], 3)
         self.assertGreater(p["cost_total"], 0)
 
+        # H-LS3 (2026-10-02): trace-3's root chain errored but a later llm
+        # run succeeded, so the case counts as recovered (success=True);
+        # no case in this fixture ends failed.
         failed = [a for a in tracker.attempts if not a["success"]]
-        self.assertEqual(len(failed), 1)
-        self.assertEqual(failed[0]["case_id"], "trace-3")
+        self.assertEqual(failed, [])
 
         # retry + escalation markers on trace-2
         t2 = [a for a in tracker.attempts if a["case_id"] == "trace-2"][0]
@@ -188,24 +190,47 @@ class TestJsonlImporter(unittest.TestCase):
         self.assertEqual(case2["human_min"], 10)
         self.assertEqual(case2["business_value"], 8.0)
 
-    def test_jsonl_invalid_lines_raise(self):
-        bad = [
-            '{"type": "model", "case_id": "x"}',                       # missing model
-            '{"type": "bogus", "case_id": "x"}',                       # unknown type
-            '{"type": "end", "case_id": "x", "success": 1}',           # bool required
-            '{"type": "tool", "case_id": "x", "name": "t", "cost": -1}',  # >= 0
-            '{"type": "retry", "case_id": "x", "bogus_key": 1}',       # unknown key
-            'not json at all',
-        ]
+    # Each invalid line gets its own file: load_jsonl raises on the FIRST
+    # bad line, so a single multi-bad-line file would only ever exercise
+    # line 1 and leave the other five validators untested.
+    def _assert_bad_line(self, line, expect_in="line 1"):
         with tempfile.NamedTemporaryFile("w", suffix=".jsonl",
                                          delete=False) as tmp:
-            tmp.write("\n".join(bad) + "\n")
+            tmp.write(line + "\n")
         try:
             with self.assertRaises(ValueError) as ctx:
                 jsonl.load_jsonl(tmp.name)
         finally:
             os.unlink(tmp.name)
-        self.assertIn("line 1", str(ctx.exception))
+        self.assertIn(expect_in, str(ctx.exception))
+
+    def test_jsonl_invalid_missing_field(self):
+        self._assert_bad_line(
+            '{"type": "model", "case_id": "x"}')  # missing model
+
+    def test_jsonl_invalid_unknown_type(self):
+        self._assert_bad_line(
+            '{"type": "bogus", "case_id": "x"}')  # unknown type
+
+    def test_jsonl_invalid_success_not_bool(self):
+        self._assert_bad_line(
+            '{"type": "end", "case_id": "x", "success": 1}')  # bool required
+
+    def test_jsonl_invalid_negative_cost(self):
+        self._assert_bad_line(
+            '{"type": "tool", "case_id": "x", "name": "t", "cost": -1}')  # >= 0
+
+    def test_jsonl_invalid_unknown_key(self):
+        self._assert_bad_line(
+            '{"type": "retry", "case_id": "x", "bogus_key": 1}')  # unknown key
+
+    def test_jsonl_invalid_malformed_json(self):
+        self._assert_bad_line('not json at all')
+
+    def test_jsonl_invalid_unhashable_type(self):
+        # A non-string "type" must raise the documented ValueError with a
+        # line number, not a bare TypeError from the membership test.
+        self._assert_bad_line('{"type": ["model"], "case_id": "x"}')
 
     def test_jsonl_invalid_line_number_reported(self):
         lines = [

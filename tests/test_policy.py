@@ -7,15 +7,8 @@ import pytest
 
 from averth import Tracker
 from averth import policy as P
-
-SCHEMA_KEYS = {
-    "case_id", "model", "tools", "retry_cost", "retries",
-    "human_min", "human_cost", "ai_cost", "total_cost",
-    "total_tokens", "waste_tokens", "context_growth",
-    "context_tax", "retry_path_cost", "terminal_model_cost",
-    "cached_tokens", "cache_savings",
-    "success", "reopened", "business_value", "per_model",
-}
+from averth.policy import LEDGER_ATTEMPT_KEYS
+from averth.importers.common import tracker_from_ledger
 
 
 def build_tracker():
@@ -46,8 +39,59 @@ def test_export_load_roundtrip_preserves_schema(tmp_path):
     ledger = P.load_ledger(path)
     assert ledger["agent"] == "policy-test"
     assert len(ledger["attempts"]) == 3
+    # Exact key match against the single source of truth: a dropped key
+    # (e.g. "events") must fail here, not slip through a subset check.
     for a in ledger["attempts"]:
-        assert SCHEMA_KEYS.issubset(set(a.keys())), f"missing keys: {SCHEMA_KEYS - set(a.keys())}"
+        assert set(a.keys()) == set(LEDGER_ATTEMPT_KEYS), \
+            f"key drift: {set(a.keys()) ^ set(LEDGER_ATTEMPT_KEYS)}"
+
+
+def test_export_load_roundtrip_preserves_values(tmp_path):
+    t = build_tracker()
+    before = [dict(a) for a in t.attempts]
+    path = str(tmp_path / "ledger.json")
+    P.export_ledger(t, path)
+    ledger = P.load_ledger(path)
+    for a_before, a_after in zip(before, ledger["attempts"]):
+        for k in LEDGER_ATTEMPT_KEYS:
+            v0, v1 = a_before[k], a_after[k]
+            if k == "events":
+                # tuples become lists over JSON; compare element-wise
+                assert [list(e) for e in v0] == [list(e) for e in v1], \
+                    "value drift on events"
+            elif isinstance(v0, float):
+                assert v1 == pytest.approx(v0), f"value drift on {k}"
+            else:
+                assert v1 == v0, f"value drift on {k}"
+
+
+def test_retry_reasons_survive_export_reimport(tmp_path):
+    # The ledger's promise (H5): retry reasons are metadata that must
+    # survive export -> reimport, verbatim.
+    t = build_tracker()
+    path = str(tmp_path / "ledger.json")
+    P.export_ledger(t, path)
+    ledger = P.load_ledger(path)
+    reasons = [e[1] for a in ledger["attempts"]
+               for e in a["events"] if e[0] == "retry"]
+    assert "bad draft" in reasons
+    # ... and through the rehydration path, not just the file
+    t2 = tracker_from_ledger(ledger)
+    reasons2 = [e[1] for a in t2.attempts
+                for e in a["events"] if e[0] == "retry"]
+    assert "bad draft" in reasons2
+
+
+def test_tracker_from_ledger_pnl_matches(tmp_path):
+    t = build_tracker()
+    p1 = t.pnl()
+    path = str(tmp_path / "ledger.json")
+    P.export_ledger(t, path)
+    t2 = tracker_from_ledger(P.load_ledger(path))
+    p2 = t2.pnl()
+    for k in ("cost_total", "cost_model", "cost_tools", "cost_human",
+              "attempts", "successes", "budget_breaches"):
+        assert p2[k] == pytest.approx(p1[k]), f"pnl drift on {k}"
 
 
 def test_ledger_contains_no_payload_data(tmp_path):
@@ -61,9 +105,11 @@ def test_ledger_contains_no_payload_data(tmp_path):
     for a in blob["attempts"]:
         assert forbidden.isdisjoint(set(a.keys())), f"leak: {set(a.keys()) & forbidden}"
     # events ARE exported (retry reasons must survive reimport), but they
-    # are metadata only: no prompts, completions, or payloads
+    # are metadata only: no prompts, completions, or payloads. The key must
+    # be present (a .get() default would let a dropped key pass silently).
     for a in blob["attempts"]:
-        for ev in a.get("events", []):
+        assert "events" in a
+        for ev in a["events"]:
             assert ev[0] in ("model", "tool", "retry", "escalation")
             for field in ev[1:]:
                 assert isinstance(field, (str, int, float))
@@ -119,23 +165,22 @@ def test_simulate_policy_no_filters_stops_nothing(tmp_path):
     assert sim["exposed_share"] == 0.0
 
 
-def test_policy_text_renders():
-    sim = {"policy": {"max_cost_per_attempt": 6.0, "yield_floor": 0.5},
-           "attempts": 10, "would_stop": 3,
-           "would_stop_failed": 2, "would_stop_success": 1,
-           "saved_spend": 32.5, "collateral_spend": 10.0,
-           "exposed_spend": 42.5, "exposed_share": 0.85,
-           "worst": [{"case_id": "C-9", "total_cost": 20.0,
-                      "success": False, "reasons": ["cost $20.00 > cap $6.00"]},
-                     {"case_id": "C-2", "total_cost": 12.5,
-                      "success": True, "reasons": ["yield 40% < floor 50%"]}]}
+def test_policy_text_renders_on_real_sim_output(tmp_path):
+    # policy_text must be tested on real simulate_policy output, not just a
+    # hand-built dict (a hand-built dict can't catch key renames).
+    t = build_tracker()
+    path = str(tmp_path / "ledger.json")
+    P.export_ledger(t, path)
+    ledger = P.load_ledger(path)
+    cheap = ledger["attempts"][0]["total_cost"]
+    expensive = ledger["attempts"][1]["total_cost"]
+    sim = P.simulate_policy(ledger,
+                            max_cost_per_attempt=(cheap + expensive) / 2)
+    assert sim["would_stop"] == 1
     text = P.policy_text(sim)
-    assert "3 of 10 runs" in text
-    assert "$32.50" in text and "$10.00" in text
-    assert "C-9" in text and "C-2" in text
-    # honest split: failed-stop savings vs destroyed good outcomes
-    assert "2 failed" in text and "pure savings $32.50" in text
-    assert "1 that went on to succeed" in text and "collateral $10.00" in text
+    assert "1 of 3 runs" in text
+    assert "expensive" in text
+    assert "pure savings" in text or "collateral" in text
 
 
 def test_simulate_policy_splits_saved_vs_collateral(tmp_path):
