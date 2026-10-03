@@ -8,8 +8,9 @@ against ground truth.
 ## CLI outcome
 `python3 -m averth.cli trace events.jsonl --format jsonl` — exit 0, clean
 parse, no crashes, no unpriced models (after the pricing fix below).
-`--policy-cap 1.00` replay also runs clean: would have stopped 6 of 12 runs,
-exposing $14.36 (82% of metered spend).
+`--policy-cap 1.00` historical screen also runs clean: it flags 6 of 12
+completed runs with $14.36 of recorded spend (82% of metered spend). This is
+not a savings estimate; intervention timing was not measured.
 
 - Attempts: 12, autonomous completions: 9 (75.0%)
 - Retries: 32 (every one backed by a recorded nonzero return code),
@@ -33,13 +34,12 @@ exposing $14.36 (82% of metered spend).
    1.91x to 4.47x, rising with run length. Solving for an implied
    prompt-cache hit rate reproduces the recorded costs with hit rates of
    0.48-0.90 (higher on longer runs), exactly the signature of prompt
-   caching on full-history resends. The library prices every input token
-   at list rate and has no cache term, so it overstates model spend ~3-4x
-   against a caching harness. Disposition: documented as a known
-   limitation. Not fixed because the traces record no cache usage, so a
-   cache-aware schema extension could not be validated against real data
-   here; recommended follow-up is a `cached_input_tokens` field on the
-   model event priced at the provider's cache-read rate.
+   caching on full-history resends. Averth now accepts cached token counts,
+   but these traces record none, so they are priced at list rate and the
+   computed total remains 3.84x the recorded bill. The gap also includes
+   error from chars/4 token estimates; cache impact cannot be isolated from
+   this artifact. Disposition: require measured tokens and cache counts or
+   reconcile against the customer's invoice before quoting actual spend.
 
 3. [report clarity, NOTED not changed] "Cost per successful outcome" shows
    `Retries: $0.00` next to `Retries: 32` because retry waste is booked

@@ -1,11 +1,12 @@
 """Zero-hand-fixing validator for the live LangGraph validation batch.
 
-Compares three independent views of the same 16 runs and fails loudly on
-any mismatch:
-  1. pnl.json            - in-process Tracker.pnl() (ground truth)
-  2. ledger.json         - ledger_from_tracker export, rehydrated via
-                           tracker_from_ledger, pnl() recomputed
-  3. events.jsonl        - EVENT-schema reconstruction fed through the real
+Compares frozen snapshots against the archived 16-run event stream and fails
+on drift. The ledger and P&L snapshots were regenerated from events.jsonl
+after the failed-attempt waste rule changed; they no longer provide an
+independent in-process comparison:
+  1. pnl.json            - current expected report metrics snapshot
+  2. ledger.json         - current ledger snapshot
+  3. events.jsonl        - archived EVENT-schema input, fed through the
                            CLI importer path (load_jsonl -> events_to_tracker)
 
 Also runs structural checks: attempt counts, case ids, success flags vs
@@ -19,7 +20,7 @@ import json
 import os
 import sys
 
-sys.path.insert(0, "/home/hatch/workspace/averth")
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from averth.importers import jsonl as jsonl_importer
@@ -62,7 +63,7 @@ def main():
         for key in ("cost_model", "cost_tools", "cost_retry", "cost_human",
                     "cost_total", "yield_ratio", "avg_context_growth",
                     "business_value", "net_value"):
-            check(f"{label}: {key} matches in-process",
+            check(f"{label}: {key} matches expected snapshot",
                   close(p[key], truth[key]), f"{p[key]} vs {truth[key]}")
         check(f"{label}: per_success.fully_loaded matches",
               close(p["per_success"]["fully_loaded"],
@@ -147,7 +148,7 @@ def main():
     if FAILURES:
         print(f"VALIDATION FAILED: {len(FAILURES)} check(s)")
         sys.exit(1)
-    print("VALIDATION CLEAN: all checks passed with zero hand-fixing")
+    print("VALIDATION CLEAN: archived events match current snapshots")
 
 
 if __name__ == "__main__":

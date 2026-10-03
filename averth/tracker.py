@@ -44,9 +44,8 @@ class BudgetBreach(Exception):
 
     NOTE: live enforcement is Phase-1, built only after a buyer confirms who
     owns that authority and will pay for it. The Phase-0 pilot is read-only:
-    record with Tracker, export the ledger, and replay hypothetical policies
-    with averth.policy.simulate_policy ("had policy X existed, these 37 runs
-    would have been stopped").
+    record with Tracker, export the ledger, and screen completed runs with
+    averth.policy.simulate_policy.
     """
 
 
@@ -369,11 +368,13 @@ class Tracker:
         self._cur["human_min"] += minutes
         self._cur["events"].append(("escalation", reason, minutes))
 
-    def end_attempt(self, success, business_value=0.0, reopened=False):
+    def end_attempt(self, success, business_value=0.0, reopened=False,
+                    outcome_inferred=False):
         self._req()
         business_value = _check_finite("business_value", business_value)
         a = self._cur
         a["success"] = bool(success)
+        a["outcome_inferred"] = bool(outcome_inferred)
         a["business_value"] = business_value
         a["reopened"] = bool(reopened)
         a["human_cost"] = a["human_min"] * self.human_cost_per_min
@@ -606,6 +607,8 @@ class Tracker:
             # model keys whose calls reported no token usage: $0.00 here is
             # missing data, not free inference (see missing_usage).
             "missing_usage_models": sorted(self.missing_usage),
+            "inferred_outcomes": sum(a.get("outcome_inferred", False)
+                                     for a in atts),
             "top_retry_reasons": [(r, c) for r, c in top_retry_reasons],
             "costliest_attempts": costliest_attempts,
             "business_value": value,

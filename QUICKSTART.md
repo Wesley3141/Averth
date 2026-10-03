@@ -1,5 +1,9 @@
 # averth: 5-minute quickstart (pilot)
 
+For a customer-facing result, use the data requirements and validation rules
+in [PILOT.md](PILOT.md). In particular, attach accepted-outcome labels and
+actual cost inputs; an error-free trace alone does not establish acceptance.
+
 Meter one production agent for two weeks. Read-only. The meter runs inside
 your environment and records cost/token/timing metadata only. It makes no
 network calls and exfiltrates no data: the sanitized ledger contains no
@@ -91,9 +95,10 @@ sensitive before sharing.)
 
 Email the JSON to wesleyd3141@gmail.com. We return within 48 hours:
 
-- fully loaded cost per accepted outcome (model + tools + retries + human review)
+- fully loaded cost per accepted outcome when accepted-outcome labels and
+  actual cost inputs are available; otherwise a flagged preliminary view
 - yield ratio and tail concentration (which % of runs burn which % of budget)
-- the offline policy replay: "had policy X existed, these N runs would have
-  been stopped, exposing $Y of spend"
+- a historical policy screen: which completed runs crossed proposed
+  thresholds, with their recorded spend and outcomes
 
 That is the whole pilot. Two weeks, one workflow, read-only, free.

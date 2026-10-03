@@ -1,5 +1,7 @@
+SYNTHETIC DEMO — these tickets, outcomes, and business values are simulated.
 Averth: support-resolution
 Price table: v2 (verified 2026-10-02, 1 days old)
+MODEL COST BASIS: versioned list prices and reported token/cache usage; reconcile against the customer's invoice before calling this actual spend.
 
 TOP FINDING [HIGH]: Human review is 62% of fully-loaded cost ($803.27)
   133 escalations at $6.04 loaded each. The model bill ($312.86) is a rounding error next to the labor it summons. Labor is costed at $70.20/hr loaded (default assumption — set your real rate with human_cost_per_min). [ASSUMPTION: the labor rate driving this number is the default, not measured — pass human_cost_per_min with your real rate.]
@@ -49,13 +51,14 @@ Budget breaches captured by on_breach hook: 96
 ============================================================
 PHASE-0 PILOT FLOW: customer runs the meter locally, exports the
 sanitized ledger (cost/token/timing metadata only: no prompts,
-completions, or tool payloads), we replay
-policies offline. No live enforcement.
+completions, or tool payloads), we screen
+completed runs offline. No live enforcement or savings estimate.
 ============================================================
-Ledger exported: 2000 attempts, 2,360,624 bytes, no prompts, completions, or tool payloads.
+Ledger exported: 2000 attempts, 2,414,623 bytes, no prompts, completions, or tool payloads.
 
-Policy replay: max_cost_per_attempt=$6.0, yield_floor=0.5
-Would have stopped 1020 of 2000 runs: 426 failed (pure savings $297.34) and 594 that went on to succeed (collateral $898.02 — good outcomes this policy would have destroyed).
+Historical policy screen: max_cost_per_attempt=$6.0, yield_floor=0.5
+Flagged 1020 of 2000 completed runs: 426 failed ($297.34 historical spend) and 594 successful ($898.02 historical spend).
+This screen uses final outcomes and costs. It does not estimate when a live policy could act, savings, or lost outcomes.
   T-00732: $9.78 (FAILED) — cost $9.78 > cap $6.00; yield 0% < floor 50%
   T-00339: $9.67 (success) — cost $9.67 > cap $6.00; yield 20% < floor 50%
   T-01050: $9.64 (success) — cost $9.64 > cap $6.00; yield 22% < floor 50%

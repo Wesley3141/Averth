@@ -3,6 +3,14 @@
   "unpriced_models": [
     "unknown:StubChatModel"
   ],
+  "missing_usage_models": [],
+  "price_vintage": {
+    "version": 2,
+    "updated": "2026-10-02",
+    "age_days": 1,
+    "stale": false,
+    "stale_after_days": 90
+  },
   "attempts": [
     {
       "case_id": "RUN-01",
@@ -17,13 +25,72 @@
       "total_tokens": 137,
       "waste_tokens": 0,
       "context_growth": 3.888888888888889,
+      "context_tax": 0.0,
+      "retry_path_cost": 0.0,
+      "retry_tool_cost": 0,
+      "terminal_model_cost": 0.000323,
+      "cached_tokens": 0,
+      "cache_savings": 0.0,
       "success": true,
+      "outcome_inferred": false,
       "reopened": false,
       "business_value": 0.0,
       "per_model": {
         "unknown:StubChatModel": 0.000323
       },
-      "tool_latency_ms": 0.0
+      "tool_latency_ms": 0.0,
+      "events": [
+        [
+          "model",
+          "unknown",
+          "StubChatModel",
+          9.900000000000001e-05
+        ],
+        [
+          "tool",
+          "web_search",
+          0.005
+        ],
+        [
+          "tool",
+          "github_lookup",
+          0.002
+        ],
+        [
+          "tool",
+          "flaky_fetch",
+          0.002
+        ],
+        [
+          "model",
+          "unknown",
+          "StubChatModel",
+          0.00022399999999999997
+        ]
+      ],
+      "tool_steps": [
+        {
+          "name": "web_search",
+          "cost": 0.005,
+          "retry": false,
+          "branch": null,
+          "explicit_cost": true
+        },
+        {
+          "name": "github_lookup",
+          "cost": 0.002,
+          "retry": false,
+          "branch": null,
+          "explicit_cost": true
+        },
+        {
+          "name": "flaky_fetch",
+          "cost": 0.002,
+          "retry": false,
+          "branch": null,
+          "explicit_cost": true
+        }
+      ]
     },
     {
       "case_id": "RUN-02",
@@ -38,13 +105,72 @@
       "total_tokens": 141,
       "waste_tokens": 0,
       "context_growth": 3.6,
+      "context_tax": 0.0,
+      "retry_path_cost": 0.0,
+      "retry_tool_cost": 0,
+      "terminal_model_cost": 0.000331,
+      "cached_tokens": 0,
+      "cache_savings": 0.0,
       "success": true,
+      "outcome_inferred": false,
       "reopened": false,
       "business_value": 0.0,
       "per_model": {
         "unknown:StubChatModel": 0.000331
       },
-      "tool_latency_ms": 0.0
+      "tool_latency_ms": 0.0,
+      "events": [
+        [
+          "model",
+          "unknown",
+          "StubChatModel",
+          0.00010300000000000001
+        ],
+        [
+          "tool",
+          "web_search",
+          0.005
+        ],
+        [
+          "tool",
+          "github_lookup",
+          0.002
+        ],
+        [
+          "tool",
+          "flaky_fetch",
+          0.002
+        ],
+        [
+          "model",
+          "unknown",
+          "StubChatModel",
+          0.000228
+        ]
+      ],
+      "tool_steps": [
+        {
+          "name": "web_search",
+          "cost": 0.005,
+          "retry": false,
+          "branch": null,
+          "explicit_cost": true
+        },
+        {
+          "name": "github_lookup",
+          "cost": 0.002,
+          "retry": false,
+          "branch": null,
+          "explicit_cost": true
+        },
+        {
+          "name": "flaky_fetch",
+          "cost": 0.002,
+          "retry": false,
+          "branch": null,
+          "explicit_cost": true
+        }
+      ]
     },
     {
       "case_id": "RUN-03",
@@ -59,13 +185,72 @@
       "total_tokens": 137,
       "waste_tokens": 0,
       "context_growth": 3.888888888888889,
+      "context_tax": 0.0,
+      "retry_path_cost": 0.0,
+      "retry_tool_cost": 0,
+      "terminal_model_cost": 0.000323,
+      "cached_tokens": 0,
+      "cache_savings": 0.0,
       "success": true,
+      "outcome_inferred": false,
       "reopened": false,
       "business_value": 0.0,
       "per_model": {
         "unknown:StubChatModel": 0.000323
       },
-      "tool_latency_ms": 0.0
+      "tool_latency_ms": 0.0,
+      "events": [
+        [
+          "model",
+          "unknown",
+          "StubChatModel",
+          9.900000000000001e-05
+        ],
+        [
+          "tool",
+          "github_lookup",
+          0.002
+        ],
+        [
+          "tool",
+          "web_search",
+          0.005
+        ],
+        [
+          "tool",
+          "flaky_fetch",
+          0.002
+        ],
+        [
+          "model",
+          "unknown",
+          "StubChatModel",
+          0.00022399999999999997
+        ]
+      ],
+      "tool_steps": [
+        {
+          "name": "github_lookup",
+          "cost": 0.002,
+          "retry": false,
+          "branch": null,
+          "explicit_cost": true
+        },
+        {
+          "name": "web_search",
+          "cost": 0.005,
+          "retry": false,
+          "branch": null,
+          "explicit_cost": true
+        },
+        {
+          "name": "flaky_fetch",
+          "cost": 0.002,
+          "retry": false,
+          "branch": null,
+          "explicit_cost": true
+        }
+      ]
     },
     {
       "case_id": "RUN-04",
@@ -78,15 +263,68 @@
       "ai_cost": 0.007099,
       "total_cost": 0.007099,
       "total_tokens": 39,
-      "waste_tokens": 0,
+      "waste_tokens": 39,
       "context_growth": 1.0,
+      "context_tax": 0.0,
+      "retry_path_cost": 9.900000000000001e-05,
+      "retry_tool_cost": 0.002,
+      "terminal_model_cost": 0.0,
+      "cached_tokens": 0,
+      "cache_savings": 0.0,
       "success": false,
+      "outcome_inferred": false,
       "reopened": false,
       "business_value": 0.0,
       "per_model": {
         "unknown:StubChatModel": 9.900000000000001e-05
       },
-      "tool_latency_ms": 0.0
+      "tool_latency_ms": 0.0,
+      "events": [
+        [
+          "model",
+          "unknown",
+          "StubChatModel",
+          9.900000000000001e-05
+        ],
+        [
+          "tool",
+          "web_search",
+          0.005
+        ],
+        [
+          "retry",
+          "tool_error: ReadTimeout",
+          0.0,
+          ""
+        ],
+        [
+          "tool",
+          "github_lookup",
+          0.002
+        ],
+        [
+          "retry",
+          "tool_error: ReadTimeout",
+          0.0,
+          ""
+        ]
+      ],
+      "tool_steps": [
+        {
+          "name": "web_search",
+          "cost": 0.005,
+          "retry": false,
+          "branch": null,
+          "explicit_cost": true
+        },
+        {
+          "name": "github_lookup",
+          "cost": 0.002,
+          "retry": true,
+          "branch": null,
+          "explicit_cost": true
+        }
+      ]
     },
     {
       "case_id": "RUN-05",
@@ -101,13 +339,108 @@
       "total_tokens": 135,
       "waste_tokens": 98,
       "context_growth": 4.375,
+      "context_tax": 0.0,
+      "retry_path_cost": 0.00022399999999999997,
+      "retry_tool_cost": 0.004,
+      "terminal_model_cost": 9.499999999999998e-05,
+      "cached_tokens": 0,
+      "cache_savings": 0.0,
       "success": true,
+      "outcome_inferred": false,
       "reopened": false,
       "business_value": 0.0,
       "per_model": {
         "unknown:StubChatModel": 0.00031899999999999995
       },
-      "tool_latency_ms": 0.0
+      "tool_latency_ms": 0.0,
+      "events": [
+        [
+          "model",
+          "unknown",
+          "StubChatModel",
+          9.5e-05
+        ],
+        [
+          "tool",
+          "web_search",
+          0.005
+        ],
+        [
+          "tool",
+          "github_lookup",
+          0.002
+        ],
+        [
+          "tool",
+          "flaky_fetch",
+          0.002
+        ],
+        [
+          "retry",
+          "tool_error: RuntimeError",
+          0.0,
+          ""
+        ],
+        [
+          "tool",
+          "flaky_fetch",
+          0.002
+        ],
+        [
+          "retry",
+          "tool_error: RuntimeError",
+          0.0,
+          ""
+        ],
+        [
+          "tool",
+          "flaky_fetch",
+          0.002
+        ],
+        [
+          "model",
+          "unknown",
+          "StubChatModel",
+          0.00022399999999999997
+        ]
+      ],
+      "tool_steps": [
+        {
+          "name": "web_search",
+          "cost": 0.005,
+          "retry": false,
+          "branch": null,
+          "explicit_cost": true
+        },
+        {
+          "name": "github_lookup",
+          "cost": 0.002,
+          "retry": false,
+          "branch": null,
+          "explicit_cost": true
+        },
+        {
+          "name": "flaky_fetch",
+          "cost": 0.002,
+          "retry": false,
+          "branch": null,
+          "explicit_cost": true
+        },
+        {
+          "name": "flaky_fetch",
+          "cost": 0.002,
+          "retry": true,
+          "branch": null,
+          "explicit_cost": true
+        },
+        {
+          "name": "flaky_fetch",
+          "cost": 0.002,
+          "retry": true,
+          "branch": null,
+          "explicit_cost": true
+        }
+      ]
     },
     {
       "case_id": "RUN-06",
@@ -122,13 +455,108 @@
       "total_tokens": 135,
       "waste_tokens": 98,
       "context_growth": 4.375,
+      "context_tax": 0.0,
+      "retry_path_cost": 0.00022399999999999997,
+      "retry_tool_cost": 0.004,
+      "terminal_model_cost": 9.499999999999998e-05,
+      "cached_tokens": 0,
+      "cache_savings": 0.0,
       "success": true,
+      "outcome_inferred": false,
       "reopened": false,
       "business_value": 0.0,
       "per_model": {
         "unknown:StubChatModel": 0.00031899999999999995
       },
-      "tool_latency_ms": 0.0
+      "tool_latency_ms": 0.0,
+      "events": [
+        [
+          "model",
+          "unknown",
+          "StubChatModel",
+          9.5e-05
+        ],
+        [
+          "tool",
+          "web_search",
+          0.005
+        ],
+        [
+          "tool",
+          "github_lookup",
+          0.002
+        ],
+        [
+          "tool",
+          "flaky_fetch",
+          0.002
+        ],
+        [
+          "retry",
+          "tool_error: RuntimeError",
+          0.0,
+          ""
+        ],
+        [
+          "tool",
+          "flaky_fetch",
+          0.002
+        ],
+        [
+          "retry",
+          "tool_error: RuntimeError",
+          0.0,
+          ""
+        ],
+        [
+          "tool",
+          "flaky_fetch",
+          0.002
+        ],
+        [
+          "model",
+          "unknown",
+          "StubChatModel",
+          0.00022399999999999997
+        ]
+      ],
+      "tool_steps": [
+        {
+          "name": "web_search",
+          "cost": 0.005,
+          "retry": false,
+          "branch": null,
+          "explicit_cost": true
+        },
+        {
+          "name": "github_lookup",
+          "cost": 0.002,
+          "retry": false,
+          "branch": null,
+          "explicit_cost": true
+        },
+        {
+          "name": "flaky_fetch",
+          "cost": 0.002,
+          "retry": false,
+          "branch": null,
+          "explicit_cost": true
+        },
+        {
+          "name": "flaky_fetch",
+          "cost": 0.002,
+          "retry": true,
+          "branch": null,
+          "explicit_cost": true
+        },
+        {
+          "name": "flaky_fetch",
+          "cost": 0.002,
+          "retry": true,
+          "branch": null,
+          "explicit_cost": true
+        }
+      ]
     },
     {
       "case_id": "RUN-07",
@@ -143,13 +571,72 @@
       "total_tokens": 137,
       "waste_tokens": 0,
       "context_growth": 3.888888888888889,
+      "context_tax": 0.0,
+      "retry_path_cost": 0.0,
+      "retry_tool_cost": 0,
+      "terminal_model_cost": 0.000323,
+      "cached_tokens": 0,
+      "cache_savings": 0.0,
       "success": true,
+      "outcome_inferred": false,
       "reopened": false,
       "business_value": 0.0,
       "per_model": {
         "unknown:StubChatModel": 0.000323
       },
-      "tool_latency_ms": 0.0
+      "tool_latency_ms": 0.0,
+      "events": [
+        [
+          "model",
+          "unknown",
+          "StubChatModel",
+          9.900000000000001e-05
+        ],
+        [
+          "tool",
+          "web_search",
+          0.005
+        ],
+        [
+          "tool",
+          "github_lookup",
+          0.002
+        ],
+        [
+          "tool",
+          "flaky_fetch",
+          0.002
+        ],
+        [
+          "model",
+          "unknown",
+          "StubChatModel",
+          0.00022399999999999997
+        ]
+      ],
+      "tool_steps": [
+        {
+          "name": "web_search",
+          "cost": 0.005,
+          "retry": false,
+          "branch": null,
+          "explicit_cost": true
+        },
+        {
+          "name": "github_lookup",
+          "cost": 0.002,
+          "retry": false,
+          "branch": null,
+          "explicit_cost": true
+        },
+        {
+          "name": "flaky_fetch",
+          "cost": 0.002,
+          "retry": false,
+          "branch": null,
+          "explicit_cost": true
+        }
+      ]
     },
     {
       "case_id": "RUN-08",
@@ -162,15 +649,110 @@
       "ai_cost": 0.013091000000000002,
       "total_cost": 0.013091000000000002,
       "total_tokens": 35,
-      "waste_tokens": 0,
+      "waste_tokens": 35,
       "context_growth": 1.0,
+      "context_tax": 0.0,
+      "retry_path_cost": 9.099999999999999e-05,
+      "retry_tool_cost": 0.004,
+      "terminal_model_cost": 0.0,
+      "cached_tokens": 0,
+      "cache_savings": 0.0,
       "success": false,
+      "outcome_inferred": false,
       "reopened": false,
       "business_value": 0.0,
       "per_model": {
         "unknown:StubChatModel": 9.099999999999999e-05
       },
-      "tool_latency_ms": 0.0
+      "tool_latency_ms": 0.0,
+      "events": [
+        [
+          "model",
+          "unknown",
+          "StubChatModel",
+          9.099999999999999e-05
+        ],
+        [
+          "tool",
+          "web_search",
+          0.005
+        ],
+        [
+          "tool",
+          "github_lookup",
+          0.002
+        ],
+        [
+          "tool",
+          "flaky_fetch",
+          0.002
+        ],
+        [
+          "retry",
+          "tool_error: RuntimeError",
+          0.0,
+          ""
+        ],
+        [
+          "tool",
+          "flaky_fetch",
+          0.002
+        ],
+        [
+          "retry",
+          "tool_error: RuntimeError",
+          0.0,
+          ""
+        ],
+        [
+          "tool",
+          "flaky_fetch",
+          0.002
+        ],
+        [
+          "retry",
+          "tool_error: RuntimeError",
+          0.0,
+          ""
+        ]
+      ],
+      "tool_steps": [
+        {
+          "name": "web_search",
+          "cost": 0.005,
+          "retry": false,
+          "branch": null,
+          "explicit_cost": true
+        },
+        {
+          "name": "github_lookup",
+          "cost": 0.002,
+          "retry": false,
+          "branch": null,
+          "explicit_cost": true
+        },
+        {
+          "name": "flaky_fetch",
+          "cost": 0.002,
+          "retry": false,
+          "branch": null,
+          "explicit_cost": true
+        },
+        {
+          "name": "flaky_fetch",
+          "cost": 0.002,
+          "retry": true,
+          "branch": null,
+          "explicit_cost": true
+        },
+        {
+          "name": "flaky_fetch",
+          "cost": 0.002,
+          "retry": true,
+          "branch": null,
+          "explicit_cost": true
+        }
+      ]
     },
     {
       "case_id": "RUN-09",
@@ -185,13 +767,108 @@
       "total_tokens": 142,
       "waste_tokens": 102,
       "context_growth": 4.111111111111111,
+      "context_tax": 0.0,
+      "retry_path_cost": 0.00023199999999999997,
+      "retry_tool_cost": 0.004,
+      "terminal_model_cost": 0.00010200000000000001,
+      "cached_tokens": 0,
+      "cache_savings": 0.0,
       "success": true,
+      "outcome_inferred": false,
       "reopened": false,
       "business_value": 0.0,
       "per_model": {
         "unknown:StubChatModel": 0.000334
       },
-      "tool_latency_ms": 0.0
+      "tool_latency_ms": 0.0,
+      "events": [
+        [
+          "model",
+          "unknown",
+          "StubChatModel",
+          0.00010200000000000001
+        ],
+        [
+          "tool",
+          "web_search",
+          0.005
+        ],
+        [
+          "tool",
+          "github_lookup",
+          0.002
+        ],
+        [
+          "tool",
+          "flaky_fetch",
+          0.002
+        ],
+        [
+          "retry",
+          "tool_error: RuntimeError",
+          0.0,
+          ""
+        ],
+        [
+          "tool",
+          "flaky_fetch",
+          0.002
+        ],
+        [
+          "retry",
+          "tool_error: RuntimeError",
+          0.0,
+          ""
+        ],
+        [
+          "tool",
+          "flaky_fetch",
+          0.002
+        ],
+        [
+          "model",
+          "unknown",
+          "StubChatModel",
+          0.00023199999999999997
+        ]
+      ],
+      "tool_steps": [
+        {
+          "name": "web_search",
+          "cost": 0.005,
+          "retry": false,
+          "branch": null,
+          "explicit_cost": true
+        },
+        {
+          "name": "github_lookup",
+          "cost": 0.002,
+          "retry": false,
+          "branch": null,
+          "explicit_cost": true
+        },
+        {
+          "name": "flaky_fetch",
+          "cost": 0.002,
+          "retry": false,
+          "branch": null,
+          "explicit_cost": true
+        },
+        {
+          "name": "flaky_fetch",
+          "cost": 0.002,
+          "retry": true,
+          "branch": null,
+          "explicit_cost": true
+        },
+        {
+          "name": "flaky_fetch",
+          "cost": 0.002,
+          "retry": true,
+          "branch": null,
+          "explicit_cost": true
+        }
+      ]
     },
     {
       "case_id": "RUN-10",
@@ -206,13 +883,72 @@
       "total_tokens": 133,
       "waste_tokens": 0,
       "context_growth": 4.25,
+      "context_tax": 0.0,
+      "retry_path_cost": 0.0,
+      "retry_tool_cost": 0,
+      "terminal_model_cost": 0.00031500000000000007,
+      "cached_tokens": 0,
+      "cache_savings": 0.0,
       "success": true,
+      "outcome_inferred": false,
       "reopened": false,
       "business_value": 0.0,
       "per_model": {
         "unknown:StubChatModel": 0.00031500000000000007
       },
-      "tool_latency_ms": 0.0
+      "tool_latency_ms": 0.0,
+      "events": [
+        [
+          "model",
+          "unknown",
+          "StubChatModel",
+          9.5e-05
+        ],
+        [
+          "tool",
+          "github_lookup",
+          0.002
+        ],
+        [
+          "tool",
+          "web_search",
+          0.005
+        ],
+        [
+          "tool",
+          "flaky_fetch",
+          0.002
+        ],
+        [
+          "model",
+          "unknown",
+          "StubChatModel",
+          0.00022000000000000003
+        ]
+      ],
+      "tool_steps": [
+        {
+          "name": "github_lookup",
+          "cost": 0.002,
+          "retry": false,
+          "branch": null,
+          "explicit_cost": true
+        },
+        {
+          "name": "web_search",
+          "cost": 0.005,
+          "retry": false,
+          "branch": null,
+          "explicit_cost": true
+        },
+        {
+          "name": "flaky_fetch",
+          "cost": 0.002,
+          "retry": false,
+          "branch": null,
+          "explicit_cost": true
+        }
+      ]
     },
     {
       "case_id": "RUN-11",
@@ -227,13 +963,108 @@
       "total_tokens": 131,
       "waste_tokens": 96,
       "context_growth": 4.857142857142857,
+      "context_tax": 0.0,
+      "retry_path_cost": 0.00022000000000000003,
+      "retry_tool_cost": 0.004,
+      "terminal_model_cost": 9.099999999999999e-05,
+      "cached_tokens": 0,
+      "cache_savings": 0.0,
       "success": true,
+      "outcome_inferred": false,
       "reopened": false,
       "business_value": 0.0,
       "per_model": {
         "unknown:StubChatModel": 0.000311
       },
-      "tool_latency_ms": 0.0
+      "tool_latency_ms": 0.0,
+      "events": [
+        [
+          "model",
+          "unknown",
+          "StubChatModel",
+          9.099999999999999e-05
+        ],
+        [
+          "tool",
+          "github_lookup",
+          0.002
+        ],
+        [
+          "tool",
+          "web_search",
+          0.005
+        ],
+        [
+          "tool",
+          "flaky_fetch",
+          0.002
+        ],
+        [
+          "retry",
+          "tool_error: RuntimeError",
+          0.0,
+          ""
+        ],
+        [
+          "tool",
+          "flaky_fetch",
+          0.002
+        ],
+        [
+          "retry",
+          "tool_error: RuntimeError",
+          0.0,
+          ""
+        ],
+        [
+          "tool",
+          "flaky_fetch",
+          0.002
+        ],
+        [
+          "model",
+          "unknown",
+          "StubChatModel",
+          0.00022000000000000003
+        ]
+      ],
+      "tool_steps": [
+        {
+          "name": "github_lookup",
+          "cost": 0.002,
+          "retry": false,
+          "branch": null,
+          "explicit_cost": true
+        },
+        {
+          "name": "web_search",
+          "cost": 0.005,
+          "retry": false,
+          "branch": null,
+          "explicit_cost": true
+        },
+        {
+          "name": "flaky_fetch",
+          "cost": 0.002,
+          "retry": false,
+          "branch": null,
+          "explicit_cost": true
+        },
+        {
+          "name": "flaky_fetch",
+          "cost": 0.002,
+          "retry": true,
+          "branch": null,
+          "explicit_cost": true
+        },
+        {
+          "name": "flaky_fetch",
+          "cost": 0.002,
+          "retry": true,
+          "branch": null,
+          "explicit_cost": true
+        }
+      ]
     },
     {
       "case_id": "RUN-12",
@@ -248,13 +1079,72 @@
       "total_tokens": 142,
       "waste_tokens": 0,
       "context_growth": 3.272727272727273,
+      "context_tax": 0.0,
+      "retry_path_cost": 0.0,
+      "retry_tool_cost": 0,
+      "terminal_model_cost": 0.00033200000000000005,
+      "cached_tokens": 0,
+      "cache_savings": 0.0,
       "success": true,
+      "outcome_inferred": false,
       "reopened": false,
       "business_value": 0.0,
       "per_model": {
         "unknown:StubChatModel": 0.00033200000000000005
       },
-      "tool_latency_ms": 0.0
+      "tool_latency_ms": 0.0,
+      "events": [
+        [
+          "model",
+          "unknown",
+          "StubChatModel",
+          0.00010400000000000001
+        ],
+        [
+          "tool",
+          "web_search",
+          0.005
+        ],
+        [
+          "tool",
+          "github_lookup",
+          0.002
+        ],
+        [
+          "tool",
+          "flaky_fetch",
+          0.002
+        ],
+        [
+          "model",
+          "unknown",
+          "StubChatModel",
+          0.000228
+        ]
+      ],
+      "tool_steps": [
+        {
+          "name": "web_search",
+          "cost": 0.005,
+          "retry": false,
+          "branch": null,
+          "explicit_cost": true
+        },
+        {
+          "name": "github_lookup",
+          "cost": 0.002,
+          "retry": false,
+          "branch": null,
+          "explicit_cost": true
+        },
+        {
+          "name": "flaky_fetch",
+          "cost": 0.002,
+          "retry": false,
+          "branch": null,
+          "explicit_cost": true
+        }
+      ]
     },
     {
       "case_id": "RUN-13",
@@ -267,15 +1157,110 @@
       "ai_cost": 0.013091000000000002,
       "total_cost": 0.013091000000000002,
       "total_tokens": 35,
-      "waste_tokens": 0,
+      "waste_tokens": 35,
       "context_growth": 1.0,
+      "context_tax": 0.0,
+      "retry_path_cost": 9.099999999999999e-05,
+      "retry_tool_cost": 0.004,
+      "terminal_model_cost": 0.0,
+      "cached_tokens": 0,
+      "cache_savings": 0.0,
       "success": false,
+      "outcome_inferred": false,
       "reopened": false,
       "business_value": 0.0,
       "per_model": {
         "unknown:StubChatModel": 9.099999999999999e-05
       },
-      "tool_latency_ms": 0.0
+      "tool_latency_ms": 0.0,
+      "events": [
+        [
+          "model",
+          "unknown",
+          "StubChatModel",
+          9.099999999999999e-05
+        ],
+        [
+          "tool",
+          "web_search",
+          0.005
+        ],
+        [
+          "tool",
+          "github_lookup",
+          0.002
+        ],
+        [
+          "tool",
+          "flaky_fetch",
+          0.002
+        ],
+        [
+          "retry",
+          "tool_error: RuntimeError",
+          0.0,
+          ""
+        ],
+        [
+          "tool",
+          "flaky_fetch",
+          0.002
+        ],
+        [
+          "retry",
+          "tool_error: RuntimeError",
+          0.0,
+          ""
+        ],
+        [
+          "tool",
+          "flaky_fetch",
+          0.002
+        ],
+        [
+          "retry",
+          "tool_error: RuntimeError",
+          0.0,
+          ""
+        ]
+      ],
+      "tool_steps": [
+        {
+          "name": "web_search",
+          "cost": 0.005,
+          "retry": false,
+          "branch": null,
+          "explicit_cost": true
+        },
+        {
+          "name": "github_lookup",
+          "cost": 0.002,
+          "retry": false,
+          "branch": null,
+          "explicit_cost": true
+        },
+        {
+          "name": "flaky_fetch",
+          "cost": 0.002,
+          "retry": false,
+          "branch": null,
+          "explicit_cost": true
+        },
+        {
+          "name": "flaky_fetch",
+          "cost": 0.002,
+          "retry": true,
+          "branch": null,
+          "explicit_cost": true
+        },
+        {
+          "name": "flaky_fetch",
+          "cost": 0.002,
+          "retry": true,
+          "branch": null,
+          "explicit_cost": true
+        }
+      ]
     },
     {
       "case_id": "RUN-14",
@@ -290,13 +1275,72 @@
       "total_tokens": 136,
       "waste_tokens": 0,
       "context_growth": 4.375,
+      "context_tax": 0.0,
+      "retry_path_cost": 0.0,
+      "retry_tool_cost": 0,
+      "terminal_model_cost": 0.00032199999999999997,
+      "cached_tokens": 0,
+      "cache_savings": 0.0,
       "success": true,
+      "outcome_inferred": false,
       "reopened": false,
       "business_value": 0.0,
       "per_model": {
         "unknown:StubChatModel": 0.00032199999999999997
       },
-      "tool_latency_ms": 0.0
+      "tool_latency_ms": 0.0,
+      "events": [
+        [
+          "model",
+          "unknown",
+          "StubChatModel",
+          9.800000000000001e-05
+        ],
+        [
+          "tool",
+          "github_lookup",
+          0.002
+        ],
+        [
+          "tool",
+          "web_search",
+          0.005
+        ],
+        [
+          "tool",
+          "flaky_fetch",
+          0.002
+        ],
+        [
+          "model",
+          "unknown",
+          "StubChatModel",
+          0.00022399999999999997
+        ]
+      ],
+      "tool_steps": [
+        {
+          "name": "github_lookup",
+          "cost": 0.002,
+          "retry": false,
+          "branch": null,
+          "explicit_cost": true
+        },
+        {
+          "name": "web_search",
+          "cost": 0.005,
+          "retry": false,
+          "branch": null,
+          "explicit_cost": true
+        },
+        {
+          "name": "flaky_fetch",
+          "cost": 0.002,
+          "retry": false,
+          "branch": null,
+          "explicit_cost": true
+        }
+      ]
     },
     {
       "case_id": "RUN-15",
@@ -311,13 +1355,108 @@
       "total_tokens": 140,
       "waste_tokens": 100,
       "context_growth": 3.6,
+      "context_tax": 0.0,
+      "retry_path_cost": 0.000228,
+      "retry_tool_cost": 0.004,
+      "terminal_model_cost": 9.999999999999999e-05,
+      "cached_tokens": 0,
+      "cache_savings": 0.0,
       "success": true,
+      "outcome_inferred": false,
       "reopened": false,
       "business_value": 0.0,
       "per_model": {
         "unknown:StubChatModel": 0.000328
       },
-      "tool_latency_ms": 0.0
+      "tool_latency_ms": 0.0,
+      "events": [
+        [
+          "model",
+          "unknown",
+          "StubChatModel",
+          0.0001
+        ],
+        [
+          "tool",
+          "web_search",
+          0.005
+        ],
+        [
+          "tool",
+          "github_lookup",
+          0.002
+        ],
+        [
+          "tool",
+          "flaky_fetch",
+          0.002
+        ],
+        [
+          "retry",
+          "tool_error: RuntimeError",
+          0.0,
+          ""
+        ],
+        [
+          "tool",
+          "flaky_fetch",
+          0.002
+        ],
+        [
+          "retry",
+          "tool_error: RuntimeError",
+          0.0,
+          ""
+        ],
+        [
+          "tool",
+          "flaky_fetch",
+          0.002
+        ],
+        [
+          "model",
+          "unknown",
+          "StubChatModel",
+          0.000228
+        ]
+      ],
+      "tool_steps": [
+        {
+          "name": "web_search",
+          "cost": 0.005,
+          "retry": false,
+          "branch": null,
+          "explicit_cost": true
+        },
+        {
+          "name": "github_lookup",
+          "cost": 0.002,
+          "retry": false,
+          "branch": null,
+          "explicit_cost": true
+        },
+        {
+          "name": "flaky_fetch",
+          "cost": 0.002,
+          "retry": false,
+          "branch": null,
+          "explicit_cost": true
+        },
+        {
+          "name": "flaky_fetch",
+          "cost": 0.002,
+          "retry": true,
+          "branch": null,
+          "explicit_cost": true
+        },
+        {
+          "name": "flaky_fetch",
+          "cost": 0.002,
+          "retry": true,
+          "branch": null,
+          "explicit_cost": true
+        }
+      ]
     },
     {
       "case_id": "RUN-16",
@@ -330,15 +1469,110 @@
       "ai_cost": 0.013099000000000001,
       "total_cost": 0.013099000000000001,
       "total_tokens": 39,
-      "waste_tokens": 0,
+      "waste_tokens": 39,
       "context_growth": 1.0,
+      "context_tax": 0.0,
+      "retry_path_cost": 9.900000000000001e-05,
+      "retry_tool_cost": 0.004,
+      "terminal_model_cost": 0.0,
+      "cached_tokens": 0,
+      "cache_savings": 0.0,
       "success": false,
+      "outcome_inferred": false,
       "reopened": false,
       "business_value": 0.0,
       "per_model": {
         "unknown:StubChatModel": 9.900000000000001e-05
       },
-      "tool_latency_ms": 0.0
+      "tool_latency_ms": 0.0,
+      "events": [
+        [
+          "model",
+          "unknown",
+          "StubChatModel",
+          9.900000000000001e-05
+        ],
+        [
+          "tool",
+          "web_search",
+          0.005
+        ],
+        [
+          "tool",
+          "github_lookup",
+          0.002
+        ],
+        [
+          "tool",
+          "flaky_fetch",
+          0.002
+        ],
+        [
+          "retry",
+          "tool_error: RuntimeError",
+          0.0,
+          ""
+        ],
+        [
+          "tool",
+          "flaky_fetch",
+          0.002
+        ],
+        [
+          "retry",
+          "tool_error: RuntimeError",
+          0.0,
+          ""
+        ],
+        [
+          "tool",
+          "flaky_fetch",
+          0.002
+        ],
+        [
+          "retry",
+          "tool_error: RuntimeError",
+          0.0,
+          ""
+        ]
+      ],
+      "tool_steps": [
+        {
+          "name": "web_search",
+          "cost": 0.005,
+          "retry": false,
+          "branch": null,
+          "explicit_cost": true
+        },
+        {
+          "name": "github_lookup",
+          "cost": 0.002,
+          "retry": false,
+          "branch": null,
+          "explicit_cost": true
+        },
+        {
+          "name": "flaky_fetch",
+          "cost": 0.002,
+          "retry": false,
+          "branch": null,
+          "explicit_cost": true
+        },
+        {
+          "name": "flaky_fetch",
+          "cost": 0.002,
+          "retry": true,
+          "branch": null,
+          "explicit_cost": true
+        },
+        {
+          "name": "flaky_fetch",
+          "cost": 0.002,
+          "retry": true,
+          "branch": null,
+          "explicit_cost": true
+        }
+      ]
     }
   ]
 }
