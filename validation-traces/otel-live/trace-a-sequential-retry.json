@@ -9,7 +9,7 @@
         {
           "key": "gen_ai.system",
           "value": {
-            "stringValue": "agentpnl-validation"
+            "stringValue": "averth-validation"
           }
         },
         {
@@ -75,7 +75,7 @@
         {
           "key": "gen_ai.system",
           "value": {
-            "stringValue": "agentpnl-validation"
+            "stringValue": "averth-validation"
           }
         },
         {
@@ -109,13 +109,13 @@
       "startTimeUnixNano": "1790817963377946507",
       "attributes": [
         {
-          "key": "agentpnl.escalation_minutes",
+          "key": "averth.escalation_minutes",
           "value": {
             "intValue": "3"
           }
         },
         {
-          "key": "agentpnl.escalation_reason",
+          "key": "averth.escalation_reason",
           "value": {
             "stringValue": "refund amount above auto-approve limit"
           }
@@ -139,7 +139,7 @@
           }
         },
         {
-          "key": "agentpnl.retry",
+          "key": "averth.retry",
           "value": {
             "stringValue": "refund_api connection refused"
           }
@@ -159,7 +159,7 @@
         {
           "key": "gen_ai.system",
           "value": {
-            "stringValue": "agentpnl-validation"
+            "stringValue": "averth-validation"
           }
         },
         {
@@ -225,7 +225,7 @@
         {
           "key": "gen_ai.system",
           "value": {
-            "stringValue": "agentpnl-validation"
+            "stringValue": "averth-validation"
           }
         },
         {
@@ -261,7 +261,7 @@
         {
           "key": "gen_ai.system",
           "value": {
-            "stringValue": "agentpnl-validation"
+            "stringValue": "averth-validation"
           }
         },
         {
@@ -360,7 +360,7 @@
       "startTimeUnixNano": "1790817961303877430",
       "attributes": [
         {
-          "key": "agentpnl.business_value",
+          "key": "averth.business_value",
           "value": {
             "doubleValue": 12.5
           }

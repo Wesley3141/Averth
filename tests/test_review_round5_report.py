@@ -91,18 +91,18 @@ def test_policy_sim_values_escaped(tmp_path):
             "max_cost_per_attempt": XSS_POLICY,
             "yield_floor": '<img src=x onerror=alert("xss-policy")>',
         },
-        "would_stop": 1,
-        "would_stop_failed": 0,
-        "would_stop_success": 1,
-        "saved_spend": 0.50,
-        "collateral_spend": 0.20,
+        "flagged_runs": 1,
+        "flagged_failed": 0,
+        "flagged_success": 1,
+        "flagged_failed_spend": 0.50,
+        "flagged_success_spend": 0.20,
         "worst": [{"case_id": "R5-1", "total_cost": 0.20, "success": True,
                    "reasons": ["too slow"]}],
     }
     out = tmp_path / "hostile-policy.html"
     write_html(str(out), _basic_tracker(), policy_sim=sim)
     body = out.read_text(encoding="utf-8")
-    assert "Policy replay" in body
+    assert "Historical policy screen" in body
     assert XSS_POLICY not in body
     assert '<img src=x onerror=alert("xss-policy")>' not in body
     assert "&lt;script&gt;alert(&quot;xss-policy&quot;)&lt;/script&gt;" in body

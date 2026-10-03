@@ -50,8 +50,8 @@ def findings(p):
             % (_plural(n_failed, "attempt"), _plural(p["attempts"], "attempt"),
                "{:,.2f}".format(p["cost_failed"])),
             p["cost_failed"],
-            "Cap per-attempt spend near p95 ($%.2f) and replay the policy: "
-            "runs that blow past it are overwhelmingly failed runs."
+            "Screen runs against a proposed cap near p95 ($%.2f), then "
+            "inspect when failed runs became unlikely to recover."
             % t["p95"]))
 
     # 2. Tail concentration: the 2%-burns-60% shape. The "top 5%" label is
@@ -67,9 +67,9 @@ def findings(p):
             "economics look fine; the tail is where the budget goes."
             % (t["p50"], t["p95"], t["max"]),
             t["top5pct_share"] * total,
-            "Put a hard per-attempt envelope at ~p95 ($%.2f). The policy "
-            "replay below shows exactly what it would have saved — and what "
-            "good outcomes it would have cost." % t["p95"]))
+            "Screen a proposed cap near p95 ($%.2f) and review the flagged "
+            "runs. Measure intervention timing before claiming savings."
+            % t["p95"]))
 
     # 3. Retry-path waste with the top reason named. Dollars include
     # retry-path tool spend (M3): a $5 tool call on a discarded path is
@@ -164,7 +164,7 @@ def findings(p):
                failed_bit),
             p.get("budget_breach_spend", 0.0),
             "Treat the envelope as a kill-switch threshold in Phase 1, or "
-            "replay a tighter envelope with the policy simulator."))
+            "screen a tighter envelope against completed runs."))
 
     # 5. Context tax.
     tax_share = p["context_tax_share_of_model"]

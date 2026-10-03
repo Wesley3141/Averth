@@ -20,7 +20,7 @@ Attribute mapping (documented here because vendors emit several dialects):
                   latency_ms.
   failure         status.code in ("ERROR", "STATUS_CODE_ERROR") marks the
                   whole case failed.
-  retry marker    attribute averth.retry (legacy: agentpnl.retry) -> retry event (reason = value);
+  retry marker    attribute averth.retry -> retry event (reason = value);
                   an explicit falsy value (False, 0, "false", "no", "0")
                   means "not a retry" and emits no event; True/"true"/
                   "yes"/"1" or any other non-empty value emits the event.
@@ -181,12 +181,8 @@ def _parse_bool(value):
 
 
 def _brand(attrs, name):
-    """Read an averth.* OTel attribute, falling back to the pre-rebrand
-    agentpnl.* name so traces instrumented before the rename still parse."""
-    v = attrs.get("averth." + name)
-    if v is None:
-        v = attrs.get("agentpnl." + name)
-    return v
+    """Read an Averth-specific OTel attribute."""
+    return attrs.get("averth." + name)
 
 
 def _span_times(span):
@@ -269,8 +265,7 @@ def load_otel(path, agent_name="otel-import"):
                 cached_key, cached_raw = _first_named(attrs,
                                                       "gen_ai.usage.cache_read_input_tokens",
                                                       "llm.usage.cache_read_input_tokens",
-                                                      "averth.cached_input_tokens",
-                                                      "agentpnl.cached_input_tokens")
+                                                      "averth.cached_input_tokens")
                 cached_tok = _token_count(cached_raw, cached_key)
                 ev = {"type": "model", "case_id": case_id,
                       "provider": guess_provider(model), "model": model,
@@ -320,6 +315,7 @@ def load_otel(path, agent_name="otel-import"):
         success = (not case["failed"]) if case["success_override"] is None \
             else case["success_override"]
         events.append({"type": "end", "case_id": case_id, "success": success,
+                       "outcome_inferred": case["success_override"] is None,
                        "business_value": case["business_value"]})
 
     tracker = events_to_tracker(agent_name, events)

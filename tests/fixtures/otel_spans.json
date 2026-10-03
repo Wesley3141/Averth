@@ -86,7 +86,7 @@
       "endTimeUnixNano": "1758000001610000000",
       "attributes": [
         {
-          "key": "agentpnl.retry",
+          "key": "averth.retry",
           "value": {
             "stringValue": "validation failed"
           }
@@ -134,13 +134,13 @@
       "endTimeUnixNano": "1758000003400000000",
       "attributes": [
         {
-          "key": "agentpnl.escalation_minutes",
+          "key": "averth.escalation_minutes",
           "value": {
             "intValue": "5"
           }
         },
         {
-          "key": "agentpnl.escalation_reason",
+          "key": "averth.escalation_reason",
           "value": {
             "stringValue": "low confidence"
           }

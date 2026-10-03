@@ -1,17 +1,17 @@
-"""Phase-0 policy simulation: replay a recorded ledger offline.
+"""Phase-0 policy screening: inspect a recorded ledger offline.
 
 Read-only means read-only. There is no live enforcement in the pilot. This
 module answers one question from historical data:
 
-    "Had policy X existed, which runs would have been stopped, and what
-     would it have saved?"
+    "Which completed runs crossed the proposed thresholds, and how much
+     historical spend is associated with those runs?"
 
 The customer runs the meter inside their own environment (Tracker), exports
 the sanitized ledger (cost/token/timing metadata only — no prompts,
 completions, or tool payloads; but caller-provided free text such as
 case_id, tool names, and retry reasons is exported verbatim, so redact
 anything sensitive before sharing), and we
-run the simulation here. Live kill/model-routing is Phase-1, built only after
+run the screen here. Live kill/model-routing is Phase-1, built only after
 a buyer confirms who owns that authority and will pay for it.
 """
 
@@ -29,7 +29,7 @@ LEDGER_ATTEMPT_KEYS = (
     "context_tax", "retry_path_cost", "retry_tool_cost",
     "terminal_model_cost",
     "cached_tokens", "cache_savings",
-    "success", "reopened", "business_value", "per_model",
+    "success", "outcome_inferred", "reopened", "business_value", "per_model",
     "tool_latency_ms",
     # events: metadata only, preserves retry reasons (H5)
     "events", "tool_steps",
@@ -62,7 +62,8 @@ def export_ledger(tracker, path):
         # read months later cannot be mistaken for current-price dollars.
         "price_vintage": tracker.price_vintage,
         "attempts": [
-            {k: a[k] for k in LEDGER_ATTEMPT_KEYS}
+            {k: a.get(k, True) if k == "outcome_inferred" else a[k]
+             for k in LEDGER_ATTEMPT_KEYS}
             for a in tracker.attempts
         ],
     }
@@ -77,20 +78,20 @@ def load_ledger(path):
 
 
 def simulate_policy(ledger, max_cost_per_attempt=None, yield_floor=None):
-    """Replay the ledger against hypothetical policies.
+    """Screen completed runs against proposed thresholds.
 
-    Returns the runs that would have been stopped and the exposed spend.
-    Stopped runs are split honestly: stopping a FAILED run saves pure waste;
-    stopping a run that went on to SUCCEED destroys a good outcome, so its
-    cost is reported as collateral, not savings. A policy with high
-    collateral is a bad policy even when its "exposed spend" looks large.
+    This is retrospective classification, not a live-policy replay. The
+    ledger has final outcomes and aggregate costs, but no decision-time
+    snapshots. In particular, a final yield cannot be known mid-run and a
+    cost cap cannot recover spend incurred before it fires. The returned
+    dollars are historical spend on flagged runs, never projected savings.
 
     Boundary semantics: the stop condition is strict `>` — a run costing
     exactly max_cost_per_attempt is NOT stopped ("exceeded the cap" means
     strictly over). Same for the yield floor: exactly at the floor passes.
     """
     attempts = ledger["attempts"]
-    stopped = []
+    flagged = []
     for a in attempts:
         reasons = []
         if max_cost_per_attempt is not None and a["total_cost"] > max_cost_per_attempt:
@@ -100,40 +101,41 @@ def simulate_policy(ledger, max_cost_per_attempt=None, yield_floor=None):
         if yield_floor is not None and y < yield_floor:
             reasons.append("yield %.0f%% < floor %.0f%%" % (y * 100, yield_floor * 100))
         if reasons:
-            stopped.append({"case_id": a["case_id"], "total_cost": a["total_cost"],
+            flagged.append({"case_id": a["case_id"], "total_cost": a["total_cost"],
                             "success": a["success"], "reasons": reasons})
-    stopped_failed = [s for s in stopped if not s["success"]]
-    stopped_success = [s for s in stopped if s["success"]]
-    saved = sum(s["total_cost"] for s in stopped_failed)
-    collateral = sum(s["total_cost"] for s in stopped_success)
-    exposed = saved + collateral
+    flagged_failed = [s for s in flagged if not s["success"]]
+    flagged_success = [s for s in flagged if s["success"]]
+    failed_spend = sum(s["total_cost"] for s in flagged_failed)
+    success_spend = sum(s["total_cost"] for s in flagged_success)
+    flagged_spend = failed_spend + success_spend
     total = sum(a["total_cost"] for a in attempts)
     return {
         "policy": {"max_cost_per_attempt": max_cost_per_attempt,
                    "yield_floor": yield_floor},
         "attempts": len(attempts),
-        "would_stop": len(stopped),
-        "would_stop_failed": len(stopped_failed),
-        "would_stop_success": len(stopped_success),
-        "saved_spend": saved,
-        "collateral_spend": collateral,
-        "exposed_spend": exposed,
-        "exposed_share": exposed / total if total else 0.0,
-        "worst": sorted(stopped, key=lambda s: -s["total_cost"])[:10],
+        "flagged_runs": len(flagged),
+        "flagged_failed": len(flagged_failed),
+        "flagged_success": len(flagged_success),
+        "flagged_failed_spend": failed_spend,
+        "flagged_success_spend": success_spend,
+        "flagged_spend": flagged_spend,
+        "flagged_share": flagged_spend / total if total else 0.0,
+        "worst": sorted(flagged, key=lambda s: -s["total_cost"])[:10],
     }
 
 
 def policy_text(sim):
     p = sim["policy"]
-    L = [f"Policy replay: max_cost_per_attempt=${p['max_cost_per_attempt']}, "
+    L = [f"Historical policy screen: max_cost_per_attempt=${p['max_cost_per_attempt']}, "
          f"yield_floor={p['yield_floor']}"]
     L.append(
-        f"Would have stopped {sim['would_stop']} of {sim['attempts']} runs: "
-        f"{sim['would_stop_failed']} failed "
-        f"(pure savings ${sim['saved_spend']:,.2f}) and "
-        f"{sim['would_stop_success']} that went on to succeed "
-        f"(collateral ${sim['collateral_spend']:,.2f} — good outcomes this "
-        f"policy would have destroyed).")
+        f"Flagged {sim['flagged_runs']} of {sim['attempts']} completed runs: "
+        f"{sim['flagged_failed']} failed "
+        f"(${sim['flagged_failed_spend']:,.2f} historical spend) and "
+        f"{sim['flagged_success']} successful "
+        f"(${sim['flagged_success_spend']:,.2f} historical spend).")
+    L.append("This screen uses final outcomes and costs. It does not estimate "
+             "when a live policy could act, savings, or lost outcomes.")
     for w in sim["worst"]:
         L.append(f"  {w['case_id']}: ${w['total_cost']:.2f} "
                  f"({'success' if w['success'] else 'FAILED'}) — "

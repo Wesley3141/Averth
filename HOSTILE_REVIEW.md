@@ -1,5 +1,9 @@
 # HOSTILE REVIEW — averth `hardening-pass` branch
 
+Historical review. The current policy screen no longer claims counterfactual
+savings from final run totals; see [PILOT.md](PILOT.md) for the current
+customer evidence standard.
+
 Reviewer posture: adversarial. Mission was to break the meter, not praise it.
 Baseline: master 27d82ee. Test suite: 112 passed before and after this review
 (no repo files modified; repro scripts live in /tmp/attack{1,2,3}.py).
@@ -132,7 +136,7 @@ a hole for exactly the adversarial numerics it should catch.
 ### C5 (Medium): LangSmith — one malformed run kills the entire import
 `langsmith.py` `_llm_tokens` returns negative floats unclamped (OTel clamps
 via `_nonneg`; JSONL rejects per-line), and `:125`
-`float(meta["agentpnl_escalation_minutes"])` is unvalidated →
+`float(meta["averth_escalation_minutes"])` is unvalidated →
 `ValueError: input_tokens must be >= 0` / `minutes must be >= 0` aborts the
 *whole* import. Three input paths, three different behaviors for the same
 bad datum (OTel clamps, JSONL pinpoints the line, LangSmith dies).

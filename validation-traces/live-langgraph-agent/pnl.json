@@ -4,27 +4,42 @@
   "successes": 12,
   "success_rate": 0.75,
   "reopened": 0,
+  "reopened_successful": 0,
   "escalations": 0,
   "retries": 21,
   "cost_model": 0.00426,
-  "cost_tools": 0.17400000000000002,
+  "cost_model_terminal": 0.002752,
+  "cost_tools": 0.17400000000000004,
   "cost_retry": 0.0,
+  "cost_retry_path": 0.0015079999999999996,
+  "cost_retry_tools": 0.034,
   "cost_human": 0.0,
   "cost_total": 0.17826000000000003,
+  "cost_failed": 0.046380000000000005,
+  "failed_spend_share": 0.2601817569841804,
+  "cost_reopened": 0,
+  "reopened_spend_share": 0.0,
+  "context_tax": 0.0,
+  "context_tax_per_success": 0.0,
+  "context_tax_share_of_model": 0.0,
+  "cache_savings": 0.0,
+  "cached_tokens": 0,
+  "unpriced_spend": 0.00426,
   "per_success": {
-    "model": 0.000355,
-    "tools": 0.0145,
-    "retry": 0.0,
+    "model": 0.00022933333333333334,
+    "retry_path": 0.00012566666666666664,
+    "tools": 0.014500000000000004,
     "human": 0.0,
     "fully_loaded": 0.014855000000000002
   },
-  "yield_ratio": 0.7246376811594203,
+  "yield_ratio": 0.6421404682274248,
   "avg_context_growth": 3.2801654942279943,
   "tail": {
-    "p50": 0.013091000000000002,
-    "p95": 0.013334,
+    "p50": 0.011211500000000003,
+    "p95": 0.013329500000000001,
     "max": 0.013334,
-    "top5pct_share": 0.07480085268708626
+    "top5pct_share": 0.07480085268708626,
+    "tail_label": "costliest run"
   },
   "per_model": {
     "unknown:StubChatModel": 0.00426
@@ -32,8 +47,116 @@
   "unpriced_models": [
     "unknown:StubChatModel"
   ],
+  "missing_usage_models": [],
+  "inferred_outcomes": 0,
+  "top_retry_reasons": [
+    [
+      "tool_error: RuntimeError",
+      19
+    ],
+    [
+      "tool_error: ReadTimeout",
+      2
+    ]
+  ],
+  "costliest_attempts": [
+    {
+      "case_id": "RUN-09",
+      "total_cost": 0.013334,
+      "success": true,
+      "retries": 2,
+      "human_min": 0.0,
+      "reopened": false
+    },
+    {
+      "case_id": "RUN-15",
+      "total_cost": 0.013328000000000001,
+      "success": true,
+      "retries": 2,
+      "human_min": 0.0,
+      "reopened": false
+    },
+    {
+      "case_id": "RUN-05",
+      "total_cost": 0.013319000000000001,
+      "success": true,
+      "retries": 2,
+      "human_min": 0.0,
+      "reopened": false
+    },
+    {
+      "case_id": "RUN-06",
+      "total_cost": 0.013319000000000001,
+      "success": true,
+      "retries": 2,
+      "human_min": 0.0,
+      "reopened": false
+    },
+    {
+      "case_id": "RUN-11",
+      "total_cost": 0.013311000000000002,
+      "success": true,
+      "retries": 2,
+      "human_min": 0.0,
+      "reopened": false
+    },
+    {
+      "case_id": "RUN-16",
+      "total_cost": 0.013099000000000001,
+      "success": false,
+      "retries": 3,
+      "human_min": 0.0,
+      "reopened": false
+    },
+    {
+      "case_id": "RUN-08",
+      "total_cost": 0.013091000000000002,
+      "success": false,
+      "retries": 3,
+      "human_min": 0.0,
+      "reopened": false
+    },
+    {
+      "case_id": "RUN-13",
+      "total_cost": 0.013091000000000002,
+      "success": false,
+      "retries": 3,
+      "human_min": 0.0,
+      "reopened": false
+    },
+    {
+      "case_id": "RUN-12",
+      "total_cost": 0.009332000000000002,
+      "success": true,
+      "retries": 0,
+      "human_min": 0.0,
+      "reopened": false
+    },
+    {
+      "case_id": "RUN-02",
+      "total_cost": 0.009331,
+      "success": true,
+      "retries": 0,
+      "human_min": 0.0,
+      "reopened": false
+    }
+  ],
   "business_value": 0.0,
   "net_value": -0.17826000000000003,
-  "budget_per_success": 1.0,
-  "budget_breaches": 0
+  "budget_per_success": null,
+  "budget_breaches": 0,
+  "budget_breach_spend": 0,
+  "budget_breaches_failed": 0,
+  "price_vintage": {
+    "version": 2,
+    "updated": "2026-10-02",
+    "age_days": 1,
+    "stale": false,
+    "stale_after_days": 90
+  },
+  "human_cost_per_min": 1.17,
+  "human_rate_assumed": true,
+  "tools_default_priced_spend": 0,
+  "tools_default_priced_names": [],
+  "cache_read_discount": 0.1
 }

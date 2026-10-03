@@ -47,6 +47,7 @@ def test_write_html_basic(tmp_path):
     assert f"${per_success:,.2f}" in body or f"${per_success:.2f}" in body
     assert "<svg" in body
     assert "Generated locally by averth. No data leaves your environment." in body
+    assert "Reconcile against the customer&#x27;s invoice" in body
 
 
 def test_write_html_with_policy(tmp_path):
@@ -56,10 +57,11 @@ def test_write_html_with_policy(tmp_path):
     export_ledger(t, str(ledger_path))
     ledger = load_ledger(str(ledger_path))
     sim = simulate_policy(ledger, max_cost_per_attempt=0.50)
-    assert sim["would_stop"] > 0
+    assert sim["flagged_runs"] > 0
     out = tmp_path / "report-policy.html"
     write_html(str(out), t, policy_sim=sim)
     body = out.read_text(encoding="utf-8")
-    assert "Policy replay" in body
-    assert "would have been stopped" in body
-    assert f"${sim['exposed_spend']:,.2f}" in body
+    assert "Historical policy screen" in body
+    assert "does not estimate savings" in body
+    assert f"${sim['flagged_failed_spend']:,.2f}" in body
+    assert "pure savings" not in body

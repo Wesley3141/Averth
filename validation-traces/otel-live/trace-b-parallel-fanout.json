@@ -9,7 +9,7 @@
         {
           "key": "gen_ai.system",
           "value": {
-            "stringValue": "agentpnl-validation"
+            "stringValue": "averth-validation"
           }
         },
         {
@@ -45,7 +45,7 @@
         {
           "key": "gen_ai.system",
           "value": {
-            "stringValue": "agentpnl-validation"
+            "stringValue": "averth-validation"
           }
         },
         {
@@ -81,7 +81,7 @@
         {
           "key": "gen_ai.system",
           "value": {
-            "stringValue": "agentpnl-validation"
+            "stringValue": "averth-validation"
           }
         },
         {
@@ -117,7 +117,7 @@
         {
           "key": "gen_ai.system",
           "value": {
-            "stringValue": "agentpnl-validation"
+            "stringValue": "averth-validation"
           }
         },
         {
@@ -157,7 +157,7 @@
           }
         },
         {
-          "key": "agentpnl.retry",
+          "key": "averth.retry",
           "value": {
             "stringValue": "payment_api connection refused"
           }
@@ -177,7 +177,7 @@
         {
           "key": "gen_ai.system",
           "value": {
-            "stringValue": "agentpnl-validation"
+            "stringValue": "averth-validation"
           }
         },
         {
@@ -217,7 +217,7 @@
           }
         },
         {
-          "key": "agentpnl.retry",
+          "key": "averth.retry",
           "value": {
             "stringValue": "payment_api connection refused"
           }
@@ -327,7 +327,7 @@
         {
           "key": "gen_ai.system",
           "value": {
-            "stringValue": "agentpnl-validation"
+            "stringValue": "averth-validation"
           }
         },
         {
@@ -361,7 +361,7 @@
       "startTimeUnixNano": "1790817966915512572",
       "attributes": [
         {
-          "key": "agentpnl.business_value",
+          "key": "averth.business_value",
           "value": {
             "doubleValue": 25.0
           }

@@ -113,12 +113,8 @@ def _llm_model(run):
 
 
 def _brand(meta, name):
-    """Read an averth_* metadata key, falling back to the pre-rebrand
-    agentpnl_* name so runs logged before the rename still parse."""
-    v = meta.get("averth_" + name)
-    if v is None:
-        v = meta.get("agentpnl_" + name)
-    return v
+    """Read an Averth-specific LangSmith metadata key."""
+    return meta.get("averth_" + name)
 
 
 def _retry_marker_present(value):
@@ -224,7 +220,8 @@ def load_langsmith(path, agent_name="langsmith-import"):
             # non-root chains: boundaries only, no event of their own
 
         events.append({"type": "end", "case_id": case_id,
-                       "success": not failed, "business_value": business_value})
+                       "success": not failed, "outcome_inferred": True,
+                       "business_value": business_value})
 
     tracker = events_to_tracker(agent_name, events)
     tracker.missing_usage.update(missing_usage)

@@ -7,7 +7,7 @@ Effective October 1, 2026. Operator: Averth (Wesley Deklich).
 Averth MCP is a free, read-only analysis service. You submit a sanitized
 batch of agent run records (cost and timing metadata only) and it returns
 computed economics: fully-loaded cost per accepted outcome, expensive-tail
-share, and offline policy replays. It performs retrospective analysis only.
+share, and historical policy screens. It performs retrospective analysis only.
 It does not enforce policies, modify any system, or take any action on your
 behalf.
 

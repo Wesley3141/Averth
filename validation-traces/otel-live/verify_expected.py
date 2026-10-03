@@ -1,10 +1,10 @@
 """Verify imported ledgers against the attributes the generator set."""
 import math, os, sys
-sys.path.insert(0, "/home/hatch/workspace/averth")
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 from averth.importers import otel
 from averth.importers.common import tracker_from_ledger
 
-D = "/home/hatch/workspace/averth/validation-traces/otel-live"
+D = os.path.dirname(os.path.abspath(__file__))
 
 def load(f):
     ledger = otel.load_otel(os.path.join(D, f))
@@ -32,7 +32,7 @@ pm = a["per_model"]
 exp_sonnet = (2400+3100+2900)/1e6*3.00 + (380+640+310)/1e6*15.00
 check(abs(pm.get("anthropic:claude-sonnet-4-5", 0) - exp_sonnet) < 1e-9,
       "trace-a: sonnet cost %.6f, got %.6f" % (exp_sonnet, pm.get("anthropic:claude-sonnet-4-5", 0)))
-exp_haiku = 1200/1e6*0.80 + 210/1e6*4.00
+exp_haiku = 1200/1e6*1.00 + 210/1e6*5.00
 check(abs(pm.get("anthropic:claude-haiku-4-5", 0) - exp_haiku) < 1e-9,
       "trace-a: haiku cost %.6f, got %.6f" % (exp_haiku, pm.get("anthropic:claude-haiku-4-5", 0)))
 # deepseek: negative input tokens clamped to 0 -> 150 out * fallback 3.00

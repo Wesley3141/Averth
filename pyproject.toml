@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "averth"
-version = "0.2.0"
+version = "0.3.0"
 description = "Economic meter for production AI agents: fully loaded cost per accepted outcome"
 readme = "README.md"
 license = { text = "MIT" }
@@ -14,6 +14,7 @@ dependencies = []
 [project.optional-dependencies]
 langchain = ["langchain-core"]
 openai = ["openai"]
+dev = ["pytest>=8,<9"]
 
 [project.scripts]
 averth = "averth.cli:main"

@@ -94,6 +94,17 @@ def test_tracker_from_ledger_pnl_matches(tmp_path):
         assert p2[k] == pytest.approx(p1[k]), f"pnl drift on {k}"
 
 
+def test_older_ledger_outcome_provenance_is_unknown(tmp_path):
+    t = build_tracker()
+    path = str(tmp_path / "ledger.json")
+    P.export_ledger(t, path)
+    ledger = P.load_ledger(path)
+    for attempt in ledger["attempts"]:
+        del attempt["outcome_inferred"]
+    restored = tracker_from_ledger(ledger)
+    assert restored.pnl()["inferred_outcomes"] == len(ledger["attempts"])
+
+
 def test_ledger_contains_no_payload_data(tmp_path):
     """The ledger is cost metadata only: no prompts, completions, or payloads."""
     t = build_tracker()
@@ -128,12 +139,12 @@ def test_simulate_policy_cost_cap_stops_right_runs(tmp_path):
     cap = (cheap + expensive) / 2
     sim = P.simulate_policy(ledger, max_cost_per_attempt=cap)
     assert sim["attempts"] == 3
-    assert sim["would_stop"] == 1
+    assert sim["flagged_runs"] == 1
     stopped_ids = {w["case_id"] for w in sim["worst"]}
     assert stopped_ids == {"expensive"}
-    assert sim["exposed_spend"] == pytest.approx(expensive)
+    assert sim["flagged_spend"] == pytest.approx(expensive)
     total = sum(a["total_cost"] for a in ledger["attempts"])
-    assert sim["exposed_share"] == pytest.approx(expensive / total)
+    assert sim["flagged_share"] == pytest.approx(expensive / total)
     # worst offenders sorted descending
     assert sim["worst"][0]["case_id"] == "expensive"
 
@@ -146,7 +157,7 @@ def test_simulate_policy_yield_floor(tmp_path):
 
     # 'expensive' has ~half its tokens on the retry path; cheap/failed have none
     sim = P.simulate_policy(ledger, yield_floor=0.75)
-    assert sim["would_stop"] == 1
+    assert sim["flagged_runs"] == 1
     stopped_ids = {w["case_id"] for w in sim["worst"]}
     assert "expensive" in stopped_ids
     assert "cheap" not in stopped_ids
@@ -160,9 +171,9 @@ def test_simulate_policy_no_filters_stops_nothing(tmp_path):
     path = str(tmp_path / "ledger.json")
     P.export_ledger(t, path)
     sim = P.simulate_policy(P.load_ledger(path))
-    assert sim["would_stop"] == 0
-    assert sim["exposed_spend"] == 0.0
-    assert sim["exposed_share"] == 0.0
+    assert sim["flagged_runs"] == 0
+    assert sim["flagged_spend"] == 0.0
+    assert sim["flagged_share"] == 0.0
 
 
 def test_policy_text_renders_on_real_sim_output(tmp_path):
@@ -176,11 +187,12 @@ def test_policy_text_renders_on_real_sim_output(tmp_path):
     expensive = ledger["attempts"][1]["total_cost"]
     sim = P.simulate_policy(ledger,
                             max_cost_per_attempt=(cheap + expensive) / 2)
-    assert sim["would_stop"] == 1
+    assert sim["flagged_runs"] == 1
     text = P.policy_text(sim)
-    assert "1 of 3 runs" in text
+    assert "1 of 3 completed runs" in text
     assert "expensive" in text
-    assert "pure savings" in text or "collateral" in text
+    assert "does not estimate" in text
+    assert "pure savings" not in text
 
 
 def test_simulate_policy_splits_saved_vs_collateral(tmp_path):
@@ -192,10 +204,10 @@ def test_simulate_policy_splits_saved_vs_collateral(tmp_path):
     cheap = ledger["attempts"][0]["total_cost"]
     expensive = ledger["attempts"][1]["total_cost"]
     sim = P.simulate_policy(ledger, max_cost_per_attempt=(cheap + expensive) / 2)
-    assert sim["would_stop"] == 1
-    assert sim["would_stop_failed"] == 0
-    assert sim["would_stop_success"] == 1
-    assert sim["saved_spend"] == pytest.approx(0.0)
-    assert sim["collateral_spend"] == pytest.approx(expensive)
-    assert sim["saved_spend"] + sim["collateral_spend"] == pytest.approx(
-        sim["exposed_spend"])
+    assert sim["flagged_runs"] == 1
+    assert sim["flagged_failed"] == 0
+    assert sim["flagged_success"] == 1
+    assert sim["flagged_failed_spend"] == pytest.approx(0.0)
+    assert sim["flagged_success_spend"] == pytest.approx(expensive)
+    assert sim["flagged_failed_spend"] + sim["flagged_success_spend"] == pytest.approx(
+        sim["flagged_spend"])

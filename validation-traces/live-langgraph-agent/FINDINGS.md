@@ -11,11 +11,13 @@ tiktoken-measured token counts. One run (RUN-04) failed for real on a
 network degradation (both parallel tools timed out); it stays in the
 ledger as a genuine failed attempt.
 
-`validate.py` (zero hand-fixing) passes clean: the in-process `pnl()`,
-the exported `ledger.json` rehydrated via `tracker_from_ledger`, and the
-`events.jsonl` fed through the real CLI importer path (`load_jsonl` ->
-`events_to_tracker`) agree on every headline number, per-model split,
-tail stats, yield ratio, and the unpriced-model flag list.
+`validate.py` passes clean against the archived `events.jsonl` input and
+the current `ledger.json`/`pnl.json` snapshots. The snapshots were
+regenerated from the archived events after the failed-attempt waste rule
+changed. This now checks reproducibility and serialization; it is no longer
+an independent in-process comparison. The event stream retains real tool
+calls, measured token counts, and recorded outcomes, while model calls use
+a deterministic local stub and tool dollars are built-in estimates.
 
 ## Issues found
 
