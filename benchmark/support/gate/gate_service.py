@@ -58,7 +58,9 @@ def _ensure_corpus(tasks_path):
         return
     with open(tasks_path) as f:
         data = json.load(f)
-    build_corpus(data["dev"] + data["heldout"])
+    # Dev-only corpus: the gate's shadow battery must not leak heldout
+    # labels through the similar-ticket tool.
+    build_corpus(data["dev"])
     _corpus_built = True
 
 
