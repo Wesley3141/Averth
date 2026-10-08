@@ -10,38 +10,50 @@ and production.
 
 1. Operator proposes a change in the config surface (new prompt version,
    model swap, threshold tweak).
-2. The config surface POSTs to `POST /v1/gate/evaluations` with the
-   proposed config — the ACTUAL prompt text and model id, not a version
-   reference the gate can't resolve — BEFORE applying it to production
-   traffic.
+2. The DEPLOYMENT WRAPPER (not a post-apply webhook) POSTs to
+   `POST /v1/gate/evaluations` with two versioned configs: `baseline`
+   (the current approved production config) and `candidate` (the actual
+   proposed prompt text and model id — not a version reference the gate
+   can't resolve).
 3. The gate responds **202 Accepted** with an `evaluation_id` and a poll
-   URL. The shadow battery runs in the background: the CURRENT (pinned)
-   agent and the PROPOSED config each run the battery, and the decision
-   compares the delta.
-4. The caller polls `GET /v1/gate/evaluations/{id}` until `status` is
-   `done` (or passes `?wait_seconds=25` on the POST to long-poll behind
-   a webhook timeout). PASS → apply the change (optionally canary).
-   FAIL → hold; `violations` names what breached: proposed cost over
-   budget, acceptance below floor, or acceptance regressed vs current.
+   URL. The shadow battery runs in the background on BOTH configs and
+   the decision compares the delta.
+4. The wrapper polls `GET /v1/gate/evaluations/{id}` until `status` is
+   `done` (or passes `?wait_seconds=25` on the POST to long-poll).
+   `"pass": true` → apply EXACTLY the evaluated candidate (verify the
+   candidate config hash matches). Anything else → hold; `violations`
+   names what breached: candidate cost over budget, acceptance below
+   floor, or acceptance regressed vs baseline.
 5. Block on `"pass": false` OR any non-200 response OR a timeout OR a
-   job that ends in `error`. Only `"pass": true` approves.
+   job that ends in `error`. In mock mode `pass` is ALWAYS false;
+   `would_pass` is the hypothetical. Only `"pass": true` from a LIVE
+   evaluation approves.
 
 ## Wiring per platform
 
-- **LaunchDarkly:** a webhook on flag-change (or a custom integration)
-  calls the gate with `{"change_id": <flag key + version>,
-  "proposed": {"model": ..., "prompt": "<full proposed prompt text>"}}`.
-  Note: send the actual prompt text, not a version reference — the gate
-  cannot resolve registry versions. Hold rollout until pass.
-- **Prompt registry (e.g. LangSmith Hub, Humanloop):** a pre-publish hook
-  calls the gate with the candidate prompt text; publish is blocked on
-  fail.
+A stock LaunchDarkly flag-change webhook is a POST-APPLY notification
+(LD docs: webhooks report activity/audit-log payloads) — it cannot veto
+a change. Real pre-apply enforcement needs a path that controls the
+apply step:
+
+- **Deployment wrapper (recommended):** the team's deploy script or
+  bot calls the gate with the candidate config, polls for the decision,
+  and only then flips the flag / publishes the prompt. A failed
+  evaluation prevents the apply; a passed evaluation applies EXACTLY the
+  evaluated candidate (the decision binds the candidate config hash —
+  verify it matches before applying).
+- **Approval workflow:** the gate runs as a required check inside an
+  existing change-approval flow (e.g. Slack bot, ServiceNow); a human
+  or policy engine applies the change after `pass: true`.
+- **LaunchDarkly (notification only):** the flag-change webhook can
+  TRIGGER a post-apply shadow evaluation for observability, but it must
+  not be presented as a gate — the change is already live.
+- **Prompt registry (e.g. LangSmith Hub, Humanloop):** a pre-publish
+  hook calls the gate with the candidate prompt text; publish is
+  blocked on fail.
 - **Dashboard / internal tool:** the "deploy" button handler POSTs and
   then polls (or long-polls with `?wait_seconds=25`); show violations
   inline on fail.
-- **GitHub Actions (for prompt-in-repo teams):** thin workflow that POSTs
-  the diff's prompt/model and fails the check on gate fail. This is the
-  fallback, not the primary path.
 
 ## Failure semantics
 

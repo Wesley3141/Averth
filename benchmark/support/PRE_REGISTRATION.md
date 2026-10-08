@@ -29,31 +29,42 @@ Human hours are logged for B and C.
 
 ## Primary metric
 
-**Cost per acceptable resolution** = total arm cost / accepted count,
-where accepted = predicted resolution label matches the recorded
-accepted resolution. Computed from the Averth Tracker ledger (invoice
-keys recorded per attempt for later reconciliation).
+**Cost per correctly classified ticket** = total arm cost / accepted
+count, where accepted = predicted resolution label matches the recorded
+accepted resolution. The name is honest about v1: acceptance is label
+accuracy, not resolved work. Computed from the Averth Tracker ledger
+(invoice keys recorded per attempt for later reconciliation).
 
 ## Kill criteria (all must hold for C to win)
 
-1. C's cost per acceptable resolution is at least 20% lower than B's
-   (bootstrap 95% CI on the ratio, reuse `../analyze.py`).
+1. C's cost per correctly classified ticket is at least 20% lower than
+   B's (bootstrap 95% CI on the ratio, reuse `../analyze.py`).
 2. Bootstrap p < 0.05 for the reduction.
 3. C's acceptance rate is no more than 5 percentage points below B's
    (non-inferiority).
 4. Payback: experiment cost / monthly savings at the partner's ticket
    volume < 6 months.
 
+## False-alarm quantification (before any enforcement)
+
+Before the gate blocks anything, run the same unchanged configuration
+through the gate N≥10 times and measure how often it fails. A gate
+whose no-change failure rate exceeds 5% is too noisy to enforce —
+diagnose the variance (model nondeterminism, battery sampling) before
+trusting its decisions.
+
 Ties, regressions, and inconclusive results are reported as such. A
 failed kill criterion kills the claim, not the investigation: diagnose,
 don't re-run until green.
 
-## Commercial falsifiable claim (separate from the benchmark)
+## Commercial falsifiable claim (separate from the benchmark,
+revised 2026-10-08)
 
-5 high-volume support-agent design partners, 30-day timebox. The
-direction is dead if fewer than 2 teams block a deployment and rewrite
-a prompt purely because Averth flagged a unit-economic threshold
-violation.
+One team operating a custom support workflow, in shadow mode. The
+signal is repeated use on real release decisions and willingness to pay
+— not blocked-deployment counts (withdrawn: rewards noisy blocking,
+punishes a useful product when no harmful change occurs). Blocking is
+enabled only after the metric and repeated decisions are trusted.
 
 ## Amendments
 

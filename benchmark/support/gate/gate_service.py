@@ -1,36 +1,44 @@
 """Averth deployment gate: webhook/API interceptor for support-agent changes.
 
-Sits between the config surface (LaunchDarkly flag flip, prompt-registry
-update, dashboard change) and production. On a proposed change it runs the
-shadow support-ticket battery against BOTH the current agent and the
-proposed config, and returns pass/fail against the FinOps-governed Cost
-per Acceptable Resolution threshold plus a no-regression check.
+Sits between the config surface (deployment wrapper, approval workflow)
+and production. On a proposed change it runs the shadow support-ticket
+battery against the CURRENT APPROVED production config and the CANDIDATE
+config, and returns pass/fail.
 
-This is a DELTA gate: the proposed payload must contain the actual change
-(full prompt text and/or model id). A gate that only re-measures the
-current agent is a retroactive monitor, not a gate.
+This is a DELTA gate between two explicit, versioned configurations. The
+baseline is the team's current production config (caller-supplied), NOT a
+pinned benchmark agent. The pinned arm-A agent belongs to the benchmark;
+the gate compares what is deployed with what is proposed.
 
-Evaluations are ASYNC: config surfaces cap webhooks at 10-30s, but a live
-shadow battery takes minutes. POST enqueues and returns 202; the caller
-polls (or long-polls with ?wait_seconds=) for the decision.
+The v1 measured metric is COST PER CORRECTLY CLASSIFIED TICKET: the
+benchmark's acceptance is label accuracy, not resolved support work (a
+correct label passes even with an empty draft). "Cost per acceptable
+resolution" remains the product metric; v1 proxies it with
+classification and must not claim more. Answer/action grading against
+reviewed cases, then prospective outcome joining, are required before
+promoting the metric.
 
-Stdlib only (no new dependencies). See INTERCEPTOR_SPEC.md.
+Evaluations are ASYNC: POST enqueues and returns 202; the caller polls
+(or long-polls with ?wait_seconds=) for the decision.
 
-Endpoints:
-  GET  /v1/health
-  GET  /v1/thresholds
-  POST /v1/gate/evaluations[?wait_seconds=N] -> 202 {evaluation_id, poll}
-       body: {"change_id", "proposed": {"model", "prompt", "haiku_model"},
-              "threshold": {"max_cost_per_acceptable_resolution",
-                            "min_acceptance_rate"},
-              "battery": {"n", "split", "seed"}, "mode": "mock"|"live"}
-  GET  /v1/gate/evaluations/{id} -> {status, result}
+Decision contract (the executable part):
+- Mock/shadow output NEVER approves: in mock mode `pass` is always
+  false; the hypothetical lives in `would_pass`.
+- Thresholds must be finite numbers. Null/NaN/non-numeric thresholds are
+  rejected (400) — a missing cost limit fails closed, it never disables
+  the check.
+- The decision binds the exact candidate config, baseline config,
+  battery (n/split/seed), threshold, and policy revision via hashes, so
+  it cannot authorize a different change.
+- Production serving requires HMAC auth (AVERTH_GATE_HMAC_SECRET) unless
+  AVERTH_GATE_ALLOW_INSECURE=1 is set explicitly.
 
-Mock mode is NEVER a real gate decision: stamped "mock": true.
+Stdlib only. See INTERCEPTOR_SPEC.md.
 """
 import hashlib
 import hmac
 import json
+import math
 import os
 import queue
 import random
@@ -38,7 +46,7 @@ import sys
 import threading
 import time
 import uuid
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -51,11 +59,11 @@ import support_agent
 from support_agent import TRACKER, build_corpus
 
 DEFAULT_THRESHOLD = {
-    "max_cost_per_acceptable_resolution": 0.05,  # USD; FinOps-governed
+    "max_cost_per_correctly_classified": 0.05,  # USD; FinOps-governed
     "min_acceptance_rate": 0.80,
 }
-# Acceptance may not regress more than this vs the current agent.
 MAX_ACCEPT_REGRESSION_PP = 5.0
+MAX_WAIT_S = 120
 
 _corpus_built = False
 
@@ -66,8 +74,6 @@ def _ensure_corpus(tasks_path):
         return
     with open(tasks_path) as f:
         data = json.load(f)
-    # Dev-only corpus: the shadow battery must not leak heldout labels
-    # through the similar-ticket tool.
     build_corpus(data["dev"])
     _corpus_built = True
 
@@ -76,22 +82,35 @@ def _live_available():
     return bool(os.environ.get("ANTHROPIC_API_KEY"))
 
 
-def build_variant(proposed):
-    """Turn a proposed-config payload into an agent function.
+def _config_hash(cfg):
+    return hashlib.sha256(
+        json.dumps(cfg, sort_keys=True).encode()).hexdigest()[:16]
 
-    proposed: {"model": <sonnet model id>, "prompt": <full final system
-    prompt text>, "haiku_model": <haiku model id>}. Missing keys fall back
-    to the pinned arm-A defaults, so a partial proposal still evaluates.
+
+def build_variant(cfg):
+    """Turn a config dict into an agent function. Single implementation
+    lives in support_agent; both the benchmark arms and the gate use it.
     """
-    model = proposed.get("model", support_agent.SONNET)
-    haiku_model = proposed.get("haiku_model", support_agent.HAIKU)
-    prompt = proposed.get("prompt")  # None -> pinned final system prompt
+    return support_agent.make_variant(cfg)
 
-    def variant(task):
-        return support_agent.resolve_ticket(
-            task, model_haiku=haiku_model, model_sonnet=model,
-            final_system=prompt)
-    return variant
+
+def _validate_threshold(threshold):
+    """Thresholds must be finite numbers. Anything else fails closed."""
+    max_c = threshold.get("max_cost_per_correctly_classified")
+    min_a = threshold.get("min_acceptance_rate", 0.0)
+    for name, v in (("max_cost_per_correctly_classified", max_c),
+                    ("min_acceptance_rate", min_a)):
+        if isinstance(v, bool) or not isinstance(v, (int, float)):
+            raise ValueError(f"threshold {name} must be a number, "
+                             f"got {v!r}")
+        if not math.isfinite(v):
+            raise ValueError(f"threshold {name} must be finite, got {v!r}")
+    if max_c < 0:
+        raise ValueError("max_cost_per_correctly_classified must be >= 0")
+    if not 0.0 <= min_a <= 1.0:
+        raise ValueError("min_acceptance_rate must be in [0, 1]")
+    return {"max_cost_per_correctly_classified": float(max_c),
+            "min_acceptance_rate": float(min_a)}
 
 
 def _run_arm(tasks, agent_fn, mode):
@@ -102,8 +121,6 @@ def _run_arm(tasks, agent_fn, mode):
         support_agent.client = MockClient()
     try:
         grades = []
-        # The Tracker ledger is process-global; diff around this arm so
-        # repeated evaluations don't accumulate each other's cost.
         cost_before = TRACKER.pnl().get("cost_total", 0)
         for t in tasks:
             try:
@@ -133,74 +150,90 @@ def _arm_metrics(summary, cost):
         "n": summary["n"],
         "accepted": accepted,
         "acceptance_rate": round(summary["acceptance_rate"], 4),
-        "cost_per_acceptable_resolution":
+        "cost_per_correctly_classified":
             round(cost / accepted, 6) if accepted else None,
         "total_cost": round(cost, 6),
     }
 
 
-def evaluate(change_id, proposed, threshold, tasks, mode="mock"):
-    """Delta-gate decision: current agent vs proposed config.
+def evaluate(change_id, baseline_cfg, candidate_cfg, threshold, tasks,
+             mode="mock", policy_rev=None):
+    """Delta-gate decision: current production config vs candidate.
 
-    Runs the shadow battery twice (baseline + proposed variant) and
-    passes the change only if the PROPOSED config is within the
-    FinOps threshold AND does not regress acceptance vs baseline.
+    baseline_cfg: the team's CURRENT APPROVED production config
+    (versioned dict). candidate_cfg: the proposed config (versioned dict).
+    Pass requires the candidate within threshold AND no acceptance
+    regression vs baseline. In mock mode pass is always False; see
+    would_pass.
     """
     if mode == "live" and not _live_available():
         raise RuntimeError(
             "live evaluation requested but ANTHROPIC_API_KEY is not set")
     if mode not in ("mock", "live"):
         raise ValueError(f"unknown mode {mode!r}")
+    threshold = _validate_threshold(threshold)
+    policy_rev = policy_rev or os.environ.get("AVERTH_GATE_POLICY_REV",
+                                              "default")
 
     _, base_summary, base_cost = _run_arm(
-        tasks, support_agent.resolve_ticket, mode)
-    _, prop_summary, prop_cost = _run_arm(
-        tasks, build_variant(proposed), mode)
+        tasks, build_variant(baseline_cfg), mode)
+    _, cand_summary, cand_cost = _run_arm(
+        tasks, build_variant(candidate_cfg), mode)
 
     base = _arm_metrics(base_summary, base_cost)
-    prop = _arm_metrics(prop_summary, prop_cost)
+    cand = _arm_metrics(cand_summary, cand_cost)
 
-    max_cpar = threshold.get("max_cost_per_acceptable_resolution")
-    min_acc = threshold.get("min_acceptance_rate", 0.0)
+    max_c = threshold["max_cost_per_correctly_classified"]
+    min_a = threshold["min_acceptance_rate"]
     violations = []
-    cpar = prop["cost_per_acceptable_resolution"]
+    cpar = cand["cost_per_correctly_classified"]
     if cpar is None:
-        violations.append("proposed config: shadow battery produced zero "
-                          "accepted resolutions")
-    elif max_cpar is not None and cpar > max_cpar:
+        violations.append("candidate: shadow battery produced zero correct "
+                          "classifications")
+    elif cpar > max_c:
         violations.append(
-            f"proposed cost per acceptable resolution ${cpar:.4f} exceeds "
-            f"threshold ${max_cpar:.4f}")
-    if prop["acceptance_rate"] < min_acc:
+            f"candidate cost per correctly classified ticket ${cpar:.4f} "
+            f"exceeds threshold ${max_c:.4f}")
+    if cand["acceptance_rate"] < min_a:
         violations.append(
-            f"proposed acceptance rate {prop['acceptance_rate']:.1%} below "
-            f"floor {min_acc:.1%}")
-    reg_pp = (base["acceptance_rate"] - prop["acceptance_rate"]) * 100
+            f"candidate acceptance rate {cand['acceptance_rate']:.1%} below "
+            f"floor {min_a:.1%}")
+    reg_pp = (base["acceptance_rate"] - cand["acceptance_rate"]) * 100
     if reg_pp > MAX_ACCEPT_REGRESSION_PP:
         violations.append(
-            f"proposed acceptance regressed {reg_pp:.1f}pp vs current agent "
-            f"(limit {MAX_ACCEPT_REGRESSION_PP:.0f}pp)")
+            f"candidate acceptance regressed {reg_pp:.1f}pp vs current "
+            f"production config (limit {MAX_ACCEPT_REGRESSION_PP:.0f}pp)")
 
+    would_pass = not violations
+    battery_id = f"n{len(tasks)}"
     decision = {
         "change_id": change_id,
-        "pass": not violations,
+        # Mock/shadow output NEVER approves a deployment.
+        "pass": False if mode == "mock" else would_pass,
+        "would_pass": would_pass,
         "violations": violations,
-        "baseline": base,
-        "proposed": prop,
+        "baseline": {**base, "config_version":
+                     (baseline_cfg or {}).get("version", "unknown"),
+                     "config_hash": _config_hash(baseline_cfg or {})},
+        "candidate": {**cand, "config_version":
+                      (candidate_cfg or {}).get("version", "unknown"),
+                      "config_hash": _config_hash(candidate_cfg or {})},
         "delta": {
-            "cost_per_acceptable_resolution":
-                (round(cpar - base["cost_per_acceptable_resolution"], 6)
+            "cost_per_correctly_classified":
+                (round(cpar - base["cost_per_correctly_classified"], 6)
                  if cpar is not None and
-                 base["cost_per_acceptable_resolution"] is not None else None),
+                 base["cost_per_correctly_classified"] is not None else None),
             "acceptance_rate_pp": round(-reg_pp, 2),
         },
         "threshold_applied": threshold,
-        "proposed_config": proposed,
+        "policy_rev": policy_rev,
+        "battery": {"n_evaluated": len(tasks), "id": battery_id},
         "mode": mode,
     }
     if mode == "mock":
-        decision["note"] = ("MOCK MODE: plumbing validation only. This is "
-                            "NOT a real gate decision.")
+        decision["note"] = ("MOCK MODE: pass is always false. would_pass "
+                            "shows the hypothetical. This NEVER authorizes "
+                            "a deployment.")
     return decision
 
 
@@ -217,14 +250,15 @@ def _worker():
         job_id, fn = _job_queue.get()
         try:
             result = fn()
-            with _jobs_lock:
-                _jobs[job_id]["status"] = "done"
-                _jobs[job_id]["result"] = result
+            status, payload = "done", ("result", result)
         except Exception as e:  # fail closed: errors never green-light
-            with _jobs_lock:
-                _jobs[job_id]["status"] = "error"
-                _jobs[job_id]["error"] = str(e)[:300]
+            status, payload = "error", ("error", str(e)[:300])
         finally:
+            with _jobs_lock:
+                # The job may have been evicted while running; guard it.
+                if job_id in _jobs:
+                    _jobs[job_id]["status"] = status
+                    _jobs[job_id][payload[0]] = payload[1]
             _job_queue.task_done()
 
 
@@ -238,20 +272,31 @@ def ensure_worker():
         _worker_thread.start()
 
 
-def submit_evaluation(change_id, proposed, threshold, tasks, mode):
+def _evict_if_needed():
+    # Evict only terminal jobs, oldest first; never evict a running job.
+    with _jobs_lock:
+        while len(_jobs) >= _MAX_JOBS:
+            terminal = [k for k, j in _jobs.items()
+                        if j["status"] in ("done", "error")]
+            if not terminal:
+                break
+            oldest = min(terminal, key=lambda k: _jobs[k]["created"])
+            del _jobs[oldest]
+
+
+def submit_evaluation(change_id, baseline_cfg, candidate_cfg, threshold,
+                      tasks, mode, policy_rev=None):
     """Enqueue an evaluation. Returns the job id."""
     ensure_worker()
+    _evict_if_needed()
     job_id = uuid.uuid4().hex[:12]
     with _jobs_lock:
-        if len(_jobs) >= _MAX_JOBS:
-            oldest = min(_jobs, key=lambda k: _jobs[k]["created"])
-            del _jobs[oldest]
         _jobs[job_id] = {"status": "running", "created": time.time(),
                          "result": None, "error": None,
                          "change_id": change_id}
-    _job_queue.put((job_id,
-                    lambda: evaluate(change_id, proposed, threshold, tasks,
-                                     mode)))
+    _job_queue.put((job_id, lambda: evaluate(
+        change_id, baseline_cfg, candidate_cfg, threshold, tasks, mode,
+        policy_rev)))
     return job_id
 
 
@@ -271,8 +316,15 @@ def wait_job(job_id, timeout_s):
     return get_job(job_id)
 
 
+def _auth_ok(handler):
+    secret = os.environ.get("AVERTH_GATE_HMAC_SECRET")
+    if secret:
+        return True
+    return os.environ.get("AVERTH_GATE_ALLOW_INSECURE") == "1"
+
+
 class Handler(BaseHTTPRequestHandler):
-    server_version = "AverthGate/0.2"
+    server_version = "AverthGate/0.3"
 
     def _json(self, code, obj):
         body = json.dumps(obj).encode()
@@ -285,7 +337,7 @@ class Handler(BaseHTTPRequestHandler):
     def _check_hmac(self, body):
         secret = os.environ.get("AVERTH_GATE_HMAC_SECRET")
         if not secret:
-            return True  # HMAC enforced only when a secret is configured
+            return True  # enforced at startup unless insecure allowed
         sig = self.headers.get("X-Averth-Signature", "")
         want = hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
         return hmac.compare_digest(sig, want)
@@ -295,9 +347,11 @@ class Handler(BaseHTTPRequestHandler):
         path = parsed.path
         if path == "/v1/health":
             self._json(200, {"ok": True, "service": "averth-gate",
-                             "version": "0.2"})
+                             "version": "0.3"})
         elif path == "/v1/thresholds":
             self._json(200, {"threshold": DEFAULT_THRESHOLD,
+                             "policy_rev": os.environ.get(
+                                 "AVERTH_GATE_POLICY_REV", "default"),
                              "governed_by": "FinOps (partner-configured)"})
         elif path.startswith("/v1/gate/evaluations/"):
             job_id = path.rsplit("/", 1)[-1]
@@ -320,6 +374,12 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path != "/v1/gate/evaluations":
             self._json(404, {"error": "not found"})
             return
+        if not _auth_ok(self):
+            self._json(503, {"error": "production authentication not "
+                                      "configured: set "
+                                      "AVERTH_GATE_HMAC_SECRET or "
+                                      "AVERTH_GATE_ALLOW_INSECURE=1"})
+            return
         length = int(self.headers.get("Content-Length", 0))
         body = self.rfile.read(length)
         if not self._check_hmac(body):
@@ -332,8 +392,25 @@ class Handler(BaseHTTPRequestHandler):
             return
         try:
             change_id = req["change_id"]
-            proposed = req.get("proposed", {})
+            # Baseline = current approved production config (required:
+            # the gate compares against what is deployed, not a pinned
+            # benchmark agent).
+            baseline_cfg = req.get("baseline")
+            if not isinstance(baseline_cfg, dict):
+                self._json(400, {"error": "baseline (current production "
+                                          "config) is required"})
+                return
+            candidate_cfg = req.get("candidate")
+            if not isinstance(candidate_cfg, dict):
+                self._json(400, {"error": "candidate (proposed config) is "
+                                          "required"})
+                return
             threshold = {**DEFAULT_THRESHOLD, **(req.get("threshold") or {})}
+            try:
+                threshold = _validate_threshold(threshold)
+            except ValueError as e:
+                self._json(400, {"error": f"invalid threshold: {e}"})
+                return
             battery = req.get("battery", {})
             mode = req.get("mode", "mock")
             if mode == "live" and not _live_available():
@@ -354,14 +431,13 @@ class Handler(BaseHTTPRequestHandler):
             rng = random.Random(seed)
             rng.shuffle(pool)
             tasks = pool[:n]
-            job_id = submit_evaluation(change_id, proposed, threshold,
-                                       tasks, mode)
+            job_id = submit_evaluation(change_id, baseline_cfg,
+                                       candidate_cfg, threshold, tasks,
+                                       mode)
             poll = f"/v1/gate/evaluations/{job_id}"
-            # Long-poll: callers behind 10-30s webhook caps pass
-            # ?wait_seconds=25 to block for the decision.
             wait_s = parse_qs(parsed.query).get("wait_seconds", [0])
             try:
-                wait_s = max(0, int(wait_s[0]))
+                wait_s = max(0, min(MAX_WAIT_S, int(wait_s[0])))
             except (ValueError, IndexError):
                 wait_s = 0
             if wait_s:
@@ -393,7 +469,7 @@ def main():
     port = int(os.environ.get("AVERTH_GATE_PORT", "8077"))
     ensure_worker()
     print(f"averth gate listening on :{port} (Ctrl-C to stop)")
-    HTTPServer(("127.0.0.1", port), Handler).serve_forever()
+    ThreadingHTTPServer(("127.0.0.1", port), Handler).serve_forever()
 
 
 if __name__ == "__main__":

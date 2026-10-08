@@ -61,9 +61,15 @@ class MockClient:
             return MockMsg(text, in_tok, out_tok)
 
 
-def run_arm(arm, tasks, mock=False):
+def run_arm(arm, tasks, agent_fn=None, mock=False):
     """Run one arm over tasks. Returns (grades, summary). Shared by CLI
-    and the deployment gate."""
+    and the deployment gate.
+
+    agent_fn: callable(task) -> (prediction, _). Defaults to the pinned
+    arm-A agent. Arms B/C MUST supply their own config via make_variant;
+    there is no silent fallback to arm A.
+    """
+    agent_fn = agent_fn or support_agent.resolve_ticket
     real_client = support_agent.client
     if mock:
         support_agent.client = MockClient()
@@ -72,7 +78,7 @@ def run_arm(arm, tasks, mock=False):
         cost_before = TRACKER.pnl().get("cost_total", 0)
         for t in tasks:
             try:
-                pred, _ = support_agent.resolve_ticket(t)
+                pred, _ = agent_fn(t)
                 g = grader.grade(pred, t)
             except Exception as e:
                 try:
@@ -91,7 +97,8 @@ def run_arm(arm, tasks, mock=False):
     summary = grader.summarize(grades)
     total_cost = TRACKER.pnl().get("cost_total", 0) - cost_before
     accepted = summary["accepted"]
-    summary["cost_per_accepted_resolution"] = (
+    # Honest name: v1 acceptance is label accuracy, not resolved work.
+    summary["cost_per_correctly_classified"] = (
         total_cost / accepted) if accepted else None
     summary["total_cost"] = total_cost
     summary["mock"] = mock
@@ -107,10 +114,29 @@ def main():
     ap.add_argument("--mock", action="store_true")
     ap.add_argument("--split", default="dev", choices=["dev", "heldout"])
     ap.add_argument("--tasks", default=os.path.join(HERE, "tasks.json"))
+    ap.add_argument("--manifest",
+                    help="JSON config manifest for arm B/C "
+                         "(required for B/C; e.g. {\"version\": \"b1\", "
+                         "\"model\": ..., \"prompt\": ...}). Arm A always "
+                         "uses the pinned agent.")
     args = ap.parse_args()
 
     if args.mock:
         print("MOCK MODE - plumbing validation only, NOT benchmark results")
+
+    # Explicit arm dispatch: B/C are separate implementations, not labels.
+    manifest = None
+    if args.arm in ("B", "C"):
+        if not args.manifest:
+            ap.error(f"--arm {args.arm} requires --manifest with the arm's "
+                     f"config (refusing to silently run arm A)")
+        with open(args.manifest) as f:
+            manifest = json.load(f)
+        agent_fn = support_agent.make_variant(manifest)
+    elif args.arm == "A":
+        agent_fn = support_agent.resolve_ticket
+    else:
+        ap.error(f"unknown arm {args.arm!r} (expected A, B, or C)")
 
     random.seed(args.seed)
     with open(args.tasks) as f:
@@ -125,8 +151,11 @@ def main():
     build_corpus(data["dev"])
 
     t0 = time.time()
-    grades, summary = run_arm(args.arm, tasks, mock=args.mock)
+    grades, summary = run_arm(args.arm, tasks, agent_fn=agent_fn,
+                              mock=args.mock)
     summary["elapsed_s"] = round(time.time() - t0, 1)
+    if manifest:
+        summary["manifest"] = manifest  # immutable record of what ran
 
     os.makedirs(os.path.join(HERE, "results"), exist_ok=True)
     tag = f"{args.arm}_n{args.n}_seed{args.seed}_{args.split}"
