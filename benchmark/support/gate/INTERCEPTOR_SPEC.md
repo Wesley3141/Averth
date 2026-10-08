@@ -30,12 +30,15 @@ and production.
 
 - **LaunchDarkly:** a webhook on flag-change (or a custom integration)
   calls the gate with `{"change_id": <flag key + version>,
-  "proposed": {"model": ..., "prompt_version": ...}}`. Hold rollout until
-  pass.
+  "proposed": {"model": ..., "prompt": "<full proposed prompt text>"}}`.
+  Note: send the actual prompt text, not a version reference — the gate
+  cannot resolve registry versions. Hold rollout until pass.
 - **Prompt registry (e.g. LangSmith Hub, Humanloop):** a pre-publish hook
-  calls the gate; publish is blocked on fail.
-- **Dashboard / internal tool:** synchronous check in the "deploy" button
-  handler; show violations inline.
+  calls the gate with the candidate prompt text; publish is blocked on
+  fail.
+- **Dashboard / internal tool:** the "deploy" button handler POSTs and
+  then polls (or long-polls with `?wait_seconds=25`); show violations
+  inline on fail.
 - **GitHub Actions (for prompt-in-repo teams):** thin workflow that POSTs
   the diff's prompt/model and fails the check on gate fail. This is the
   fallback, not the primary path.
@@ -48,14 +51,14 @@ and production.
 - **Block on `pass: false` OR any non-200 response OR a timeout.** Callers
   must not treat HTTP 200 alone as approval; only `"pass": true` in the
   body approves.
-- **Timeouts:** callers set a deadline (default 120s for n=20 shadow
-  battery in mock; live batteries run async — v2). On timeout, treat as
-  gate error → fail closed.
-- **v1 scope note:** the HTTP layer shadow-tests the CURRENT agent
-  against the threshold (answers "is this config within budget?").
-  Proposed-config A/B (does the NEW prompt beat the old one?) needs the
-  agent to accept config overrides — the `agent_fn` injection point
-  exists in `evaluate()` for this; wiring it through HTTP is v2.
+- **Timeouts:** evaluations are async (202 + poll), so webhook caps are
+  handled by the long-poll (`?wait_seconds=`) or by polling. If the poll
+  itself times out or the job errors, treat as gate error → fail closed.
+- **Delta semantics:** the gate always evaluates the CURRENT pinned agent
+  and the PROPOSED config side by side. Pass requires the proposed
+  config to be within threshold AND within 5pp acceptance of baseline.
+  The `proposed` payload carries the actual change (`model`,
+  `haiku_model`, `prompt`); there is no registry-version resolution.
 - **Signing:** when `AVERTH_GATE_HMAC_SECRET` is set, requests must carry
   `X-Averth-Signature: hex(hmac_sha256(secret, body))`. Production
   deployments MUST set this; without it any caller can forge a pass.
@@ -63,8 +66,7 @@ and production.
 ## Threshold governance
 
 Thresholds are FinOps-owned, not engineer-owned. `GET /v1/thresholds`
-returns the active set; changes to thresholds are versioned and logged
-(v2: append-only threshold ledger). The gate never invents a threshold:
+returns the active set. The gate never invents a threshold:
 if the caller omits one, service defaults apply and are stamped on the
 decision.
 
@@ -92,7 +94,8 @@ green streak with suspicion, not celebration.
 
 ## What v1 does NOT do
 
-- No async queue (live batteries run inline; keep n small).
 - No canary analysis or automatic rollback (the gate blocks bad deploys;
-  it doesn't watch good ones — v2).
+  it doesn't watch good ones — future).
 - No multi-tenant isolation (one partner, one process — v1).
+- No append-only threshold ledger (threshold changes are caller-managed;
+  the active set is stamped on every decision — future).
