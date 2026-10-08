@@ -131,8 +131,13 @@ def _percentile(sorted_values, p):
 
 class Tracker:
     def __init__(self, agent_name, budget_per_success=None, on_breach=None,
-                 human_cost_per_min=None, cache_read_discount=None):
+                 human_cost_per_min=None, cache_read_discount=None,
+                 api_key_id=None):
         self.agent_name = agent_name
+        # api_key_id: the provider API key this tracker meters. Recorded on
+        # every attempt so the invoice join can bucket by (key, hour).
+        # None = unkeyed (single-key deployments); never inferred.
+        self.api_key_id = api_key_id
         # None disables the envelope; 0.0 means "no spend allowed" and is a
         # live value, never a disabled one (falsy-trap class: `is not None`,
         # not truthiness, everywhere this field is tested).
@@ -206,9 +211,14 @@ class Tracker:
     def start_attempt(self, case_id=None):
         if self._cur is not None:
             raise RuntimeError("previous attempt not ended; call end_attempt first")
+        import datetime
         self._cur = {"case_id": case_id, "model": 0.0, "tools": 0.0,
                      "retries": 0, "retry_cost": 0.0,
                      "human_min": 0.0, "events": [],
+                     # UTC start time + key id: the invoice-join keys.
+                     "started_at": datetime.datetime.now(
+                         datetime.timezone.utc).isoformat(),
+                     "api_key_id": self.api_key_id,
                      # step dicts: in/out/cost/retry/in_price/cached/branch
                      "steps": [],
                      # tool step dicts: name/cost/retry/branch
@@ -233,6 +243,8 @@ class Tracker:
             "in": in_tok, "out": out_tok, "cost": cost,
             "retry": waste, "in_price": in_price_per_m,
             "cached": cached_tok, "branch": branch,
+            # "provider:model": which model made this call (invoice-join key)
+            "model_key": "%s:%s" % (provider, model),
         })
         key = "%s:%s" % (provider, model)
         cur["per_model"][key] = cur["per_model"].get(key, 0.0) + cost
