@@ -8,6 +8,22 @@ The join key is (api_key_id, UTC hour): neither Anthropic nor OpenAI can
 attribute spend to an individual run, so per-run precision is impossible and
 this script does not pretend otherwise.
 
+TWO VALIDATION LAYERS (do not conflate):
+  Layer 1 — traces -> provider usage: do our logged tokens match what the
+    provider metered? Dimensions: token categories, model, key/workspace,
+    timing. Gaps here are missing requests or mis-logging.
+  Layer 2 — usage -> cost -> invoice: do provider-metered usage and costs
+    match the bill? Anthropic's cost endpoint is DAILY buckets grouped by
+    workspace/description; OpenAI's is DAILY by key/project/line item.
+    Hourly estimates remain estimates until reconciled at the provider's
+    billing granularity.
+
+Matching the total bill does NOT prove correct attribution: overstating one
+workflow and understating another can cancel out. This report therefore
+shows total residual AND attribution coverage, and preserves an explicit
+unattributed amount. Coverage below 100% means part of the bill is not
+explained by tracked runs — stated, not hidden.
+
 Inputs:
   1. Averth ledger: a Tracker instance (in-process) or a JSON export of
      tracker.attempts. Attempts carry started_at (UTC) and api_key_id
@@ -185,6 +201,12 @@ def join(av_buckets, av_runs, provider_buckets, residual_threshold=0.10):
 
         token_gap_in = ptok_in - av["input_tokens"]
         token_gap_out = ptok_out - av["output_tokens"]
+        # Attribution coverage: matching the total bill does not prove correct
+        # attribution (over/understatements can cancel). Report coverage and
+        # keep an explicit unattributed amount.
+        coverage_in = (av["input_tokens"] / ptok_in) if ptok_in else None
+        unattributed_in = max(0, token_gap_in)
+        unattributed_out = max(0, token_gap_out)
 
         explained = av["estimated_cost"]
         residual = (billed - explained) if has_billed else None
@@ -205,6 +227,10 @@ def join(av_buckets, av_runs, provider_buckets, residual_threshold=0.10):
             "averth_estimated_cost": round(av["estimated_cost"], 4),
             "provider_billed_cost": round(billed, 4) if has_billed else None,
             "residual": round(residual, 4) if residual is not None else None,
+            "attribution_coverage_in": (round(coverage_in, 4)
+                                        if coverage_in is not None else None),
+            "unattributed_input_tokens": unattributed_in,
+            "unattributed_output_tokens": unattributed_out,
             "verdict": verdict,
         })
 
