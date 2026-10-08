@@ -1,0 +1,133 @@
+{
+ "summary": {
+  "n": 20,
+  "accuracy": 0.85,
+  "correct": 17,
+  "cost_per_accepted": 0.010617529411764706,
+  "total_cost": 0.180498,
+  "elapsed_s": 0.0,
+  "mock": true
+ },
+ "grades": [
+  {
+   "task_id": "langchain-ai/langchain#39776",
+   "predicted": "feature_request",
+   "actual": "feature_request",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#40721",
+   "predicted": "feature_request",
+   "actual": "bug",
+   "correct": false
+  },
+  {
+   "task_id": "langchain-ai/langchain#40205",
+   "predicted": "feature_request",
+   "actual": "feature_request",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#39944",
+   "predicted": "feature_request",
+   "actual": "feature_request",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#38103",
+   "predicted": "feature_request",
+   "actual": "feature_request",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#40878",
+   "predicted": "bug",
+   "actual": "bug",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#39870",
+   "predicted": "feature_request",
+   "actual": "feature_request",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#38661",
+   "predicted": "feature_request",
+   "actual": "feature_request",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#40770",
+   "predicted": "feature_request",
+   "actual": "bug",
+   "correct": false
+  },
+  {
+   "task_id": "langchain-ai/langchain#37642",
+   "predicted": "feature_request",
+   "actual": "feature_request",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#40236",
+   "predicted": "feature_request",
+   "actual": "feature_request",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#40675",
+   "predicted": "bug",
+   "actual": "bug",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#38688",
+   "predicted": "feature_request",
+   "actual": "feature_request",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#39286",
+   "predicted": "feature_request",
+   "actual": "feature_request",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#40403",
+   "predicted": "bug",
+   "actual": "bug",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#40744",
+   "predicted": "bug",
+   "actual": "bug",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#40688",
+   "predicted": "bug",
+   "actual": "bug",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#40858",
+   "predicted": "bug",
+   "actual": "bug",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#37996",
+   "predicted": "feature_request",
+   "actual": "feature_request",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#40802",
+   "predicted": "feature_request",
+   "actual": "bug",
+   "correct": false
+  }
+ ]
+}
