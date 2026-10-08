@@ -137,8 +137,9 @@ def normalize_anthropic_cost(api_response):
     DAILY buckets only; group_by is workspace_id or description (NO
     api_key_id grouping; the default workspace has workspace_id null).
     Cost records live in data[].results[]. Amounts are USD decimal
-    STRINGS in lowest units (cents). Callers must page
-    (has_more/next_page -> page).
+    STRINGS in lowest units (cents). `description` is a STRING (the
+    grouped description, e.g. model + inference geo); the model comes
+    from row["model"]. Callers must page (has_more/next_page -> page).
     Because cost is daily and not key-granular, these buckets carry
     grain="day" with hour_utc set to the day start; the join reports them
     at day granularity and must not pretend hourly precision.
@@ -154,12 +155,14 @@ def normalize_anthropic_cost(api_response):
                 usd = float(amount) / 100.0
             except (TypeError, ValueError):
                 usd = 0.0
-            desc = row.get("description", {}) or {}
             buckets.append({
                 "api_key_id": row.get("workspace_id") or "unknown",
                 "hour_utc": _time_bucket(day_start) if day_start else "",
                 "grain": "day",
-                "model": desc.get("model", "unknown"),
+                "model": row.get("model", "unknown"),
+                "description": row.get("description")
+                               if isinstance(row.get("description"), str)
+                               else None,
                 "input_tokens": 0,
                 "cache_read_tokens": 0,
                 "cache_creation_tokens": 0,

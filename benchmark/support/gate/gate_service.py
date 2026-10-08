@@ -88,13 +88,29 @@ def _config_hash(cfg):
 
 
 def _battery_id(tasks):
-    """Identify the actual dataset evaluated, not just its size.
+    """Identify the actual dataset evaluated: content, labels, and order.
 
-    Two different datasets must never share an identifier.
+    Changing a ticket's body or expected label changes the hash; the
+    evaluated order is part of the identity too. Two different
+    datasets must never share an identifier.
     """
-    ids = sorted(t.get("id", "") for t in tasks)
+    rows = [(t.get("id", ""), t.get("title", ""), t.get("body", ""),
+             t.get("resolution_label", "")) for t in tasks]
     return "bat-" + hashlib.sha256(
-        json.dumps(ids).encode()).hexdigest()[:12]
+        json.dumps(rows).encode()).hexdigest()[:12]
+
+
+def _corpus_id(corpus_tasks):
+    """Identify the retrieval corpus separately from the battery.
+
+    The agent's similar-ticket tool consults the corpus; swapping the
+    corpus changes results without changing the battery, so it gets its
+    own hash (order-independent: retrieval is similarity-ranked).
+    """
+    rows = sorted((t.get("id", ""), t.get("title", ""), t.get("body", ""))
+                  for t in corpus_tasks)
+    return "corp-" + hashlib.sha256(
+        json.dumps(rows).encode()).hexdigest()[:12]
 
 
 def build_variant(cfg):
@@ -203,7 +219,7 @@ def _arm_metrics(summary, cost):
 
 
 def evaluate(change_id, baseline_cfg, candidate_cfg, threshold, tasks,
-             mode="mock", policy_rev=None):
+             mode="mock", policy_rev=None, corpus_version=None):
     """Delta-gate decision: current production config vs candidate.
 
     baseline_cfg: the team's CURRENT APPROVED production config
@@ -272,7 +288,8 @@ def evaluate(change_id, baseline_cfg, candidate_cfg, threshold, tasks,
         },
         "threshold_applied": threshold,
         "policy_rev": policy_rev,
-        "battery": {"n_evaluated": len(tasks), "id": _battery_id(tasks)},
+        "battery": {"n_evaluated": len(tasks), "id": _battery_id(tasks),
+                    "corpus_id": corpus_version},
         "mode": mode,
     }
     if mode == "mock":
@@ -330,7 +347,7 @@ def _evict_if_needed():
 
 
 def submit_evaluation(change_id, baseline_cfg, candidate_cfg, threshold,
-                      tasks, mode, policy_rev=None):
+                      tasks, mode, policy_rev=None, corpus_version=None):
     """Enqueue an evaluation. Returns the job id."""
     ensure_worker()
     _evict_if_needed()
@@ -341,7 +358,7 @@ def submit_evaluation(change_id, baseline_cfg, candidate_cfg, threshold,
                          "change_id": change_id}
     _job_queue.put((job_id, lambda: evaluate(
         change_id, baseline_cfg, candidate_cfg, threshold, tasks, mode,
-        policy_rev)))
+        policy_rev, corpus_version)))
     return job_id
 
 
@@ -486,13 +503,17 @@ class Handler(BaseHTTPRequestHandler):
                 return
             _ensure_corpus(tasks_path)
             with open(tasks_path) as f:
-                pool = json.load(f)[split][:]
+                data = json.load(f)
+            pool = data[split][:]
+            # The retrieval corpus is always the dev set; its hash is
+            # recorded separately from the battery hash.
+            corpus_version = _corpus_id(data["dev"])
             rng = random.Random(seed)
             rng.shuffle(pool)
             tasks = pool[:n]
             job_id = submit_evaluation(change_id, baseline_cfg,
                                        candidate_cfg, threshold, tasks,
-                                       mode, policy_rev)
+                                       mode, policy_rev, corpus_version)
             poll = f"/v1/gate/evaluations/{job_id}"
             wait_s = parse_qs(parsed.query).get("wait_seconds", [0])
             try:
