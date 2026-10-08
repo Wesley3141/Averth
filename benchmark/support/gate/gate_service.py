@@ -87,6 +87,16 @@ def _config_hash(cfg):
         json.dumps(cfg, sort_keys=True).encode()).hexdigest()[:16]
 
 
+def _battery_id(tasks):
+    """Identify the actual dataset evaluated, not just its size.
+
+    Two different datasets must never share an identifier.
+    """
+    ids = sorted(t.get("id", "") for t in tasks)
+    return "bat-" + hashlib.sha256(
+        json.dumps(ids).encode()).hexdigest()[:12]
+
+
 def build_variant(cfg):
     """Turn a config dict into an agent function. Single implementation
     lives in support_agent; both the benchmark arms and the gate use it.
@@ -111,6 +121,42 @@ def _validate_threshold(threshold):
         raise ValueError("min_acceptance_rate must be in [0, 1]")
     return {"max_cost_per_correctly_classified": float(max_c),
             "min_acceptance_rate": float(min_a)}
+
+
+# ---- server-side policy: the approved FinOps policy is resolved by the
+# gate, not chosen by the change requester. Set AVERTH_GATE_POLICY_FILE
+# to a JSON file {"policy_rev": "...", "threshold": {...}}. When set,
+# caller-supplied thresholds are ignored. Without it the gate runs
+# ungoverned (caller-supplied thresholds, flagged in the decision).
+_POLICY = None
+
+
+def load_policy():
+    """Load the server-side policy file. Fail fast on invalid content."""
+    global _POLICY
+    path = os.environ.get("AVERTH_GATE_POLICY_FILE")
+    if not path:
+        _POLICY = None
+        return
+    with open(path) as f:
+        doc = json.load(f)
+    rev = doc.get("policy_rev")
+    if not rev or not isinstance(rev, str):
+        raise ValueError("policy file must contain a policy_rev string")
+    threshold = _validate_threshold(doc.get("threshold", {}))
+    _POLICY = {"policy_rev": rev, "threshold": threshold}
+
+
+def resolve_policy(caller_threshold):
+    """Return (threshold, policy_rev, governed).
+
+    A server-side policy always wins over the caller's numbers: the
+    change requester cannot relax the FinOps budget.
+    """
+    if _POLICY is not None:
+        return _POLICY["threshold"], _POLICY["policy_rev"], True
+    return _validate_threshold(caller_threshold), \
+        "caller-supplied (ungoverned)", False
 
 
 def _run_arm(tasks, agent_fn, mode):
@@ -205,7 +251,6 @@ def evaluate(change_id, baseline_cfg, candidate_cfg, threshold, tasks,
             f"production config (limit {MAX_ACCEPT_REGRESSION_PP:.0f}pp)")
 
     would_pass = not violations
-    battery_id = f"n{len(tasks)}"
     decision = {
         "change_id": change_id,
         # Mock/shadow output NEVER approves a deployment.
@@ -227,7 +272,7 @@ def evaluate(change_id, baseline_cfg, candidate_cfg, threshold, tasks,
         },
         "threshold_applied": threshold,
         "policy_rev": policy_rev,
-        "battery": {"n_evaluated": len(tasks), "id": battery_id},
+        "battery": {"n_evaluated": len(tasks), "id": _battery_id(tasks)},
         "mode": mode,
     }
     if mode == "mock":
@@ -349,10 +394,19 @@ class Handler(BaseHTTPRequestHandler):
             self._json(200, {"ok": True, "service": "averth-gate",
                              "version": "0.3"})
         elif path == "/v1/thresholds":
-            self._json(200, {"threshold": DEFAULT_THRESHOLD,
-                             "policy_rev": os.environ.get(
-                                 "AVERTH_GATE_POLICY_REV", "default"),
-                             "governed_by": "FinOps (partner-configured)"})
+            if _POLICY is not None:
+                self._json(200, {"threshold": _POLICY["threshold"],
+                                 "policy_rev": _POLICY["policy_rev"],
+                                 "governed": True,
+                                 "governed_by": "server-side policy file"})
+            else:
+                self._json(200, {"threshold": DEFAULT_THRESHOLD,
+                                 "policy_rev": "caller-supplied "
+                                               "(ungoverned)",
+                                 "governed": False,
+                                 "governed_by": "none: set "
+                                                "AVERTH_GATE_POLICY_FILE "
+                                                "for production"})
         elif path.startswith("/v1/gate/evaluations/"):
             job_id = path.rsplit("/", 1)[-1]
             job = get_job(job_id)
@@ -405,9 +459,14 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(400, {"error": "candidate (proposed config) is "
                                           "required"})
                 return
-            threshold = {**DEFAULT_THRESHOLD, **(req.get("threshold") or {})}
+            # The enforced threshold is resolved server-side. A
+            # server-side policy always wins over caller-supplied
+            # numbers; without one the gate runs ungoverned and says so.
+            caller_threshold = {**DEFAULT_THRESHOLD,
+                                **(req.get("threshold") or {})}
             try:
-                threshold = _validate_threshold(threshold)
+                threshold, policy_rev, governed = resolve_policy(
+                    caller_threshold)
             except ValueError as e:
                 self._json(400, {"error": f"invalid threshold: {e}"})
                 return
@@ -433,7 +492,7 @@ class Handler(BaseHTTPRequestHandler):
             tasks = pool[:n]
             job_id = submit_evaluation(change_id, baseline_cfg,
                                        candidate_cfg, threshold, tasks,
-                                       mode)
+                                       mode, policy_rev)
             poll = f"/v1/gate/evaluations/{job_id}"
             wait_s = parse_qs(parsed.query).get("wait_seconds", [0])
             try:
@@ -467,6 +526,13 @@ class Handler(BaseHTTPRequestHandler):
 
 def main():
     port = int(os.environ.get("AVERTH_GATE_PORT", "8077"))
+    load_policy()  # fail fast on an invalid policy file
+    if _POLICY is not None:
+        print(f"server-side policy: {_POLICY['policy_rev']} "
+              f"(caller thresholds ignored)")
+    else:
+        print("WARNING: no AVERTH_GATE_POLICY_FILE set; thresholds are "
+              "caller-supplied (ungoverned). Do not use for enforcement.")
     ensure_worker()
     print(f"averth gate listening on :{port} (Ctrl-C to stop)")
     ThreadingHTTPServer(("127.0.0.1", port), Handler).serve_forever()

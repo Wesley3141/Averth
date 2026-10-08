@@ -262,3 +262,62 @@ def test_eviction_never_drops_running_job(monkeypatch):
     assert gate_service.get_job(jid4) is not None
     job = gate_service.wait_job(jid4, timeout_s=30)
     assert job["status"] == "done"
+
+
+def test_battery_id_is_dataset_hash(stubbed):
+    tasks_a = [_task(i) for i in range(4)]
+    tasks_b = [_task(i + 100) for i in range(4)]
+    d1 = _eval("b1", BASE, CAND, _thr(
+        max_cost_per_correctly_classified=99.0), tasks_a)
+    d2 = _eval("b2", BASE, CAND, _thr(
+        max_cost_per_correctly_classified=99.0), tasks_a)
+    d3 = _eval("b3", BASE, CAND, _thr(
+        max_cost_per_correctly_classified=99.0), tasks_b)
+    assert d1["battery"]["id"] == d2["battery"]["id"]
+    assert d1["battery"]["id"] != d3["battery"]["id"]
+    assert d1["battery"]["id"].startswith("bat-")
+
+
+def test_policy_file_overrides_caller_threshold(monkeypatch, tmp_path):
+    pol = tmp_path / "policy.json"
+    pol.write_text(json.dumps({
+        "policy_rev": "finops-v1",
+        "threshold": {"max_cost_per_correctly_classified": 0.01,
+                      "min_acceptance_rate": 0.9}}))
+    monkeypatch.setenv("AVERTH_GATE_POLICY_FILE", str(pol))
+    gate_service.load_policy()
+    try:
+        # Caller tries to relax the budget; the policy must win.
+        thr, rev, governed = gate_service.resolve_policy(
+            {"max_cost_per_correctly_classified": 99.0,
+             "min_acceptance_rate": 0.0})
+        assert rev == "finops-v1"
+        assert governed is True
+        assert thr["max_cost_per_correctly_classified"] == 0.01
+    finally:
+        monkeypatch.delenv("AVERTH_GATE_POLICY_FILE", raising=False)
+        gate_service.load_policy()
+
+
+def test_no_policy_file_is_ungoverned(monkeypatch):
+    monkeypatch.delenv("AVERTH_GATE_POLICY_FILE", raising=False)
+    gate_service.load_policy()
+    thr, rev, governed = gate_service.resolve_policy(_thr(
+        max_cost_per_correctly_classified=0.07))
+    assert governed is False
+    assert "ungoverned" in rev
+    assert thr["max_cost_per_correctly_classified"] == 0.07
+
+
+def test_invalid_policy_file_fails_fast(monkeypatch, tmp_path):
+    pol = tmp_path / "bad.json"
+    pol.write_text(json.dumps({"policy_rev": "x",
+                               "threshold": {"max_cost_per_correctly_classified": None,
+                                             "min_acceptance_rate": 0.5}}))
+    monkeypatch.setenv("AVERTH_GATE_POLICY_FILE", str(pol))
+    try:
+        with pytest.raises(ValueError):
+            gate_service.load_policy()
+    finally:
+        monkeypatch.delenv("AVERTH_GATE_POLICY_FILE", raising=False)
+        gate_service.load_policy()

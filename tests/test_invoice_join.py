@@ -75,15 +75,18 @@ def test_anthropic_missing_cache_creation_defaults_zero():
 
 
 def test_anthropic_cost_daily_cents_to_usd():
-    # cost_report: daily buckets, amounts as USD decimal strings in cents.
+    # cost_report: daily buckets; records in data[].results[]; amount is
+    # a USD decimal STRING in cents (not an object).
     resp = {"data": [{
         "starting_at": "2026-10-08T00:00:00Z",
         "ending_at": "2026-10-09T00:00:00Z",
-        "workspace_id": "ws1",
-        "description": {"model": "claude-sonnet-4-5"},
-        "cost_type": "tokens",
-        "token_type": "output_tokens",
-        "amount": {"value": "1250", "currency": "USD"},
+        "results": [{
+            "workspace_id": "ws1",
+            "description": {"model": "claude-sonnet-4-5"},
+            "cost_type": "tokens",
+            "token_type": "output_tokens",
+            "amount": "1250",
+        }],
     }]}
     buckets = ij.normalize_anthropic_cost(resp)
     assert len(buckets) == 1
@@ -94,13 +97,17 @@ def test_anthropic_cost_daily_cents_to_usd():
 
 
 def test_openai_cost_daily_numeric_amount():
-    # organization/costs: daily buckets, numeric start_time, amount.value.
+    # organization/costs: daily buckets; records in data[].results[];
+    # amount.value is the numeric cost (not cents).
     resp = {"data": [{
         "start_time": 1791417600, "end_time": 1791504000,
-        "api_key_id": "k1", "project_id": "p1",
-        "line_item": "gpt-5.6-luna, output_tokens",
-        "amount": {"value": 3.75, "currency": "usd"},
-        "quantity": 150000, "quantity_unit": "tokens",
+        "results": [{
+            "object": "organization.costs.result",
+            "amount": {"value": 3.75, "currency": "usd"},
+            "api_key_id": "k1", "project_id": "p1",
+            "line_item": "gpt-5.6-luna, output_tokens",
+            "quantity": 150000, "quantity_unit": "tokens",
+        }],
     }]}
     buckets = ij.normalize_openai_cost(resp)
     assert len(buckets) == 1
@@ -108,6 +115,20 @@ def test_openai_cost_daily_numeric_amount():
     assert b["grain"] == "day"
     assert b["billed_cost"] == 3.75
     assert b["hour_utc"].startswith("2026-10-08T00")
+
+
+def test_openai_cost_non_usd_not_summed():
+    # A non-USD amount must not be silently treated as USD.
+    resp = {"data": [{
+        "start_time": 1791417600, "end_time": 1791504000,
+        "results": [{
+            "amount": {"value": 320.0, "currency": "jpy"},
+            "line_item": "gpt-5.6-luna, output_tokens",
+        }],
+    }]}
+    b = ij.normalize_openai_cost(resp)[0]
+    assert b["currency"] == "jpy"
+    assert b["billed_cost"] is None
 
 
 def test_time_bucket_accepts_both_shapes():
