@@ -278,6 +278,37 @@ def test_battery_id_is_dataset_hash(stubbed):
     assert d1["battery"]["id"].startswith("bat-")
 
 
+def test_battery_id_covers_content_and_labels(stubbed):
+    # Changing a ticket's body or expected label must change the hash,
+    # even when the ticket IDs are identical.
+    tasks_a = [_task(i) for i in range(4)]
+    tasks_b = [_task(i) for i in range(4)]
+    tasks_b[0] = dict(tasks_b[0], body="completely different text")
+    tasks_c = [_task(i) for i in range(4)]
+    tasks_c[1] = dict(tasks_c[1], resolution_label="WONTFIX")
+    ids = [d["battery"]["id"] for d in (
+        _eval("c1", BASE, CAND, _thr(
+            max_cost_per_correctly_classified=99.0), tasks_a),
+        _eval("c2", BASE, CAND, _thr(
+            max_cost_per_correctly_classified=99.0), tasks_b),
+        _eval("c3", BASE, CAND, _thr(
+            max_cost_per_correctly_classified=99.0), tasks_c))]
+    assert len(set(ids)) == 3
+
+
+def test_corpus_id_recorded_separately(stubbed):
+    tasks = [_task(i) for i in range(2)]
+    d = gate_service.evaluate("c4", BASE, CAND, _thr(
+        max_cost_per_correctly_classified=99.0), tasks, mode="mock",
+        corpus_version="corp-abc123")
+    assert d["battery"]["corpus_id"] == "corp-abc123"
+    assert gate_service._corpus_id(tasks) != gate_service._corpus_id(
+        [_task(99)])
+    # order-independent: retrieval is similarity-ranked
+    assert gate_service._corpus_id(tasks) == gate_service._corpus_id(
+        list(reversed(tasks)))
+
+
 def test_policy_file_overrides_caller_threshold(monkeypatch, tmp_path):
     pol = tmp_path / "policy.json"
     pol.write_text(json.dumps({

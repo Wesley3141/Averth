@@ -76,13 +76,15 @@ def test_anthropic_missing_cache_creation_defaults_zero():
 
 def test_anthropic_cost_daily_cents_to_usd():
     # cost_report: daily buckets; records in data[].results[]; amount is
-    # a USD decimal STRING in cents (not an object).
+    # a USD decimal STRING in cents (not an object); description is a
+    # string; the model comes from row["model"].
     resp = {"data": [{
         "starting_at": "2026-10-08T00:00:00Z",
         "ending_at": "2026-10-09T00:00:00Z",
         "results": [{
             "workspace_id": "ws1",
-            "description": {"model": "claude-sonnet-4-5"},
+            "model": "claude-sonnet-4-5",
+            "description": "claude-sonnet-4-5",
             "cost_type": "tokens",
             "token_type": "output_tokens",
             "amount": "1250",
@@ -94,6 +96,7 @@ def test_anthropic_cost_daily_cents_to_usd():
     assert b["grain"] == "day"
     assert b["billed_cost"] == 12.50
     assert b["model"] == "claude-sonnet-4-5"
+    assert b["description"] == "claude-sonnet-4-5"
 
 
 def test_openai_cost_daily_numeric_amount():
