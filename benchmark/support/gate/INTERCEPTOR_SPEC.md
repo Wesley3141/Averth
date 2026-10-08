@@ -86,12 +86,19 @@ decision.
 
 Nobody knows the right threshold on day one, so don't guess it:
 1. Run the gate once in shadow mode against the CURRENT production
-   config with a permissive threshold (e.g. `max_cost_per_acceptable_
-   resolution: 999`).
-2. Read back the measured `cost_per_acceptable_resolution` and
+   config with a permissive threshold (e.g. `max_cost_per_correctly_
+   classified: 999`).
+2. Read back the measured `cost_per_correctly_classified` and
    `acceptance_rate` from the decision.
 3. Set the governed threshold at measured cost × (1 + headroom), with
    headroom ~10-20%, and the acceptance floor at the measured rate.
+4. **Write it into a server-side policy file** (copy
+   `POLICY_TEMPLATE.json`) and start the gate with
+   `AVERTH_GATE_POLICY_FILE` pointing at it. When set, caller-supplied
+   thresholds are IGNORED — the change requester cannot relax the
+   FinOps budget. Without a policy file the gate runs ungoverned and
+   says so in every decision; do not use that configuration for
+   enforcement.
 The threshold then means "don't regress past today's economics," which
 is a defensible FinOps position from the first deploy. Re-calibrate
 after deliberate cost-structure changes (model swaps), never silently.

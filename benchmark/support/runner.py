@@ -61,13 +61,15 @@ class MockClient:
             return MockMsg(text, in_tok, out_tok)
 
 
-def run_arm(arm, tasks, agent_fn=None, mock=False):
+def run_arm(arm, tasks, agent_fn=None, mock=False, max_spend_usd=None):
     """Run one arm over tasks. Returns (grades, summary). Shared by CLI
     and the deployment gate.
 
     agent_fn: callable(task) -> (prediction, _). Defaults to the pinned
     arm-A agent. Arms B/C MUST supply their own config via make_variant;
     there is no silent fallback to arm A.
+    max_spend_usd: stop early if ledger spend exceeds this (real-run
+    safety cap); summary records truncated=True and tasks_evaluated.
     """
     agent_fn = agent_fn or support_agent.resolve_ticket
     real_client = support_agent.client
@@ -76,7 +78,13 @@ def run_arm(arm, tasks, agent_fn=None, mock=False):
     try:
         grades = []
         cost_before = TRACKER.pnl().get("cost_total", 0)
+        truncated = False
         for t in tasks:
+            if (max_spend_usd is not None
+                    and TRACKER.pnl().get("cost_total", 0) - cost_before
+                    >= max_spend_usd):
+                truncated = True
+                break
             try:
                 pred, _ = agent_fn(t)
                 g = grader.grade(pred, t)
@@ -103,6 +111,8 @@ def run_arm(arm, tasks, agent_fn=None, mock=False):
     summary["total_cost"] = total_cost
     summary["mock"] = mock
     summary["arm"] = arm
+    summary["truncated_by_spend_cap"] = truncated
+    summary["tasks_evaluated"] = len(grades)
     return grades, summary
 
 
@@ -119,6 +129,9 @@ def main():
                          "(required for B/C; e.g. {\"version\": \"b1\", "
                          "\"model\": ..., \"prompt\": ...}). Arm A always "
                          "uses the pinned agent.")
+    ap.add_argument("--max-spend-usd", type=float, default=None,
+                    help="Stop the run early if ledger spend exceeds this "
+                         "USD amount (safety cap for real-model runs).")
     args = ap.parse_args()
 
     if args.mock:
@@ -152,7 +165,8 @@ def main():
 
     t0 = time.time()
     grades, summary = run_arm(args.arm, tasks, agent_fn=agent_fn,
-                              mock=args.mock)
+                              mock=args.mock,
+                              max_spend_usd=args.max_spend_usd)
     summary["elapsed_s"] = round(time.time() - t0, 1)
     if manifest:
         summary["manifest"] = manifest  # immutable record of what ran

@@ -135,34 +135,40 @@ def normalize_anthropic_cost(api_response):
     """Anthropic GET /v1/organizations/cost_report.
 
     DAILY buckets only; group_by is workspace_id or description (NO
-    api_key_id grouping). Amounts are USD decimal strings in lowest units
-    (cents). token_type mirrors the usage token categories.
-    Callers must page (has_more/next_page -> page).
+    api_key_id grouping; the default workspace has workspace_id null).
+    Cost records live in data[].results[]. Amounts are USD decimal
+    STRINGS in lowest units (cents). Callers must page
+    (has_more/next_page -> page).
     Because cost is daily and not key-granular, these buckets carry
     grain="day" with hour_utc set to the day start; the join reports them
     at day granularity and must not pretend hourly precision.
     """
     buckets = []
-    for row in api_response.get("data", []):
-        amount = row.get("amount", {}) or {}
-        try:
-            usd = float(amount.get("value", "0")) / 100.0
-        except (TypeError, ValueError):
-            usd = 0.0
-        buckets.append({
-            "api_key_id": row.get("workspace_id", "unknown"),
-            "hour_utc": _time_bucket(row.get("starting_at", "")),
-            "grain": "day",
-            "model": (row.get("description", {}) or {}).get("model",
-                                                            "unknown"),
-            "input_tokens": 0,
-            "cache_read_tokens": 0,
-            "cache_creation_tokens": 0,
-            "output_tokens": 0,
-            "billed_cost": usd,
-            "cost_type": row.get("cost_type"),
-            "token_type": row.get("token_type"),
-        })
+    for window in api_response.get("data", []):
+        day_start = window.get("starting_at", "")
+        for row in window.get("results", []):
+            amount = row.get("amount", "0")
+            if isinstance(amount, dict):  # tolerate object shape
+                amount = amount.get("value", "0")
+            try:
+                usd = float(amount) / 100.0
+            except (TypeError, ValueError):
+                usd = 0.0
+            desc = row.get("description", {}) or {}
+            buckets.append({
+                "api_key_id": row.get("workspace_id") or "unknown",
+                "hour_utc": _time_bucket(day_start) if day_start else "",
+                "grain": "day",
+                "model": desc.get("model", "unknown"),
+                "input_tokens": 0,
+                "cache_read_tokens": 0,
+                "cache_creation_tokens": 0,
+                "output_tokens": 0,
+                "billed_cost": usd,
+                "currency": "usd",
+                "cost_type": row.get("cost_type"),
+                "token_type": row.get("token_type"),
+            })
     return buckets
 
 
@@ -197,32 +203,40 @@ def normalize_openai_usage(api_response):
 def normalize_openai_cost(api_response):
     """OpenAI GET /v1/organization/costs.
 
-    DAILY buckets only (bucket_width=1d). start_time/end_time are Unix
-    seconds. group_by: project_id, user_id, line_item, api_key_id,
-    api_source. result rows carry amount.value (number) + amount.currency.
+    DAILY buckets only (bucket_width=1d). Cost records live in
+    data[].results[]. Each result: {"object": "organization.costs.result",
+    "amount": {"currency": "usd", "value": <number>}, "api_key_id",
+    "line_item", "project_id", "quantity", "quantity_unit", ...}.
+    amount.value is the numeric cost in amount.currency (NOT cents).
     Model appears inside the line_item string (no model grouping).
     Callers must page (has_more/next_page cursor).
     """
     buckets = []
-    for row in api_response.get("data", []):
-        amount = row.get("amount", {}) or {}
-        try:
-            usd = float(amount.get("value", 0))
-        except (TypeError, ValueError):
-            usd = 0.0
-        buckets.append({
-            "api_key_id": row.get("api_key_id", "unknown"),
-            "hour_utc": _time_bucket(row.get("start_time", 0)),
-            "grain": "day",
-            "model": row.get("line_item", "unknown"),
-            "input_tokens": 0,
-            "cache_read_tokens": 0,
-            "cache_creation_tokens": 0,
-            "output_tokens": 0,
-            "billed_cost": usd,
-            "line_item": row.get("line_item"),
-            "project_id": row.get("project_id"),
-        })
+    for window in api_response.get("data", []):
+        start = window.get("start_time", 0)
+        for row in window.get("results", []):
+            amount = row.get("amount", {}) or {}
+            currency = (amount.get("currency") or "usd").lower()
+            try:
+                value = float(amount.get("value", 0))
+            except (TypeError, ValueError):
+                value = 0.0
+            buckets.append({
+                "api_key_id": row.get("api_key_id") or "unknown",
+                "hour_utc": _time_bucket(start),
+                "grain": "day",
+                "model": row.get("line_item", "unknown"),
+                "input_tokens": 0,
+                "cache_read_tokens": 0,
+                "cache_creation_tokens": 0,
+                "output_tokens": 0,
+                "billed_cost": value if currency == "usd" else None,
+                "currency": currency,
+                "line_item": row.get("line_item"),
+                "project_id": row.get("project_id"),
+                "quantity": row.get("quantity"),
+                "quantity_unit": row.get("quantity_unit"),
+            })
     return buckets
 
 
