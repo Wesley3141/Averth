@@ -23,10 +23,20 @@ task):
   agent's `response_draft` is stored per run for human audit. v2 adds a
   rubric/LLM judge on drafts; v1 scores the label only, stated plainly.
 
-Primary metric: **cost per acceptable resolution** = total arm cost /
-accepted count. Same robust stats as the triage benchmark (bootstrap CI
-on the C-vs-B ratio, non-inferiority on acceptance rate, trimmed
-mean/median/p95/max) — reuse `../analyze.py`.
+Primary metric: **cost per correctly classified ticket** = total arm
+cost / accepted count. The name is deliberate: v1 acceptance is label
+accuracy, not resolved support work. A correct label passes even with an
+empty draft, and the historical reopen/SLA fields describe the original
+handling — they do not establish what the candidate agent would cause.
+"Cost per acceptable resolution" remains the product metric; promoting
+this benchmark metric to it requires (a) answer/action grading against
+reviewed support cases, then (b) prospective joining of real deployed
+outcomes over a defined observation window. Until then the honest name
+stands.
+
+Same robust stats as the triage benchmark (bootstrap CI on the C-vs-B
+ratio, non-inferiority on acceptance rate, trimmed mean/median/p95/max)
+— reuse `../analyze.py`.
 
 ## Resolution taxonomy (fixed)
 

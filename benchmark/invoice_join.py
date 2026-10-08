@@ -57,12 +57,22 @@ sys.path.insert(0, __import__("os").path.join(
 from averth import pricing
 
 
-def _hour_bucket(iso_ts):
-    dt = datetime.datetime.fromisoformat(iso_ts)
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=datetime.timezone.utc)
+def _time_bucket(ts):
+    """Bucket a timestamp to the UTC hour. Accepts ISO-8601 strings
+    (Anthropic) or Unix epoch seconds (OpenAI, numeric)."""
+    if isinstance(ts, (int, float)):
+        dt = datetime.datetime.fromtimestamp(ts, tz=datetime.timezone.utc)
+    else:
+        dt = datetime.datetime.fromisoformat(ts)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=datetime.timezone.utc)
     return dt.astimezone(datetime.timezone.utc).replace(
         minute=0, second=0, microsecond=0).isoformat()
+
+
+def _hour_bucket(iso_ts):
+    """Back-compat alias (ISO strings only). Prefer _time_bucket."""
+    return _time_bucket(iso_ts)
 
 
 def averth_buckets(attempts):
@@ -92,43 +102,127 @@ def averth_buckets(attempts):
 
 
 def normalize_anthropic_usage(api_response):
-    """Anthropic GET /v1/organizations/usage_report/messages shape (paraphrased).
-    Real shape: {"data": [{"starting_at", "ending_at", "results": [{...}]}]}.
-    Accepts the raw response dict; returns normalized buckets."""
+    """Anthropic GET /v1/organizations/usage_report/messages.
+
+    Documented fields per bucket: uncached_input_tokens,
+    cache_creation.ephemeral_5m_input_tokens,
+    cache_creation.ephemeral_1h_input_tokens, cache_read_input_tokens,
+    output_tokens. starting_at/ending_at are RFC 3339.
+    Callers must page (has_more/next_page) and concatenate `data`.
+    """
     buckets = []
     for window in api_response.get("data", []):
-        hour = _hour_bucket(window["starting_at"])
+        hour = _time_bucket(window["starting_at"])
         for r in window.get("results", []):
+            cc = r.get("cache_creation", {}) or {}
             buckets.append({
                 "api_key_id": r.get("api_key_id", "unknown"),
                 "hour_utc": hour,
+                "grain": "hour",
                 "model": r.get("model", "unknown"),
-                "input_tokens": r.get("input_tokens", 0),
+                "input_tokens": r.get("uncached_input_tokens", 0),
                 "cache_read_tokens": r.get("cache_read_input_tokens", 0),
-                "cache_creation_tokens": r.get(
-                    "cache_creation_input_tokens", 0),
+                "cache_creation_tokens": (
+                    cc.get("ephemeral_5m_input_tokens", 0)
+                    + cc.get("ephemeral_1h_input_tokens", 0)),
                 "output_tokens": r.get("output_tokens", 0),
                 "billed_cost": None,  # usage API has no costs; join cost report separately
             })
     return buckets
 
 
+def normalize_anthropic_cost(api_response):
+    """Anthropic GET /v1/organizations/cost_report.
+
+    DAILY buckets only; group_by is workspace_id or description (NO
+    api_key_id grouping). Amounts are USD decimal strings in lowest units
+    (cents). token_type mirrors the usage token categories.
+    Callers must page (has_more/next_page -> page).
+    Because cost is daily and not key-granular, these buckets carry
+    grain="day" with hour_utc set to the day start; the join reports them
+    at day granularity and must not pretend hourly precision.
+    """
+    buckets = []
+    for row in api_response.get("data", []):
+        amount = row.get("amount", {}) or {}
+        try:
+            usd = float(amount.get("value", "0")) / 100.0
+        except (TypeError, ValueError):
+            usd = 0.0
+        buckets.append({
+            "api_key_id": row.get("workspace_id", "unknown"),
+            "hour_utc": _time_bucket(row.get("starting_at", "")),
+            "grain": "day",
+            "model": (row.get("description", {}) or {}).get("model",
+                                                            "unknown"),
+            "input_tokens": 0,
+            "cache_read_tokens": 0,
+            "cache_creation_tokens": 0,
+            "output_tokens": 0,
+            "billed_cost": usd,
+            "cost_type": row.get("cost_type"),
+            "token_type": row.get("token_type"),
+        })
+    return buckets
+
+
 def normalize_openai_usage(api_response):
-    """OpenAI GET /v1/organization/usage/completions shape (paraphrased)."""
+    """OpenAI GET /v1/organization/usage/completions.
+
+    start_time/end_time are Unix seconds (numeric). Documented fields:
+    input_tokens (includes cached + cache-write), input_cached_tokens,
+    input_cache_write_tokens, input_uncached_tokens, output_tokens,
+    num_model_requests. Callers must page (has_more/next_page cursor).
+    """
     buckets = []
     for window in api_response.get("data", []):
-        hour = _hour_bucket(window["start_time"])
+        hour = _time_bucket(window["start_time"])
         for r in window.get("results", []):
             buckets.append({
                 "api_key_id": r.get("api_key_id", "unknown"),
                 "hour_utc": hour,
+                "grain": "hour",
                 "model": r.get("model", "unknown"),
                 "input_tokens": r.get("input_tokens", 0),
-                "cache_read_tokens": r.get("cached_tokens", 0),
-                "cache_creation_tokens": 0,
+                "input_uncached_tokens": r.get("input_uncached_tokens", 0),
+                "cache_read_tokens": r.get("input_cached_tokens", 0),
+                "cache_creation_tokens": r.get("input_cache_write_tokens", 0),
                 "output_tokens": r.get("output_tokens", 0),
+                "num_requests": r.get("num_model_requests", 0),
                 "billed_cost": None,
             })
+    return buckets
+
+
+def normalize_openai_cost(api_response):
+    """OpenAI GET /v1/organization/costs.
+
+    DAILY buckets only (bucket_width=1d). start_time/end_time are Unix
+    seconds. group_by: project_id, user_id, line_item, api_key_id,
+    api_source. result rows carry amount.value (number) + amount.currency.
+    Model appears inside the line_item string (no model grouping).
+    Callers must page (has_more/next_page cursor).
+    """
+    buckets = []
+    for row in api_response.get("data", []):
+        amount = row.get("amount", {}) or {}
+        try:
+            usd = float(amount.get("value", 0))
+        except (TypeError, ValueError):
+            usd = 0.0
+        buckets.append({
+            "api_key_id": row.get("api_key_id", "unknown"),
+            "hour_utc": _time_bucket(row.get("start_time", 0)),
+            "grain": "day",
+            "model": row.get("line_item", "unknown"),
+            "input_tokens": 0,
+            "cache_read_tokens": 0,
+            "cache_creation_tokens": 0,
+            "output_tokens": 0,
+            "billed_cost": usd,
+            "line_item": row.get("line_item"),
+            "project_id": row.get("project_id"),
+        })
     return buckets
 
 

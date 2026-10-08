@@ -9,28 +9,47 @@ where "acceptable" is defined by CRM-grounded outcomes (resolved without
 reopening, no SLA breach) and cost is attributed billing-groundedly across
 total workflow compute, not just tokens.
 
-## Why it's defensible
+## Why it's defensible (hypothesis, not proven)
 
-- **vs LangSmith / Braintrust:** their data models, product, and sales
-  motion are bound to the LLM trace and the AI-engineer buyer. True Cost
-  per Acceptable Resolution requires the business state machine
-  (Zendesk/Salesforce ticket outcomes: reopen rates, SLA breaches, CSAT)
-  fused with the invoice layer (amortized total workflow compute), sold to
-  a P&L owner they don't serve. Hardcoding vertical CRM logic into a
-  generic eval platform works against their platform economics.
-- **vs Vantage / Finout / CloudZero:** they own the invoice but operate
-  entirely post-hoc. They cannot gate a deployment.
+- **vs LangSmith / Braintrust:** Braintrust already markets CI
+  evaluation, regression blocking, and cost comparison across
+  prompt/model experiments; LangSmith documents offline evaluation and
+  business-rule evaluators. They are trace-bound and sell to the AI
+  engineer, which leaves room — but the claim that they *structurally
+  cannot* approach this is withdrawn. The hypothesis is narrower: that
+  support-specific outcome/cost evaluation, fused with the business
+  state machine (Zendesk/Salesforce outcomes) and sold to the P&L owner,
+  is easier and useful enough to adopt that the integration depth
+  becomes the moat. Unproven until a partner proves it.
+- **vs Vantage / Finout / CloudZero:** Finout exposes cost data for
+  deploys, PRs, and internal tools — FinOps tooling *can* participate in
+  deployments. None of them gates a deployment on support-outcome
+  quality today, but the categorical "cannot" is withdrawn for the
+  same reason.
+
+Buyer segmentation and messy integrations can help; they do not
+establish an architectural moat on their own.
 
 Gemini's verbatim endorsement: "I explicitly endorse this as the ONE
 direction. It is structurally sound, isolates a distinct buyer (Support
 Ops / RevOps), and leverages the 'messy plumbing' of CRM integrations as
 a shield against dev-tool incumbents."
 
-## Falsifiable claim
+## Falsifiable claim (revised 2026-10-08)
 
-5 high-volume support-agent design partners, 30-day timebox. Thesis is dead
-if fewer than 2 teams block a deployment and rewrite a prompt purely
-because Averth flagged a unit-economic threshold violation.
+One team operating a custom support workflow, in shadow mode: reviewed
+historical cases graded offline, one targeted change tested, measured
+cost and answer/action quality before and after, with uncertainty and
+limitations stated. The team decides whether the result warrants
+deployment.
+
+The commercial signal is **repeated use on real release decisions and
+willingness to pay** — not blocked-deployment counts. (The earlier
+"2 blocked deploys in 30 days" criterion is withdrawn: it rewards noisy
+blocking and punishes a useful product when no harmful change occurs.)
+Blocking is enabled only after the metric and repeated decisions are
+trusted; reopen/SLA behavior is validated prospectively after
+deployment.
 
 ## First build
 

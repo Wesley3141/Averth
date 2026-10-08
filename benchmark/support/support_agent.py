@@ -73,6 +73,24 @@ def call_model(model, system, user, max_tokens=400):
     return msg.content[0].text, u.input_tokens, u.output_tokens
 
 
+def make_variant(cfg):
+    """Build an agent function from a config dict.
+
+    cfg: {"model", "haiku_model", "prompt", "version"}. Missing keys fall
+    back to the pinned arm-A defaults. Used by the benchmark arms B/C
+    and by the deployment gate to shadow-test proposed configs.
+    """
+    cfg = cfg or {}
+    model = cfg.get("model", SONNET)
+    haiku_model = cfg.get("haiku_model", HAIKU)
+    prompt = cfg.get("prompt")
+
+    def variant(task):
+        return resolve_ticket(task, model_haiku=haiku_model,
+                              model_sonnet=model, final_system=prompt)
+    return variant
+
+
 def _parse_label(text):
     for line in text.splitlines():
         if line.strip().upper().startswith("LABEL:"):
