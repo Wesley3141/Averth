@@ -10,15 +10,21 @@ and production.
 
 1. Operator proposes a change in the config surface (new prompt version,
    model swap, threshold tweak).
-2. The config surface (or its webhook) POSTs to
-   `POST /v1/gate/evaluate` with the proposed config and the
-   FinOps-governed threshold BEFORE applying it to production traffic.
-3. The gate runs the shadow support-ticket battery against the proposed
-   config (pinned battery, fixed seed) and returns pass/fail.
-4. PASS → the config surface applies the change (optionally with a
-   canary). FAIL → the change is held; the violations list tells the
-   operator exactly what breached (cost per acceptable resolution over
-   budget, acceptance rate below floor).
+2. The config surface POSTs to `POST /v1/gate/evaluations` with the
+   proposed config — the ACTUAL prompt text and model id, not a version
+   reference the gate can't resolve — BEFORE applying it to production
+   traffic.
+3. The gate responds **202 Accepted** with an `evaluation_id` and a poll
+   URL. The shadow battery runs in the background: the CURRENT (pinned)
+   agent and the PROPOSED config each run the battery, and the decision
+   compares the delta.
+4. The caller polls `GET /v1/gate/evaluations/{id}` until `status` is
+   `done` (or passes `?wait_seconds=25` on the POST to long-poll behind
+   a webhook timeout). PASS → apply the change (optionally canary).
+   FAIL → hold; `violations` names what breached: proposed cost over
+   budget, acceptance below floor, or acceptance regressed vs current.
+5. Block on `"pass": false` OR any non-200 response OR a timeout OR a
+   job that ends in `error`. Only `"pass": true` approves.
 
 ## Wiring per platform
 
