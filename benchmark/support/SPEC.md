@@ -80,14 +80,31 @@ fetched_at, and the exact query.
 - PII: email addresses scrubbed before pinning. Bodies truncated at
   6000 chars.
 
+## What this battery proves — and what it doesn't
+
+This battery proves the MEASUREMENT machinery: pinned tickets, CRM-shaped
+acceptance fields (reopened, SLA), cost per acceptable resolution, the
+delta gate, the statistics. It does NOT prove the moat. The defensive
+claim is the messy CRM plumbing — multi-turn Zendesk/Salesforce
+conversations fused with ticket outcomes — and GitHub issues are
+single-turn developer artifacts, not enterprise support tickets. No
+public dataset with real tickets + resolution + reopen signals was found
+(research in SOURCE_RESEARCH.md); the CRM half of the thesis is only
+proven on a design partner's real data. Showing a VP Support Ops a
+GitHub-issue benchmark would confuse the buyer — this battery is the
+instrument we calibrate before the partner phase, not the sales demo.
+
 ## The gate
 
 `gate/` implements the deployment gate: a webhook/API interceptor (NOT
 only a GitHub Action) that sits between the config surface (LaunchDarkly
 flag flip, prompt-registry update, dashboard change) and production. It
-runs the shadow battery against the proposed config and returns
-pass/fail against the FinOps-governed Cost per Acceptable Resolution
-threshold. See `gate/INTERCEPTOR_SPEC.md`.
+is a DELTA gate: the caller sends the actual proposed prompt text and
+model id; the gate shadow-runs the battery on the current agent AND the
+proposed config, and passes the change only if the proposed config is
+within the FinOps threshold and doesn't regress acceptance. Evaluations
+are async (202 + poll) because a live shadow battery outlasts webhook
+timeouts. See `gate/INTERCEPTOR_SPEC.md`.
 
 `--mock` anywhere in this tree is plumbing validation ONLY. Mock numbers
 are never benchmark results and never gate decisions.

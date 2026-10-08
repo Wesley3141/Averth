@@ -26,6 +26,12 @@ TRACKER = Tracker("support-v1")
 HAIKU = "claude-haiku-4-5"
 SONNET = "claude-sonnet-4-5"
 
+FINAL_SYSTEM = (
+    "You resolve customer support tickets. First line: LABEL: <one of HOWTO, "
+    "CONFIG, BUG_FIX, DUPLICATE, WONTFIX, ESCALATED>. Then a blank line, "
+    "then a short customer-facing response draft (max 150 words)."
+)
+
 LABELS = ["HOWTO", "CONFIG", "BUG_FIX", "DUPLICATE", "WONTFIX", "ESCALATED"]
 
 _corpus = None
@@ -81,12 +87,18 @@ def _parse_label(text):
     return "HOWTO"
 
 
-def resolve_ticket(task):
-    """Run one ticket. Returns (prediction dict, attempt_id)."""
+def resolve_ticket(task, model_haiku=HAIKU, model_sonnet=SONNET,
+                   final_system=None):
+    """Run one ticket. Returns (prediction dict, None).
+
+    Optional overrides exist so the deployment gate can shadow-test a
+    PROPOSED config (model swap, new final prompt) against the pinned
+    default pipeline. Defaults reproduce arm A exactly.
+    """
     attempt = TRACKER.start_attempt(case_id=task["id"])
 
     draft, _, _ = call_model(
-        HAIKU,
+        model_haiku,
         "You triage customer support tickets. Reply with one line: LABEL: <one of HOWTO, CONFIG, BUG_FIX, DUPLICATE, WONTFIX, ESCALATED>",
         f"Title: {task['title']}\n\nBody:\n{task['body'][:3000]}",
         max_tokens=60,
@@ -101,9 +113,8 @@ def resolve_ticket(task):
     )
 
     final, _, _ = call_model(
-        SONNET,
-        "You resolve customer support tickets. First line: LABEL: <one of HOWTO, CONFIG, BUG_FIX, DUPLICATE, WONTFIX, ESCALATED>. "
-        "Then a blank line, then a short customer-facing response draft (max 150 words).",
+        model_sonnet,
+        final_system or FINAL_SYSTEM,
         f"Ticket:\nTitle: {task['title']}\n\nBody:\n{task['body'][:4000]}\n\n"
         f"Draft label from quick read: {draft_label}\n\nSimilar past tickets:\n{context}",
         max_tokens=400,
