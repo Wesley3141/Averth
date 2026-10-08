@@ -62,6 +62,28 @@ returns the active set; changes to thresholds are versioned and logged
 if the caller omits one, service defaults apply and are stamped on the
 decision.
 
+### Day-one calibration (no invented thresholds)
+
+Nobody knows the right threshold on day one, so don't guess it:
+1. Run the gate once in shadow mode against the CURRENT production
+   config with a permissive threshold (e.g. `max_cost_per_acceptable_
+   resolution: 999`).
+2. Read back the measured `cost_per_acceptable_resolution` and
+   `acceptance_rate` from the decision.
+3. Set the governed threshold at measured cost × (1 + headroom), with
+   headroom ~10-20%, and the acceptance floor at the measured rate.
+The threshold then means "don't regress past today's economics," which
+is a defensible FinOps position from the first deploy. Re-calibrate
+after deliberate cost-structure changes (model swaps), never silently.
+
+### Anti-gaming
+
+The gate reuses the dev battery by default. A team that tunes prompts
+against the same battery will eventually overfit it. Mitigations (v2):
+rotate fresh tickets into the gate battery on a schedule, and reserve a
+third split the prompt engineers never see. Until then, treat a long
+green streak with suspicion, not celebration.
+
 ## What v1 does NOT do
 
 - No async queue (live batteries run inline; keep n small).

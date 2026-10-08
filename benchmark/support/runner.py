@@ -118,7 +118,11 @@ def main():
     pool = data[args.split][:]
     random.shuffle(pool)
     tasks = pool[:args.n]
-    build_corpus(data["dev"] + data["heldout"])
+    # Retrieval corpus is dev-only, always: at heldout-evaluation time the
+    # agent may only consult past (dev) tickets, mirroring deployment.
+    # (Including heldout in the corpus would leak heldout labels via the
+    # similar-ticket tool.)
+    build_corpus(data["dev"])
 
     t0 = time.time()
     grades, summary = run_arm(args.arm, tasks, mock=args.mock)

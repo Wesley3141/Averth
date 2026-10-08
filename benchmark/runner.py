@@ -66,7 +66,7 @@ def main():
     pool = data[args.split][:]
     random.shuffle(pool)
     tasks = pool[:args.n]
-    build_corpus(data["dev"] + data["heldout"])
+    build_corpus(data["dev"])  # dev-only: heldout labels must not leak via retrieval
 
     grades = []
     costs = []

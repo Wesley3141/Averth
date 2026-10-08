@@ -91,3 +91,10 @@ threshold. See `gate/INTERCEPTOR_SPEC.md`.
 
 `--mock` anywhere in this tree is plumbing validation ONLY. Mock numbers
 are never benchmark results and never gate decisions.
+
+## Methodological rules
+
+- Retrieval corpus is dev-only, always. The similar-ticket tool must not
+  leak heldout labels at evaluation time.
+- Arms are compared on the same pinned battery; label heuristics are
+  deterministic and raw signals are preserved per task for audit.

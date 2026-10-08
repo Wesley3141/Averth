@@ -73,3 +73,10 @@ cost and human-hours costed at $[rate]/day.
 Proposed patch (diff), reproducible commands, comparison report with
 improvements AND regressions, full experiment economics with payback math.
 If arm B ties arm C, that is the headline.
+
+## Amendments
+
+- 2026-10-08: retrieval corpus is dev-only (was dev+heldout). Heldout
+  labels must not leak through the similar-issue tool at evaluation time.
+  No real-model runs had occurred before this change (mock only), so no
+  results are invalidated.
