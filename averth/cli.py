@@ -74,6 +74,28 @@ def build_parser():
     sub.add_parser("pricing",
                    help="Show the price-table version, verification date, "
                         "and staleness status.")
+
+    a = sub.add_parser("advise",
+                       help="LLM advisor: recommendation, plain-English "
+                            "explanation, or attempt investigation. "
+                            "Bring your own API key.")
+    a.add_argument("file", help="Trace file to parse.")
+    a.add_argument("--format", required=True,
+                   choices=["otel", "langsmith", "langfuse", "jsonl"],
+                   help="Trace format.")
+    a.add_argument("--mode", default="recommend",
+                   choices=["recommend", "explain", "investigate"],
+                   help="What the advisor should do (default: recommend).")
+    a.add_argument("--provider", default=None,
+                   choices=["anthropic", "openai"],
+                   help="LLM provider (default: whichever key is set).")
+    a.add_argument("--api-key", default=None, metavar="KEY",
+                   help="API key for one call; never stored. "
+                        "Prefer AVERTH_ANTHROPIC_KEY / AVERTH_OPENAI_KEY.")
+    a.add_argument("--attempt", default=None, metavar="CASE_ID",
+                   help="Attempt to investigate (default: costliest).")
+    a.add_argument("--agent", default=None, metavar="NAME",
+                   help="Override the agent name shown in the report.")
     return p
 
 
@@ -150,6 +172,43 @@ def _cmd_pricing(args):
     return 0
 
 
+def _cmd_advise(args):
+    path = args.file
+    if not os.path.isfile(path):
+        print("averth: error: file not found: %s" % path, file=sys.stderr)
+        return 2
+    try:
+        load, mod_name = _importer_for(args.format)
+    except (ImportError, ValueError) as e:
+        print("averth: error: bad trace format: %s" % e, file=sys.stderr)
+        return 2
+    try:
+        ledger = load(path)
+    except Exception as e:
+        print("averth: error: failed to parse %s with %s: %s" % (path, mod_name, e),
+              file=sys.stderr)
+        return 2
+    try:
+        from averth.importers import common
+        tracker = common.tracker_from_ledger(ledger)
+    except Exception as e:
+        print("averth: error: cannot build tracker from ledger: %s" % e, file=sys.stderr)
+        return 2
+    if args.agent:
+        tracker.agent_name = args.agent
+    try:
+        from averth.advise import advise
+        print(advise(args.mode, tracker.pnl(), provider=args.provider,
+                     api_key=args.api_key, case_id=args.attempt))
+    except RuntimeError as e:
+        print("averth: error: %s" % e, file=sys.stderr)
+        return 2
+    except Exception as e:
+        print("averth: error: advisor failed: %s" % e, file=sys.stderr)
+        return 2
+    return 0
+
+
 def main(argv=None):
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -158,6 +217,8 @@ def main(argv=None):
         return _cmd_simulate(args)
     if args.cmd == "pricing":
         return _cmd_pricing(args)
+    if args.cmd == "advise":
+        return _cmd_advise(args)
 
     path = args.file
     if not os.path.isfile(path):
