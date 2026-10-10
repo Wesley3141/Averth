@@ -51,6 +51,14 @@ averth advise run-2026-09.json --format langfuse --mode recommend
 
 Three modes: `recommend` (the one change worth testing), `explain` (plain English for the budget owner), `investigate` (why an attempt cost what it did). `--show-prompt` prints exactly what the LLM would see, no call spent. The advisor only reads sanitized cost aggregates, never your prompts or data.
 
+**Want to catch runaways?** Flag the cost outliers before finance does:
+
+```bash
+averth trace run-2026-09.json --format langfuse --anomaly
+```
+
+Attempts above p95 with their dominant driver, ranked by dollars. Cost anomalies only, never attack attribution ("inspect, not accusations").
+
 **Want to instrument a live agent?** See [docs/QUICKSTART.md](docs/QUICKSTART.md) — three minutes with the `Tracker` API, plus a LangChain callback handler for zero-code instrumentation.
 
 **Evaluating for a pilot?** See [docs/PILOT.md](docs/PILOT.md) for the evidence standard: accepted-outcome labels and actual billing inputs. Trace completion alone is not an accepted outcome.

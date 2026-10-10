@@ -11,6 +11,8 @@ import sys
 
 import pytest
 
+pytest.importorskip("anthropic")  # optional benchmark-harness dep; gate logic is stubbed
+
 SUPPORT = os.path.join(os.path.dirname(__file__), "..", "benchmark", "support")
 sys.path.insert(0, SUPPORT)
 sys.path.insert(0, os.path.join(SUPPORT, "gate"))
