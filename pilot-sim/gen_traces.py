@@ -52,12 +52,6 @@ def billed_cost(model, i, o):
     return round((i + o) * rate * random.uniform(0.9, 1.1), 6)
 
 
-def make_call(model):
-    i = random.randint(*TRIAGE[:2])
-    o = random.randint(*TRIAGE[2:])
-    return model, i, o
-
-
 tickets = []
 for t in range(N_TICKETS):
     n_calls = random.choice([2, 2, 3, 3, 3, 4, 5])
@@ -116,7 +110,7 @@ for tk in tickets:
                     "parent_run_ids": [],
                     "start_time": "2026-09-28T10:00:00Z",
                     "end_time": "2026-09-28T10:02:00Z",
-                    "error": "ticket reopened" if tk["failed"] else None,
+                    "error": None,
                     "serialized": {}, "outputs": {},
                     "extra": {"metadata": {}}})
     for j, c in enumerate(tk["calls"]):
@@ -125,12 +119,16 @@ for tk in tickets:
             outputs = {"llm_output": {"token_usage": {
                 "prompt_tokens": c["input"],
                 "completion_tokens": c["output"]}}}
+        # failure rule reads the chronologically-last run: error goes on the
+        # last LLM run so failed tickets actually register as failed
+        is_last = (j == len(tk["calls"]) - 1)
         ls_runs.append({"id": f"{tk['id']}-llm{j}", "name": "ChatOpenAI",
                         "run_type": "llm", "trace_id": tk["id"],
                         "parent_run_ids": [f"{tk['id']}-root"],
                         "start_time": "2026-09-28T10:00:10Z",
                         "end_time": "2026-09-28T10:00:40Z",
-                        "error": None,
+                        "error": ("ticket reopened" if tk["failed"]
+                                  and is_last else None),
                         "serialized": {"kwargs": {"name": c["model"]}},
                         "outputs": outputs,
                         "extra": {"metadata": {
@@ -154,7 +152,7 @@ for ti, tk in enumerate(tickets):
                 {"key": "gen_ai.usage.output_tokens",
                  "value": {"intValue": str(c["output"])}}]
         if c["retry"]:
-            attrs.append({"key": "averth.retry_reason",
+            attrs.append({"key": "averth.retry",
                           "value": {"stringValue": "timeout"}})
         spans.append({
             "traceId": tk["id"], "spanId": f"{ti}-{j}",
