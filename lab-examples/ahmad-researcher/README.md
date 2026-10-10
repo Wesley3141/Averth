@@ -37,6 +37,32 @@ the cost attribution as data (`researcher_step_sonnet: $0.002`,
 total may not include every model call in the pipeline — a metering gap worth
 noting when scoping savings.
 
+## Deeper file review (October 10, cross-checked against pinned source)
+
+- **The safety Judge did not gate this execution.** `pipeline.py` wires
+  Detector → Researcher → Judge → Executor, but no `judge_verdict.json` was
+  shared, the trace has no Judge step, and `apply_fix` itself never calls the
+  Judge — it goes rules-engine → validate → kubectl directly. The module
+  whose docstring claims to prevent the expensive mistake was not in the
+  loop for this incident.
+- **The plan contradicts itself.** `llm_analysis` recommends "further
+  investigation into the logs and container behavior **before applying this
+  fix**", while the same plan sets `auto_fix_allowed: true`, `risk_level:
+  "LOW"`, `confidence: 0.85` — and the executor applied it immediately.
+- **The Judge is blind to the fallback.** `fallback_command` (pod deletion)
+  is not among the Judge's input keys, and the fallback's own verifier is
+  looser (`bad_states` excludes `CrashLoopBackOff`, no empty-string check).
+- **The verifier is allowlist-by-exclusion.** `resolved = status_after not in
+  ["Failed", "Unknown", "CrashLoopBackOff"] and status_after != ""` — any
+  unrecognized output, including kubectl error text, counts as resolved.
+- **The "test pod" ran as prod.** Operator described a test pod; records say
+  `environment: "prod"`. The executor's test-environment guard (`env ==
+  "test"` → report only) keys off that label, so it did not protect this run.
+- **Deployment-name heuristic is workload-type-blind.**
+  `"-".join(pod.split("-")[:-2])` assumes
+  `{deployment}-{replicaset-hash}-{pod-hash}`; wrong for StatefulSets and
+  other controllers. Correct for this incident.
+
 ## Honesty notes
 
 - n=1 recorded incident for the narrative comparison; templates exist per
