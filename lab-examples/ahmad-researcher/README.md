@@ -26,6 +26,17 @@ knowledge?
   mismatch). Guarding malformed/contradictory inputs before dispatch drops
   those calls to zero; well-formed inputs are still judged.
 
+## Trace compatibility note
+
+The operator's `trace.jsonl` validates cleanly against `averth.importers.jsonl`
+(zero modifications): `start`/`tool`/`end` events with `case_id`, per-step
+`cost`, and `success`/`business_value` on the end event. The trace confirms
+the cost attribution as data (`researcher_step_sonnet: $0.002`,
+`planner_and_executor_steps: $0.002`) and records `business_value: 0.0`
+(test incident). Observation: the trace contains no Judge step, so the $0.004
+total may not include every model call in the pipeline — a metering gap worth
+noting when scoping savings.
+
 ## Honesty notes
 
 - n=1 recorded incident for the narrative comparison; templates exist per
