@@ -56,6 +56,11 @@ def build_parser():
                    help="Replay a hypothetical minimum yield-floor policy.")
     t.add_argument("--agent", default=None, metavar="NAME",
                    help="Override the agent name shown in the report.")
+    t.add_argument("--anomaly", action="store_true",
+                   help="Flag runaway-shaped attempts: cost outliers above "
+                        "p95 with their dominant driver. Cost-anomaly "
+                        "detection, not attack attribution — inspect, "
+                        "don't accuse.")
 
     s = sub.add_parser("simulate",
                        help="Generate adversarial synthetic production traffic "
@@ -104,15 +109,19 @@ def build_parser():
     return p
 
 
-def _report_and_html(tracker, html_path, policy_sim=None):
+def _report_and_html(tracker, html_path, policy_sim=None, anomaly=False):
     from averth.report import report_text, write_html
-    from averth.insights import findings_text
+    from averth.insights import findings_text, anomalies_text
 
     p = tracker.pnl()
     print(report_text(p))
     print()
     print("=" * 60)
     print(findings_text(p))
+    if anomaly:
+        print()
+        print("=" * 60)
+        print(anomalies_text(p))
     if policy_sim is not None:
         from averth import policy
         print()
@@ -289,7 +298,8 @@ def main(argv=None):
     else:
         base = os.path.basename(path)
         html_path = os.path.splitext(base)[0] + ".html"
-    return _report_and_html(tracker, html_path, policy_sim=sim)
+    return _report_and_html(tracker, html_path, policy_sim=sim,
+                               anomaly=args.anomaly)
 
 
 if __name__ == "__main__":

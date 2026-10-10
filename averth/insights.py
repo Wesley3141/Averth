@@ -272,6 +272,92 @@ def findings(p):
     return out
 
 
+def anomalies(p):
+    """Flag runaway-shaped attempts: cost outliers with a shared pattern.
+
+    This is cost-anomaly detection, not attack detection. It never claims an
+    attempt was malicious — it says "inspect these," ranked by dollars. The
+    signals are the same ones that caught real runaways (loops with no
+    adversary, retry storms, context explosions): attempts far above p95,
+    clustered by their dominant cost driver.
+
+    Every rule has a materiality floor: no anomaly fires on trivial spend.
+    """
+    import math
+    out = []
+    total = p["cost_total"] or 0.0
+    if not math.isfinite(total) or total < 1.0:
+        return out
+    t = p["tail"]
+    p50 = t["p50"] or 0.0
+    p95 = t["p95"] or 0.0
+    if p95 <= 0:
+        return out
+
+    for a in p.get("costliest_attempts", []):
+        cost = a.get("total_cost") or 0.0
+        if cost <= p95:
+            continue
+        # largest-first driver from the enriched components
+        comps = [("terminal model", a.get("terminal_model_cost")),
+                 ("retry path", a.get("retry_path_cost")),
+                 ("tools", a.get("tools")),
+                 ("human review", a.get("human_cost"))]
+        comps = sorted(((k, v or 0.0) for k, v in comps),
+                       key=lambda kv: -kv[1])
+        driver, driver_cost = comps[0]
+        multiple = cost / p50 if p50 > 0 else float("inf")
+        # severity: how far above p95, and whether retries drove it
+        retries = a.get("retries") or 0
+        if cost >= 3 * p95 or (retries >= 5 and driver == "retry path"):
+            sev = HIGH
+        elif cost >= 1.5 * p95:
+            sev = MEDIUM
+        else:
+            sev = INFO
+        detail_bits = [
+            "cost $%.2f vs p50 $%.2f (%.0fx) and p95 $%.2f"
+            % (cost, p50, multiple, p95),
+            "largest driver: %s ($%.2f)" % (driver, driver_cost),
+        ]
+        if retries:
+            detail_bits.append(_plural(retries, "retry"))
+        n_steps = a.get("steps")
+        n_steps = len(n_steps) if isinstance(n_steps, list) else n_steps
+        if n_steps:
+            detail_bits.append("%d steps" % n_steps)
+        if a.get("context_growth"):
+            detail_bits.append("context grew %.1fx"
+                               % a["context_growth"])
+        if a.get("outcome_inferred"):
+            detail_bits.append("outcome inferred, not labeled")
+        out.append(_finding(
+            "runaway_attempt", sev,
+            "Runaway-shaped attempt %s cost $%.2f (%.0fx p50)"
+            % (a["case_id"], cost, multiple),
+            "; ".join(detail_bits) + ".",
+            cost,
+            "Inspect this run's trace: confirm whether the %s spend was "
+            "legitimate. If it was a loop, cap retries or add a per-run "
+            "budget near p95 ($%.2f)." % (driver, p95)))
+    # rank by dollars, costliest first
+    out.sort(key=lambda f: -f["dollars"])
+    return out
+
+
+def anomalies_text(p, limit=5):
+    """Plain-text rendering of runaway-shaped attempts."""
+    ans = anomalies(p)[:limit]
+    if not ans:
+        return "No runaway-shaped attempts: no run exceeded p95."
+    lines = ["Suspicious attempts (cost anomalies — inspect, not accusations):"]
+    for i, f in enumerate(ans, 1):
+        lines.append("%d. [%s] %s" % (i, f["severity"].upper(), f["title"]))
+        lines.append("   %s" % f["detail"])
+        lines.append("   -> %s" % f["action"])
+    return "\n".join(lines)
+
+
 def top_insight(p):
     """The single finding that should change behavior, or None."""
     fs = findings(p)

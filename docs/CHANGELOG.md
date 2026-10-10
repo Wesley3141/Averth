@@ -16,6 +16,9 @@
   failures, unknown calls).
 - `tests/test_chaos.py` — 22 adversarial tests: malformed files, garbage
   costs, null usage, unicode models, absurd token counts, orphan spans.
+- `--anomaly` flag on `averth trace` — runaway lens: flags cost outliers
+  above p95 with their dominant driver, ranked by dollars. Cost-anomaly
+  detection, never attack attribution ("inspect, not accusations").
 
 ### Fixed
 
