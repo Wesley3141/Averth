@@ -42,6 +42,15 @@ averth trace run-2026-09.json --format langfuse --html report.html
 
 Supported formats: `langfuse`, `langsmith`, `otel`, `jsonl`. The text receipt prints to stdout; `--html` writes a shareable report.
 
+**Want the AI read on it?** Bring your own key, get the recommendation:
+
+```bash
+export AVERTH_ANTHROPIC_KEY=...   # or AVERTH_OPENAI_KEY; used once, never stored
+averth advise run-2026-09.json --format langfuse --mode recommend
+```
+
+Three modes: `recommend` (the one change worth testing), `explain` (plain English for the budget owner), `investigate` (why an attempt cost what it did). `--show-prompt` prints exactly what the LLM would see, no call spent. The advisor only reads sanitized cost aggregates, never your prompts or data.
+
 **Want to instrument a live agent?** See [docs/QUICKSTART.md](docs/QUICKSTART.md) — three minutes with the `Tracker` API, plus a LangChain callback handler for zero-code instrumentation.
 
 **Evaluating for a pilot?** See [docs/PILOT.md](docs/PILOT.md) for the evidence standard: accepted-outcome labels and actual billing inputs. Trace completion alone is not an accepted outcome.

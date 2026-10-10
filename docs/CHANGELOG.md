@@ -1,5 +1,33 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- `averth advise` — BYOK LLM advisor with three modes: `recommend` (the one
+  change worth testing, with arithmetic), `explain` (plain-English receipt
+  for budget owners), `investigate` (why an attempt cost what it did,
+  vs p50/p95). Keys via `AVERTH_ANTHROPIC_KEY` / `AVERTH_OPENAI_KEY`;
+  `--show-prompt` prints exactly what the LLM would see without spending
+  the call. Caller free text is `[DATA]`-delimited against prompt injection.
+- `pilot-sim/` — clean-install prospect simulation: fake 25-ticket
+  production traces (Langfuse/LangSmith/OTel), fresh venv, uncached GitHub
+  install, numeric receipt assertions (attempts, bucket sums, retries,
+  failures, unknown calls).
+- `tests/test_chaos.py` — 22 adversarial tests: malformed files, garbage
+  costs, null usage, unicode models, absurd token counts, orphan spans.
+
+### Fixed
+
+- Fresh installs crashed: `report.py` imported uncommitted `averth/_money.py`.
+- Cases with zero billable events were silently dropped from receipts
+  (LangSmith/Langfuse/OTel now emit a `start` marker per case).
+- OTel importer never set `usage_known`: missing usage rendered as $0.00
+  measured (looking free) instead of flagged unknown.
+- Advisor prompt injection: retry reasons/case IDs now `[DATA]`-delimited;
+  SYSTEM prompt treats them as data only.
+
+
 ## 0.3.0 — 2026-10-03
 
 ### Changed
