@@ -96,6 +96,11 @@ def build_parser():
                    help="Attempt to investigate (default: costliest).")
     a.add_argument("--agent", default=None, metavar="NAME",
                    help="Override the agent name shown in the report.")
+    a.add_argument("--show-prompt", action="store_true",
+                   help="Print exactly what would be sent to the LLM and "
+                        "exit; no API call, no key needed.")
+    a.add_argument("--output", default=None, metavar="PATH",
+                   help="Write the advisory text to a file.")
     return p
 
 
@@ -197,9 +202,29 @@ def _cmd_advise(args):
     if args.agent:
         tracker.agent_name = args.agent
     try:
-        from averth.advise import advise
-        print(advise(args.mode, tracker.pnl(), provider=args.provider,
-                     api_key=args.api_key, case_id=args.attempt))
+        from averth import advise as advise_mod
+        pnl = tracker.pnl()
+        if args.show_prompt:
+            from averth.advise import (_summary_from_pnl, _attempt_summary,
+                                      build_prompt)
+            summary = _summary_from_pnl(pnl)
+            attempt = None
+            if args.mode == "investigate":
+                cid = args.attempt
+                if not cid:
+                    det = pnl.get("costliest_attempts") or []
+                    cid = det[0]["case_id"] if det else None
+                attempt = _attempt_summary(pnl, cid) if cid else None
+            print(build_prompt(args.mode, summary, attempt))
+            return 0
+        text = advise_mod.advise(args.mode, pnl, provider=args.provider,
+                                 api_key=args.api_key, case_id=args.attempt)
+        if args.output:
+            with open(args.output, "w") as f:
+                f.write(text + "\n")
+            print("Advisory written to %s" % args.output)
+        else:
+            print(text)
     except RuntimeError as e:
         print("averth: error: %s" % e, file=sys.stderr)
         return 2

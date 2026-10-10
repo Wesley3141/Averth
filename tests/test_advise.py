@@ -159,3 +159,35 @@ def test_injection_retry_reason_delimited():
     assert reason.startswith("[DATA]") and reason.endswith("[/DATA]")
     # nested marker inside the text is neutralized so it can't break out
     assert reason.count("[DATA]") == 1
+
+
+def test_cli_show_prompt_no_key_needed(tmp_path):
+    trace = tmp_path / "t.json"
+    trace.write_text(json.dumps({"data": [{"id": "t1", "observations": []}]}))
+    env = {k: v for k, v in os.environ.items()
+           if k not in ("AVERTH_ANTHROPIC_KEY", "AVERTH_OPENAI_KEY",
+                        "ANTHROPIC_API_KEY", "OPENAI_API_KEY")}
+    r = subprocess.run(
+        [sys.executable, "-m", "averth.cli", "advise", str(trace),
+         "--format", "langfuse", "--mode", "recommend", "--show-prompt"],
+        capture_output=True, text=True, env=env)
+    assert r.returncode == 0
+    assert "Ledger summary" in r.stdout
+    assert "SINGLE change worth testing" in r.stdout
+
+
+def test_cli_advise_output_file(tmp_path):
+    trace = tmp_path / "t.json"
+    trace.write_text(json.dumps({"data": []}))
+    out = tmp_path / "advice.md"
+    # monkeypatched transport via env is not possible on CLI; instead verify
+    # the flag is accepted and fails cleanly on missing key (not on the flag)
+    env = {k: v for k, v in os.environ.items()
+           if k not in ("AVERTH_ANTHROPIC_KEY", "AVERTH_OPENAI_KEY",
+                        "ANTHROPIC_API_KEY", "OPENAI_API_KEY")}
+    r = subprocess.run(
+        [sys.executable, "-m", "averth.cli", "advise", str(trace),
+         "--format", "langfuse", "--output", str(out)],
+        capture_output=True, text=True, env=env)
+    assert r.returncode == 2  # no key, but --output parsed fine
+    assert "No API key" in r.stderr

@@ -605,7 +605,15 @@ class Tracker:
         costliest_attempts = [
             {"case_id": a["case_id"], "total_cost": a["total_cost"],
              "success": a["success"], "retries": a["retries"],
-             "human_min": a["human_min"], "reopened": a.get("reopened", False)}
+             "human_min": a["human_min"], "reopened": a.get("reopened", False),
+             # enriched for the advisor's investigate mode (and any consumer
+             # walking cost components): largest-first breakdown per attempt
+             "terminal_model_cost": a.get("terminal_model_cost"),
+             "retry_path_cost": a.get("retry_path_cost"),
+             "tools": a.get("tools"), "human_cost": a.get("human_cost"),
+             "context_growth": a.get("context_growth"),
+             "steps": a.get("steps"), "total_tokens": a.get("total_tokens"),
+             "outcome_inferred": a.get("outcome_inferred", False)}
             for a in costliest
         ]
 
