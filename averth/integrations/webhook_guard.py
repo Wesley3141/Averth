@@ -44,6 +44,8 @@ def default_key(alert: dict) -> Optional[str]:
     ``startsAt`` (genuine re-fires get a new one, so a flap never merges into
     an old job), and an annotations hash (changed measurements re-diagnose).
     """
+    if not isinstance(alert, dict):
+        return None
     labels = alert.get("labels", {}) or {}
     fingerprint = alert.get("fingerprint")
     if not fingerprint and not labels:
