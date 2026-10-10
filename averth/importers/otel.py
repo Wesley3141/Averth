@@ -233,6 +233,9 @@ def load_otel(path, agent_name="otel-import"):
 
     events = []
     for case_id, case in cases.items():
+        # C-START: a case with zero billable spans still ran; without a start
+        # marker its "end" is stray and the case is silently dropped.
+        events.append({"type": "start", "case_id": case_id})
         ordered = sorted(case["spans"], key=lambda sa: _span_times(sa[0])[0])
         for span, attrs in ordered:
             name = span.get("name", "")

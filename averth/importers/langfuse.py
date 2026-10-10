@@ -116,6 +116,10 @@ def load_langfuse(path, agent_name="langfuse-import"):
     missing_usage = set()
     for trace in traces:
         case_id = trace.get("id") or "unknown"
+        # C-START: a trace with zero model/tool observations still ran, so it
+        # still gets an attempt (possibly $0). Without this, its "end" is a
+        # stray end and events_to_tracker silently drops the case.
+        events.append({"type": "start", "case_id": case_id})
         observations = trace.get("observations") or []
         failed = False
         business_value = 0.0

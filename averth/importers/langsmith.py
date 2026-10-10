@@ -152,6 +152,9 @@ def load_langsmith(path, agent_name="langsmith-import"):
     events = []
     missing_usage = set()
     for case_id, case in cases.items():
+        # C-START: a case with zero billable runs still ran; without a start
+        # marker its "end" is stray and the case is silently dropped.
+        events.append({"type": "start", "case_id": case_id})
         # C-LS1: tz-aware fallback keeps the sort key homogeneous with
         # the tz-aware _parse_time results.
         ordered = sorted(case["runs"],
