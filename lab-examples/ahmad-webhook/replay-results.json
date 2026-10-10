@@ -1,0 +1,26 @@
+{
+  "baseline_calls": 9,
+  "candidate_calls": 3,
+  "avoided": 6,
+  "candidate_actions": [
+    "diagnosed",
+    "merged-duplicate",
+    "merged-duplicate",
+    "merged-duplicate",
+    "merged-duplicate",
+    "merged-duplicate",
+    "resolved-notice",
+    "diagnosed",
+    "diagnosed"
+  ],
+  "branch_tests": {
+    "changed_while_inflight": "diagnosed",
+    "annotation_change_while_inflight": "diagnosed",
+    "degenerate_never_merged": "('diagnosed', 'diagnosed')",
+    "flap_refire_new_startsAt": "diagnosed",
+    "malformed_alerts": "(200, 'ignored-malformed')",
+    "empty_alerts": "ignored-empty"
+  },
+  "est_per_call_usd": 0.008,
+  "note": "Dollar figure is illustrative from stub prompt size; independent reviewers recomputed $0.008-$0.025/call for real prompts. Realized savings depend on unmeasured live traffic mix."
+}

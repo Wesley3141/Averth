@@ -7,5 +7,6 @@ installed to import or unit-test them.
 
 from .langchain import AverthCallbackHandler
 from .openai import wrap_openai_client
+from .webhook_guard import AlertGuard, default_key
 
-__all__ = ["AverthCallbackHandler", "wrap_openai_client"]
+__all__ = ["AverthCallbackHandler", "wrap_openai_client", "AlertGuard", "default_key"]

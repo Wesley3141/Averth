@@ -1,0 +1,73 @@
+--- baseline_webhook.py	2026-10-10 11:41:14.156848179 -0500
++++ candidate_webhook.py	2026-10-10 11:51:38.931917367 -0500
+@@ -158,12 +158,67 @@
+     stats = incident_store.get_stats()
+     return {"status": "ok", "memory": stats}
+ 
++# --- CANDIDATE CHANGE: dedup + resolved routing -----------------------------
++# Tracks alert fingerprints with a diagnosis currently in flight so duplicate
++# Grafana deliveries merge instead of spawning redundant Sonnet calls.
++_diagnosing: dict = {}
++
++def _alert_key(alert: dict):
++    """Identity for dedup. Returns None when the alert carries no identity at
++    all (no fingerprint, no labels) — such deliveries are never merged."""
++    labels = alert.get("labels", {}) or {}
++    fp = alert.get("fingerprint")
++    if not fp and not labels:
++        return None
++    status = alert.get("status", "firing")
++    # startsAt: genuine re-fires get a new startsAt, so a flap
++    # (firing -> resolved -> firing) never merges into the old job.
++    starts_at = alert.get("startsAt", "")
++    annotations = alert.get("annotations", {}) or {}
++    ann_sig = "|".join(f"{k}={annotations[k]}" for k in sorted(annotations))
++    base = fp if fp else str(abs(hash("|".join(f"{k}={labels[k]}" for k in sorted(labels)))))
++    return f"{base}:{status}:{starts_at}:{abs(hash(ann_sig))}"
++
++async def _diagnose_and_release(key, body):
++    try:
++        await run_diagnostic(body)
++    finally:
++        _diagnosing.pop(key, None)
++# --- END CANDIDATE CHANGE ---------------------------------------------------
++
+ @app.post("/webhook/grafana")
+ async def grafana_webhook(request: Request):
+     body = await request.json()
+-    log.info(f"Alert: {body.get('status')} alerts={len(body.get('alerts', []))}")
+-    asyncio.create_task(run_diagnostic(body))
+-    return {"status": "received"}
++    alerts = body.get("alerts") or []
++    if not isinstance(alerts, list):
++        log.warning("webhook: alerts is not a list; ignoring")
++        return {"status": "received", "action": "ignored-malformed"}
++    log.info(f"Alert: {body.get('status')} alerts={len(alerts)}")
++    if not alerts:
++        return {"status": "received", "action": "ignored-empty"}
++    alert = alerts[0]
++    labels = alert.get("labels", {}) or {}
++    pod = labels.get("pod", "unknown")
++    namespace = labels.get("namespace", "unknown")
++    name = labels.get("alertname", "alert")
++    status = alert.get("status", "firing")
++    # Resolved alerts need no diagnosis: the incident is over. The notice is
++    # fire-and-forget so a slow/dead Telegram never 500s the webhook.
++    if status == "resolved":
++        asyncio.create_task(send_telegram(
++            f"RESOLVED: {name} for {pod} in {namespace} - alert cleared, no diagnosis run."
++        ))
++        log.info(f"Resolved notice queued: pod={pod} ns={namespace}")
++        return {"status": "received", "action": "resolved-notice"}
++    key = _alert_key(alert)
++    running = _diagnosing.get(key) if key else None
++    if running is not None and not running.done():
++        log.info(f"Merged duplicate delivery: key={key}")
++        return {"status": "received", "action": "merged-duplicate"}
++    task = asyncio.create_task(_diagnose_and_release(key, body))
++    if key:
++        _diagnosing[key] = task
++    return {"status": "received", "action": "diagnosed"}
+ 
+ if __name__ == "__main__":
+     import uvicorn
