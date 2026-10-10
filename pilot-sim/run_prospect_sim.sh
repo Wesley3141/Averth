@@ -28,7 +28,7 @@ fail=0
 "$VENV/bin/python" "$SIMDIR/check_receipt.py" "$VENV/bin/averth" \
   langsmith "$TRACES/langsmith.json" 5 || fail=1
 "$VENV/bin/python" "$SIMDIR/check_receipt.py" "$VENV/bin/averth" \
-  otel "$TRACES/otel.json" 0 || fail=1
+  otel "$TRACES/otel.json" 8 || fail=1
 
 echo "=== 5. cleanup ==="
 rm -rf "$VENV"

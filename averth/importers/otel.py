@@ -270,9 +270,14 @@ def load_otel(path, agent_name="otel-import"):
                                                       "llm.usage.cache_read_input_tokens",
                                                       "averth.cached_input_tokens")
                 cached_tok = _token_count(cached_raw, cached_key)
+                # U-OTEL: usage_known=False when neither token attribute was
+                # present. Without this, missing usage defaults to True in
+                # common.py and renders as $0.00 measured — looking free.
+                has_usage = in_key is not None or out_key is not None
                 ev = {"type": "model", "case_id": case_id,
                       "provider": guess_provider(model), "model": model,
-                      "input_tokens": in_tok, "output_tokens": out_tok}
+                      "input_tokens": in_tok, "output_tokens": out_tok,
+                      "usage_known": has_usage}
                 if cached_tok:
                     ev["cached_input_tokens"] = cached_tok
                 # M6: False/None/"" -> no branch; only non-empty strings.

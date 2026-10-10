@@ -1,0 +1,589 @@
+{
+ "summary": {
+  "n": 96,
+  "accuracy": 0.8229166666666666,
+  "correct": 79,
+  "cost_per_accepted": 0.010960898734177214,
+  "total_cost": 0.8659109999999999,
+  "elapsed_s": 0.1,
+  "mock": true
+ },
+ "grades": [
+  {
+   "task_id": "langchain-ai/langchain#40914",
+   "predicted": "feature_request",
+   "actual": "bug",
+   "correct": false
+  },
+  {
+   "task_id": "langchain-ai/langchain#40999",
+   "predicted": "bug",
+   "actual": "bug",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#40897",
+   "predicted": "feature_request",
+   "actual": "bug",
+   "correct": false
+  },
+  {
+   "task_id": "langchain-ai/langchain#38391",
+   "predicted": "feature_request",
+   "actual": "feature_request",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#40725",
+   "predicted": "bug",
+   "actual": "bug",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#40899",
+   "predicted": "bug",
+   "actual": "bug",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#40932",
+   "predicted": "bug",
+   "actual": "bug",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#40618",
+   "predicted": "bug",
+   "actual": "bug",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#40651",
+   "predicted": "feature_request",
+   "actual": "bug",
+   "correct": false
+  },
+  {
+   "task_id": "langchain-ai/langchain#39877",
+   "predicted": "feature_request",
+   "actual": "feature_request",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#38872",
+   "predicted": "feature_request",
+   "actual": "feature_request",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#41060",
+   "predicted": "feature_request",
+   "actual": "feature_request",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#40379",
+   "predicted": "feature_request",
+   "actual": "bug",
+   "correct": false
+  },
+  {
+   "task_id": "langchain-ai/langchain#40334",
+   "predicted": "feature_request",
+   "actual": "feature_request",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#40866",
+   "predicted": "feature_request",
+   "actual": "feature_request",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#39193",
+   "predicted": "feature_request",
+   "actual": "feature_request",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#40431",
+   "predicted": "feature_request",
+   "actual": "feature_request",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#37908",
+   "predicted": "feature_request",
+   "actual": "feature_request",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#40424",
+   "predicted": "feature_request",
+   "actual": "bug",
+   "correct": false
+  },
+  {
+   "task_id": "langchain-ai/langchain#39904",
+   "predicted": "feature_request",
+   "actual": "feature_request",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#38768",
+   "predicted": "feature_request",
+   "actual": "feature_request",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#40004",
+   "predicted": "feature_request",
+   "actual": "feature_request",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#39210",
+   "predicted": "feature_request",
+   "actual": "feature_request",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#40894",
+   "predicted": "bug",
+   "actual": "bug",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#40853",
+   "predicted": "bug",
+   "actual": "bug",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#38855",
+   "predicted": "feature_request",
+   "actual": "feature_request",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#40668",
+   "predicted": "feature_request",
+   "actual": "bug",
+   "correct": false
+  },
+  {
+   "task_id": "langchain-ai/langchain#40234",
+   "predicted": "feature_request",
+   "actual": "feature_request",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#37970",
+   "predicted": "feature_request",
+   "actual": "feature_request",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#40782",
+   "predicted": "feature_request",
+   "actual": "bug",
+   "correct": false
+  },
+  {
+   "task_id": "langchain-ai/langchain#38842",
+   "predicted": "feature_request",
+   "actual": "feature_request",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#38764",
+   "predicted": "feature_request",
+   "actual": "feature_request",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#40880",
+   "predicted": "bug",
+   "actual": "bug",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#39578",
+   "predicted": "feature_request",
+   "actual": "feature_request",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#40745",
+   "predicted": "feature_request",
+   "actual": "bug",
+   "correct": false
+  },
+  {
+   "task_id": "langchain-ai/langchain#40809",
+   "predicted": "bug",
+   "actual": "bug",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#37860",
+   "predicted": "feature_request",
+   "actual": "feature_request",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#40896",
+   "predicted": "feature_request",
+   "actual": "bug",
+   "correct": false
+  },
+  {
+   "task_id": "langchain-ai/langchain#41026",
+   "predicted": "bug",
+   "actual": "bug",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#41010",
+   "predicted": "bug",
+   "actual": "bug",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#40507",
+   "predicted": "bug",
+   "actual": "bug",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#40425",
+   "predicted": "feature_request",
+   "actual": "feature_request",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#40531",
+   "predicted": "bug",
+   "actual": "bug",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#37786",
+   "predicted": "feature_request",
+   "actual": "feature_request",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#40132",
+   "predicted": "feature_request",
+   "actual": "feature_request",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#40796",
+   "predicted": "bug",
+   "actual": "bug",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#38054",
+   "predicted": "feature_request",
+   "actual": "feature_request",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#41138",
+   "predicted": "bug",
+   "actual": "bug",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#39908",
+   "predicted": "feature_request",
+   "actual": "feature_request",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#37926",
+   "predicted": "feature_request",
+   "actual": "feature_request",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#40706",
+   "predicted": "feature_request",
+   "actual": "bug",
+   "correct": false
+  },
+  {
+   "task_id": "langchain-ai/langchain#40396",
+   "predicted": "bug",
+   "actual": "bug",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#41028",
+   "predicted": "bug",
+   "actual": "bug",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#38937",
+   "predicted": "feature_request",
+   "actual": "feature_request",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#40967",
+   "predicted": "bug",
+   "actual": "bug",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#40863",
+   "predicted": "feature_request",
+   "actual": "feature_request",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#40392",
+   "predicted": "bug",
+   "actual": "bug",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#37641",
+   "predicted": "feature_request",
+   "actual": "feature_request",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#40677",
+   "predicted": "bug",
+   "actual": "bug",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#40709",
+   "predicted": "feature_request",
+   "actual": "bug",
+   "correct": false
+  },
+  {
+   "task_id": "langchain-ai/langchain#38152",
+   "predicted": "feature_request",
+   "actual": "feature_request",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#40522",
+   "predicted": "bug",
+   "actual": "bug",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#40830",
+   "predicted": "bug",
+   "actual": "bug",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#39808",
+   "predicted": "feature_request",
+   "actual": "feature_request",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#40867",
+   "predicted": "feature_request",
+   "actual": "feature_request",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#40817",
+   "predicted": "bug",
+   "actual": "bug",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#40509",
+   "predicted": "bug",
+   "actual": "bug",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#40590",
+   "predicted": "feature_request",
+   "actual": "bug",
+   "correct": false
+  },
+  {
+   "task_id": "langchain-ai/langchain#38950",
+   "predicted": "feature_request",
+   "actual": "feature_request",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#40609",
+   "predicted": "bug",
+   "actual": "bug",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#39340",
+   "predicted": "feature_request",
+   "actual": "feature_request",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#41016",
+   "predicted": "feature_request",
+   "actual": "feature_request",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#38896",
+   "predicted": "feature_request",
+   "actual": "feature_request",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#41103",
+   "predicted": "feature_request",
+   "actual": "bug",
+   "correct": false
+  },
+  {
+   "task_id": "langchain-ai/langchain#40810",
+   "predicted": "bug",
+   "actual": "bug",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#38744",
+   "predicted": "feature_request",
+   "actual": "feature_request",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#40163",
+   "predicted": "feature_request",
+   "actual": "feature_request",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#40771",
+   "predicted": "feature_request",
+   "actual": "bug",
+   "correct": false
+  },
+  {
+   "task_id": "langchain-ai/langchain#37905",
+   "predicted": "feature_request",
+   "actual": "feature_request",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#38159",
+   "predicted": "feature_request",
+   "actual": "feature_request",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#37700",
+   "predicted": "feature_request",
+   "actual": "feature_request",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#41020",
+   "predicted": "bug",
+   "actual": "bug",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#40892",
+   "predicted": "bug",
+   "actual": "bug",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#37938",
+   "predicted": "feature_request",
+   "actual": "feature_request",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#40769",
+   "predicted": "feature_request",
+   "actual": "bug",
+   "correct": false
+  },
+  {
+   "task_id": "langchain-ai/langchain#41025",
+   "predicted": "bug",
+   "actual": "bug",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#41024",
+   "predicted": "bug",
+   "actual": "bug",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#39128",
+   "predicted": "feature_request",
+   "actual": "feature_request",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#38186",
+   "predicted": "feature_request",
+   "actual": "feature_request",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#41064",
+   "predicted": "bug",
+   "actual": "bug",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#40915",
+   "predicted": "feature_request",
+   "actual": "bug",
+   "correct": false
+  },
+  {
+   "task_id": "langchain-ai/langchain#39717",
+   "predicted": "feature_request",
+   "actual": "feature_request",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#40444",
+   "predicted": "feature_request",
+   "actual": "feature_request",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#40389",
+   "predicted": "feature_request",
+   "actual": "feature_request",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#37801",
+   "predicted": "feature_request",
+   "actual": "feature_request",
+   "correct": true
+  },
+  {
+   "task_id": "langchain-ai/langchain#40996",
+   "predicted": "feature_request",
+   "actual": "bug",
+   "correct": false
+  }
+ ]
+}

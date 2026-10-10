@@ -244,3 +244,17 @@ def test_negative_dollars():
 def test_dollars_garbage():
     assert dollars(None) == "$?"
     assert dollars("abc") == "$?"
+
+
+def test_otel_missing_usage_flagged_unknown(tmp_path):
+    # U-OTEL regression: spans without usage attributes must render as
+    # unknown ($0.00, not free), never as $0.00 measured.
+    spans = {"spans": [{
+        "traceId": "t1", "spanId": "s1", "name": "llm.chat",
+        "startTimeUnixNano": "1", "endTimeUnixNano": "2",
+        "attributes": {"gen_ai.request.model": "gpt-5.6"},
+        "status": {"code": "STATUS_CODE_OK"}}]}
+    ledger = otel.load_otel(_write(tmp_path, "t.json", json.dumps(spans)))
+    p = tracker_from_ledger(ledger).pnl()
+    assert p["data_quality"]["unknown_calls"] == 1
+    assert p["cost_model"] == 0  # recorded, not priced

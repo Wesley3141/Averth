@@ -145,7 +145,9 @@ for ti, tk in enumerate(tickets):
     for j, c in enumerate(tk["calls"]):
         attrs = [{"key": "gen_ai.request.model",
                   "value": {"stringValue": c["model"]}}]
-        if c["usage"]:
+        # drop usage on a few spans: exercises the unknown-usage path
+        drop_usage = (ti * 7 + j) % 29 == 0
+        if c["usage"] and not drop_usage:
             attrs += [
                 {"key": "gen_ai.usage.input_tokens",
                  "value": {"intValue": str(c["input"])}},

@@ -1,0 +1,1 @@
+{"runs": [{"id": "root", "name": "agent", "run_type": "chain", "trace_id": "T", "parent_run_ids": [], "start_time": "2026-09-30T10:00:00.000000Z", "end_time": "2026-09-30T10:05:00.000000Z", "error": null, "serialized": {}, "outputs": {}, "extra": {"metadata": {}}}]}
