@@ -19,10 +19,10 @@ import json
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
-from lab.models import StubBackend, Usage
-from lab.pricing import cost_for
+from averth.lab.models import StubBackend, Usage
+from averth.lab.pricing import cost_for
 
 INCIDENT_DIR = Path.home() / "workspace/outreach/ahmad-gayibov-incident"
 
@@ -116,11 +116,11 @@ def main() -> None:
         "recorded-plan": recorded,
         "well-formed": {
             "incident_type": "CrashLoopBackOff",
-            "pod": "crash-deploy-5fcdc87555-tjhgc",
+            "pod": "api-7d9f-x2bc",
             "namespace": "default",
             "fix_action": "Restart the workload to clear transient crash state",
             "reasoning": "Container exiting with code 1; restart is the known remediation.",
-            "fix_command": "kubectl rollout restart deployment/crash-deploy -n default",
+            "fix_command": "kubectl rollout restart deployment/api -n default",
         },
         "missing-action": {
             "incident_type": "CrashLoopBackOff",

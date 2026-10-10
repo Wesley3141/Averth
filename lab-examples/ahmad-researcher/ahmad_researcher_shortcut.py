@@ -12,13 +12,13 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
-from lab.harness import Case, run_experiment
-from lab.models import ModelBackend, StubBackend, Usage
-from lab.pricing import cost_for
-from lab.quality import keyword_coverage
-from lab.report import render
+from averth.lab.harness import Case, run_experiment
+from averth.lab.models import ModelBackend, StubBackend, Usage
+from averth.lab.pricing import cost_for
+from averth.lab.quality import keyword_coverage
+from averth.lab.report import render
 
 
 # --- The deterministic known-fix lookup, mirroring the public Researcher ---

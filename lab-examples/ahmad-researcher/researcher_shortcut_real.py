@@ -17,11 +17,11 @@ import re
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
-from lab.harness import Case, run_experiment
-from lab.models import Usage
-from lab.report import render
+from averth.lab.harness import Case, run_experiment
+from averth.lab.models import Usage
+from averth.lab.report import render
 
 INCIDENT_DIR = Path.home() / "workspace/outreach/ahmad-gayibov-incident"
 
@@ -55,19 +55,25 @@ TEMPLATES = {
     ),
 }
 
-# substantive propositions in the recorded Sonnet narrative, as checkable predicates
-PROPOSITIONS = [
-    ("pod_identity", lambda c: "crash-deploy-5fcdc87555-tjhgc" in c),
-    ("namespace", lambda c: "namespace default" in c),
-    ("reason", lambda c: "crashloopbackoff" in c.lower()),
-    ("exit_code", lambda c: "code 1" in c),
-    ("image_pulled_ok", lambda c: "busybox" in c.lower()),
-    ("impact_availability", lambda c: "availability" in c.lower()),
-    ("fix_command", lambda c: "kubectl rollout restart deployment/crash-deploy -n default" in c),
-    ("hedge_transient", lambda c: "transient" in c.lower()),
-    ("hedge_underlying", lambda c: "underlying" in c.lower()),
-    ("hedge_investigate", lambda c: "investigat" in c.lower()),
-]
+# substantive propositions in the recorded Sonnet narrative, as checkable predicates.
+# Pod/fix identifiers are read from the recorded plan at runtime, never hardcoded,
+# so the case study carries no operator-specific identifiers.
+def get_propositions():
+    plan = json.loads((INCIDENT_DIR / "action_plan.json").read_text())
+    pod = plan["incident_pod"]
+    fix = plan["fix_command"]
+    return [
+        ("pod_identity", lambda c, _p=pod: _p in c),
+        ("namespace", lambda c: "namespace default" in c),
+        ("reason", lambda c: "crashloopbackoff" in c.lower()),
+        ("exit_code", lambda c: "code 1" in c),
+        ("image_pulled_ok", lambda c: "busybox" in c.lower()),
+        ("impact_availability", lambda c: "availability" in c.lower()),
+        ("fix_command", lambda c, _f=fix: _f in c),
+        ("hedge_transient", lambda c: "transient" in c.lower()),
+        ("hedge_underlying", lambda c: "underlying" in c.lower()),
+        ("hedge_investigate", lambda c: "investigat" in c.lower()),
+    ]
 
 
 def incident_facts(pkg: dict) -> dict:
@@ -100,7 +106,7 @@ def candidate(case: Case, model):
 
 def quality_fn(case: Case, action: str, explanation: str, extra: dict) -> dict:
     checks = {"action_correct": action == case.expected_action}
-    for name, pred in PROPOSITIONS:
+    for name, pred in get_propositions():
         try:
             checks[name] = bool(pred(explanation))
         except Exception:
@@ -126,7 +132,7 @@ def main() -> None:
     missing = [k for k, v in c.candidate.quality.items() if not v and not k.startswith("_")]
     kept = [k for k, v in c.candidate.quality.items()
             if v and k != "action_correct" and not k.startswith("_")]
-    print(f"\npropositions preserved: {len(kept)}/{len(PROPOSITIONS)}")
+    print(f"\npropositions preserved: {len(kept)}/{len(get_propositions())}")
     if missing:
         print(f"dropped propositions: {missing}")
     else:
