@@ -33,7 +33,11 @@ def _importer_for(fmt):
     if fmt == "jsonl":
         from averth.importers import jsonl as mod
         return mod.load_jsonl, "averth.importers.jsonl"
-    raise ValueError("unsupported format: %r (use otel, langsmith, or jsonl)" % (fmt,))
+    if fmt == "langfuse":
+        from averth.importers import langfuse as mod
+        return mod.load_langfuse, "averth.importers.langfuse"
+    raise ValueError("unsupported format: %r (use otel, langsmith, langfuse, or jsonl)"
+                     % (fmt,))
 
 
 def build_parser():
@@ -41,7 +45,8 @@ def build_parser():
     sub = p.add_subparsers(dest="cmd", required=True)
     t = sub.add_parser("trace", help="Build a P&L report from an agent trace file.")
     t.add_argument("file", help="Trace file to parse.")
-    t.add_argument("--format", required=True, choices=["otel", "langsmith", "jsonl"],
+    t.add_argument("--format", required=True,
+                   choices=["otel", "langsmith", "langfuse", "jsonl"],
                    help="Trace format.")
     t.add_argument("--html", default=None, metavar="PATH",
                    help="HTML report output path (default: <inputfile>.html in cwd).")

@@ -29,6 +29,8 @@ LEDGER_ATTEMPT_KEYS = (
     "context_tax", "retry_path_cost", "retry_tool_cost",
     "terminal_model_cost",
     "cached_tokens", "cache_savings",
+    # cost-basis accumulators (provenance buckets that survive export)
+    "billed_cost", "estimated_model_cost",
     "success", "outcome_inferred", "reopened", "business_value", "per_model",
     "tool_latency_ms",
     # events: metadata only, preserves retry reasons (H5)
@@ -58,6 +60,10 @@ def export_ledger(tracker, path):
         # data, not free inference); restored by tracker_from_ledger so the
         # flag survives the round trip like unpriced_models.
         "missing_usage_models": sorted(tracker.missing_usage),
+        # Vendor-supplied (billed) model costs, and the count of calls with
+        # unknown usage. Both survive the round trip like the flags above.
+        "billed_models": sorted(tracker.billed_models),
+        "unknown_usage_calls": tracker.unknown_usage_calls,
         # C2: stamp which price table produced these dollars, so a ledger
         # read months later cannot be mistaken for current-price dollars.
         "price_vintage": tracker.price_vintage,

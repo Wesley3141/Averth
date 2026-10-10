@@ -185,6 +185,14 @@ class Tracker:
         # here; pnl() surfaces them so reports warn instead of presenting
         # $0 as a measured fact.
         self.missing_usage = set()
+        # "provider:model" keys whose costs were supplied by the vendor's
+        # own metering (e.g. Langfuse calculated costs), not our price
+        # table. Higher confidence than estimates; tracked separately so
+        # pnl() can report the vendor-supplied bucket honestly.
+        self.billed_models = set()
+        # Count of model calls recorded with no reported usage (cost_basis
+        # "unknown"). Unknown is never $0.00-as-free; the count is reported.
+        self.unknown_usage_calls = 0
         self._cur = None
 
     @property
@@ -226,6 +234,10 @@ class Tracker:
                      "retry_all": False,      # attempt-global retry marker
                      "tool_latency_ms": 0.0,
                      "per_model": {},
+                     # cost-basis accumulators (step-level provenance that
+                     # survives export even though raw steps do not)
+                     "billed_cost": 0.0,
+                     "estimated_model_cost": 0.0,
                      "cached_tokens": 0,
                      "cache_savings": 0.0}
 
@@ -235,7 +247,8 @@ class Tracker:
         return self._cur["retry_all"]
 
     def _record_step(self, provider, model, in_tok, out_tok, cost,
-                     in_price_per_m, cached_tok=0, branch=None):
+                     in_price_per_m, cached_tok=0, branch=None,
+                     cost_basis="measured"):
         cur = self._cur
         waste = self._step_is_waste(branch)
         cur["model"] += cost
@@ -243,19 +256,38 @@ class Tracker:
             "in": in_tok, "out": out_tok, "cost": cost,
             "retry": waste, "in_price": in_price_per_m,
             "cached": cached_tok, "branch": branch,
+            # cost_basis: "measured" (tokens x vendor price),
+            # "estimated" (fallback price), "billed" (vendor-supplied),
+            # "unknown" (no usage reported; cost recorded as $0.00).
+            "cost_basis": cost_basis,
             # "provider:model": which model made this call (invoice-join key)
             "model_key": "%s:%s" % (provider, model),
         })
         key = "%s:%s" % (provider, model)
         cur["per_model"][key] = cur["per_model"].get(key, 0.0) + cost
-        cur["events"].append(("model", provider, model, cost))
+        cur["events"].append((("model_billed" if cost_basis == "billed"
+                               else "model"), provider, model, cost))
         cur["cached_tokens"] += cached_tok
+        # Attempt-level provenance accumulators: a single model key can mix
+        # measured and billed calls, so buckets must accumulate per step,
+        # not per key.
+        if cost_basis == "billed":
+            cur["billed_cost"] = cur.get("billed_cost", 0.0) + cost
+        elif cost_basis == "estimated":
+            cur["estimated_model_cost"] = cur.get("estimated_model_cost",
+                                                  0.0) + cost
 
     def log_model_call(self, provider, model, input_tokens, output_tokens,
-                       cached_input_tokens=0, branch=None):
+                       cached_input_tokens=0, branch=None, missing_usage=False):
         """Record one model call. cached_input_tokens are priced at the
         Tracker's cache_read_discount; the saving is tracked in
-        cache_savings so it is visible, never silently netted."""
+        cache_savings so it is visible, never silently netted.
+
+        missing_usage=True: the call reported no token usage (e.g. streamed
+        responses without usage, exports without token_usage). The cost is
+        recorded as $0.00 with cost_basis "unknown" and the call is counted
+        in unknown_usage_calls — unknown is never presented as free.
+        """
         self._req()
         in_tok = _check_nonneg_int("input_tokens", input_tokens)
         out_tok = _check_nonneg_int("output_tokens", output_tokens)
@@ -274,8 +306,34 @@ class Tracker:
                 + out_tok / 1e6 * pout)
         saving = cached / 1e6 * pin * (1.0 - d)
         self._cur["cache_savings"] += saving
+        basis = "unknown" if missing_usage else "measured"
+        if missing_usage:
+            self.unknown_usage_calls += 1
         self._record_step(provider, model, in_tok, out_tok, cost,
-                          pin, cached_tok=cached, branch=branch)
+                          pin, cached_tok=cached, branch=branch,
+                          cost_basis=basis)
+
+    def log_model_billed_cost(self, provider, model, cost,
+                              input_tokens=0, output_tokens=0, branch=None):
+        """Record a model call at a vendor-supplied cost (e.g. Langfuse
+        calculatedTotalCost). The dollars come from the vendor's own
+        metering, not our price table, so the model key is flagged in
+        tracker.billed_models and surfaced in pnl() as vendor-supplied —
+        higher confidence than our estimates, distinct from measured
+        tokens-x-price. Tokens are recorded when reported (for token
+        accounting) but do not drive the dollars.
+        """
+        self._req()
+        in_tok = _check_nonneg_int("input_tokens", input_tokens)
+        out_tok = _check_nonneg_int("output_tokens", output_tokens)
+        cost = _check_nonneg("billed cost", cost)
+        key = "%s:%s" % (provider, model)
+        self.billed_models.add(key)
+        # in_price unknown (vendor's price, not ours); 0.0 keeps the
+        # context-tax math safe, same convention as estimates.
+        self._record_step(provider, model, in_tok, out_tok, cost,
+                          0.0, cached_tok=0, branch=branch,
+                          cost_basis="billed")
 
     def log_model_cost_estimate(self, provider, model, cost,
                                 input_tokens=0, output_tokens=0,
@@ -303,12 +361,14 @@ class Tracker:
         cur["steps"].append({
             "in": in_tok, "out": out_tok, "cost": cost,
             "retry": self._step_is_waste(branch), "in_price": 0.0,
-            "cached": cached, "branch": branch,
+            "cached": cached, "branch": branch, "cost_basis": "estimated",
         })
         key = "%s:%s" % (provider, model)
         cur["per_model"][key] = cur["per_model"].get(key, 0.0) + cost
         cur["events"].append(("model_estimate", provider, model, cost))
         cur["cached_tokens"] += cached
+        cur["estimated_model_cost"] = cur.get("estimated_model_cost",
+                                              0.0) + cost
         self.unpriced_models.add(key)
 
     def log_tool_call(self, name, cost=None, branch=None):
@@ -551,6 +611,18 @@ class Tracker:
 
         unpriced_spend = sum(v for k, v in per_model.items()
                              if k in self.unpriced_models)
+        # Step-level provenance: attempt accumulators (a model key can mix
+        # measured and billed calls, so per-key bucketing misattributes).
+        # .get defaults: ledgers written before these keys existed.
+        billed_spend = sum(a.get("billed_cost", 0.0) for a in atts)
+        estimated_model = sum(a.get("estimated_model_cost", 0.0) for a in atts)
+        # Backward compatibility: ancient ledgers lack the accumulators but
+        # have unpriced_models; fall back to the key heuristic for those.
+        if not any("estimated_model_cost" in a for a in atts):
+            estimated_model = unpriced_spend
+        if not any("billed_cost" in a for a in atts):
+            billed_spend = sum(v for k, v in per_model.items()
+                               if k in self.billed_models)
 
         # C1: breaches count EVERY over-envelope attempt, not just
         # successes — the hook fires on failed runaways too, and the count
@@ -573,6 +645,25 @@ class Tracker:
         default_tool_names = sorted({
             ts["name"] for a in atts for ts in a.get("tool_steps", [])
             if not ts.get("explicit_cost", True)})
+
+        # Data-quality buckets: every receipt dollar is classified by how
+        # it was produced. Measured = tokens x vendor price. Billed =
+        # vendor-supplied cost. Estimated = fallback prices or built-in
+        # tool estimates. Unknown = calls with no reported usage (recorded
+        # $0.00, counted separately — never free). The five layers (retry
+        # path, context tax, yield, tail, per-model) are explanatory
+        # overlays on these dollars, never additional charges: total ==
+        # model + tools + retry(extra) + human, and the overlays are
+        # subsets/shares of model spend.
+        estimated_model = unpriced_spend
+        measured_model = model - billed_spend - estimated_model
+        measured_tools = tools - default_tool_spend
+        data_quality = {
+            "measured": measured_model + measured_tools,
+            "billed": billed_spend,
+            "estimated": estimated_model + default_tool_spend,
+            "unknown_calls": self.unknown_usage_calls,
+        }
         return {
             "agent": self.agent_name,
             "attempts": n,
@@ -616,6 +707,14 @@ class Tracker:
                      "tail_label": tail_label},
             "per_model": per_model,
             "unpriced_models": sorted(self.unpriced_models),
+            # Vendor-supplied (billed) model keys and spend: the vendor's
+            # own metering, higher confidence than our estimates.
+            "billed_models": sorted(self.billed_models),
+            "cost_billed": billed_spend,
+            # Data-quality buckets: measured / billed / estimated dollars,
+            # plus the count of calls with unknown usage (never $0-as-free).
+            "data_quality": data_quality,
+            "unknown_usage_calls": self.unknown_usage_calls,
             # model keys whose calls reported no token usage: $0.00 here is
             # missing data, not free inference (see missing_usage).
             "missing_usage_models": sorted(self.missing_usage),

@@ -204,7 +204,11 @@ def load_langsmith(path, agent_name="langsmith-import"):
                     missing_usage.add("%s:%s" % (provider, model))
                 ev = {"type": "model", "case_id": case_id,
                       "provider": provider, "model": model,
-                      "input_tokens": in_tok, "output_tokens": out_tok}
+                      "input_tokens": in_tok, "output_tokens": out_tok,
+                      # usage_known=False: no token usage reported — the
+                      # call is costed $0.00 with cost_basis "unknown"
+                      # (never presented as free).
+                      "usage_known": has_usage}
                 try:
                     cached = float(_brand(meta, "cached_input_tokens") or 0)
                 except (TypeError, ValueError):

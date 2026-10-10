@@ -7,6 +7,7 @@ averth.insights, ranked by dollars, with the concrete action it implies.
 import html as _html
 
 from .insights import findings
+from ._money import dollars
 
 
 def report_text(p, token_dashboard_per_success=None):
@@ -60,72 +61,101 @@ def report_text(p, token_dashboard_per_success=None):
     L.append("Human escalations:     %s" % "{:,}".format(p["escalations"]))
     L.append("Retries:               %s" % "{:,}".format(p["retries"]))
     L.append("")
-    L.append("Cost per successful outcome:")
-    L.append("  Model/API (terminal): $%.2f" % ps["model"])
-    L.append("  Retry path:           $%.2f" % ps["retry_path"])
-    L.append("  Tool calls:           $%.2f" % ps["tools"])
+    # Missing outcome labels mean cost per successful task is unknown as an
+    # accepted-outcome metric. When every outcome was inferred from trace
+    # completion status, label the block accordingly — the dollars are real,
+    # but "per success" here is per inferred success, not per accepted outcome.
+    if p["attempts"] and p.get("inferred_outcomes", 0) >= p["attempts"]:
+        L.append("Cost per successful outcome: UNKNOWN as an accepted-outcome "
+                 "metric — no outcome labels were joined. "
+                 "Per inferred success (trace completion only):")
+    else:
+        L.append("Cost per successful outcome:")
+    L.append("  Model/API (terminal): %s" % dollars(ps["model"]))
+    L.append("  Retry path:           %s" % dollars(ps["retry_path"]))
+    L.append("  Tool calls:           %s" % dollars(ps["tools"]))
     # C3: the labor rate is a per-deployment parameter. When the default
     # assumption is in effect the report says so loudly — a VP Finance
     # reader must never mistake it for a measured number.
     if p.get("human_rate_assumed", True):
-        L.append("  Human review:         $%.2f  (at $%.2f/hr loaded — "
+        L.append("  Human review:         %s  (at %s/hr loaded — "
                  "ASSUMPTION, not measured; pass human_cost_per_min=... "
-                 "with your real rate)" % (ps["human"],
-                                            p.get("human_cost_per_min", 0) * 60))
+                 "with your real rate)" % (dollars(ps["human"]),
+                                            dollars(p.get("human_cost_per_min", 0) * 60)))
     else:
-        L.append("  Human review:         $%.2f  (at $%.2f/hr loaded, "
-                 "caller-supplied)" % (ps["human"],
-                                       p.get("human_cost_per_min", 0) * 60))
-    L.append("  Fully loaded:         $%.2f" % ps["fully_loaded"])
+        L.append("  Human review:         %s  (at %s/hr loaded, "
+                 "caller-supplied)" % (dollars(ps["human"]),
+                                       dollars(p.get("human_cost_per_min", 0) * 60)))
+    L.append("  Fully loaded:         %s" % dollars(ps["fully_loaded"]))
     if token_dashboard_per_success is not None:
         mult = (ps["fully_loaded"] / token_dashboard_per_success
                 if token_dashboard_per_success else 0)
-        L.append("  Token dashboard:      $%.2f  (real cost is %.1fx)"
-                 % (token_dashboard_per_success, mult))
+        L.append("  Token dashboard:      %s  (real cost is %.1fx)"
+                 % (dollars(token_dashboard_per_success), mult))
     L.append("")
-    L.append("The five layers:")
+    # Data-quality buckets: every receipt dollar classified by provenance.
+    # The five layers below are explanatory overlays on these dollars —
+    # retry path and context tax are subsets/shares of model spend, never
+    # additional charges.
+    dq = p.get("data_quality") or {}
+    L.append("Data quality (every dollar by provenance):")
+    L.append("  Measured (tokens x vendor prices): %s"
+             % dollars(dq.get("measured", 0.0)))
+    L.append("  Vendor-supplied (billed):          %s"
+             % dollars(dq.get("billed", 0.0)))
+    L.append("  Estimated (fallback prices):       %s"
+             % dollars(dq.get("estimated", 0.0)))
+    unknown_calls = dq.get("unknown_calls", 0)
+    if unknown_calls:
+        L.append("  Unknown: %d call%s with no usage data (recorded $0.00 — "
+                 "not free inference)"
+                 % (unknown_calls, "s" if unknown_calls != 1 else ""))
+    else:
+        L.append("  Unknown: none")
+    L.append("")
+    L.append("The five layers (explanations of the spend above, not extra charges):")
     L.append("  1. Context compounding: %s input growth first-to-last step; "
-             "context tax $%s (%.0f%% of model spend)"
+             "context tax %s (%.0f%% of model spend)"
              % ("%.1fx" % p["avg_context_growth"],
-                "{:,.2f}".format(p["context_tax"]),
+                dollars(p["context_tax"]),
                 p["context_tax_share_of_model"] * 100))
-    L.append("  2. External tool spend: $%s total, $%.2f per success "
+    L.append("  2. External tool spend: %s total, %s per success "
              "(invisible on provider invoices)"
-             % ("{:,.2f}".format(p["cost_tools"]), ps["tools"]))
+             % (dollars(p["cost_tools"]), dollars(ps["tools"])))
     L.append("  3. Yield ratio: %.0f%% of tokens on the terminal path "
              "(%.0f%% burned on retries and failed runs)"
              % (p["yield_ratio"] * 100, (1 - p["yield_ratio"]) * 100))
-    L.append("  4. Heavy tail: p50 $%.2f / p95 $%.2f / max $%.2f per attempt; "
+    L.append("  4. Heavy tail: p50 %s / p95 %s / max %s per attempt; "
              "%s consumed %.0f%% of budget"
-             % (t["p50"], t["p95"], t["max"], t["tail_label"],
+             % (dollars(t["p50"]), dollars(t["p95"]), dollars(t["max"]), t["tail_label"],
                 t["top5pct_share"] * 100))
     L.append("  5. Model mix:")
     tot_model = p["cost_model"] or 1
     for k, v in sorted(p["per_model"].items(), key=lambda kv: -kv[1]):
-        L.append("       %s: $%s (%.0f%% of model spend)"
-                 % (k, "{:,.2f}".format(v), v / tot_model * 100))
+        L.append("       %s: %s (%.0f%% of model spend)"
+                 % (k, dollars(v), v / tot_model * 100))
     if p["cached_tokens"] and p["cache_savings"] > 0:
         # H3: name the discount rate — it is vendor-specific (10% is
         # Anthropic's published rate), not a universal constant.
-        L.append("     Prompt cache: %s input tokens cached, saving $%s "
+        L.append("     Prompt cache: %s input tokens cached, saving %s "
                  "(priced at %.0f%% of input rate; override per vendor via "
                  "cache_read_discount=...)"
                  % ("{:,}".format(p["cached_tokens"]),
-                    "{:,.2f}".format(p["cache_savings"]),
+                    dollars(p["cache_savings"]),
                     p.get("cache_read_discount", 0.10) * 100))
     # Waste lenses, not additive partitions: a failed attempt's retry-path
     # spend appears in both the failed-runs and retry-path lines by design.
     L.append("")
     L.append("Waste accounting (lenses, not additive):")
-    L.append("  Failed runs:   $%s (%.0f%% of spend, zero outcomes)"
-             % ("{:,.2f}".format(p["cost_failed"]),
+    L.append("  Failed runs:   %s (%.0f%% of spend, zero outcomes)"
+             % (dollars(p["cost_failed"]),
                 p["failed_spend_share"] * 100))
-    L.append("  Retry path:    $%s model+retry spend on discarded paths "
+    L.append("  Retry path:    %s model+retry spend on discarded paths "
              "(overlaps failed runs)"
-             % "{:,.2f}".format(p["cost_retry_path"]))
+             % dollars(p["cost_retry_path"]))
     if p["reopened"]:
-        L.append("  Reopened:      $%s (%.0f%% of spend)"
-                 % ("{:,.2f}".format(p["cost_reopened"]),
+        L.append("  Reopened:      %s (%.0f%% of spend)"
+                 % (dollars(p["cost_reopened"]),
                     p["reopened_spend_share"] * 100))
     if p["top_retry_reasons"]:
         L.append("  Top retry reasons:")
@@ -133,18 +163,18 @@ def report_text(p, token_dashboard_per_success=None):
             L.append("    %dx  %s" % (count, reason))
     if p["unpriced_spend"] > 0:
         L.append("")
-        L.append("  WARNING: $%s of model spend is ESTIMATED (no vendor "
+        L.append("  WARNING: %s of model spend is ESTIMATED (no vendor "
                  "price for: %s)"
-                 % ("{:,.2f}".format(p["unpriced_spend"]),
+                 % (dollars(p["unpriced_spend"]),
                     ", ".join(p["unpriced_models"])))
     # H2: tool spend from built-in per-call estimates is flagged, never
     # presented as measured. Pass explicit costs to log_tool_call to clear.
     if p.get("tools_default_priced_spend", 0.0) > 0:
         L.append("")
-        L.append("  WARNING: $%s of tool spend uses built-in per-call "
+        L.append("  WARNING: %s of tool spend uses built-in per-call "
                  "ESTIMATES (for: %s) — measure your tool costs and pass "
                  "them explicitly"
-                 % ("{:,.2f}".format(p["tools_default_priced_spend"]),
+                 % (dollars(p["tools_default_priced_spend"]),
                     ", ".join(p.get("tools_default_priced_names", []))))
     # missing usage data is not free inference: warn so the $0.00
     # per-model lines above are never read as genuinely free.
@@ -157,18 +187,18 @@ def report_text(p, token_dashboard_per_success=None):
                     ", ".join(models)))
     L.append("")
     if p["business_value"] > 0:
-        L.append("Business value:        $%s" % "{:,.2f}".format(p["business_value"]))
-        L.append("Total cost:            $%s" % "{:,.2f}".format(p["cost_total"]))
-        L.append("Net value:             $%s" % "{:,.2f}".format(p["net_value"]))
+        L.append("Business value:        %s" % dollars(p["business_value"]))
+        L.append("Total cost:            %s" % dollars(p["cost_total"]))
+        L.append("Net value:             %s" % dollars(p["net_value"]))
     else:
         # V1: business value in dollars is optional. Cost per accepted outcome
         # is objectively measurable; value often is not. Report the cost side
         # fully and leave value for deployments with a clean baseline.
-        L.append("Total cost:            $%s" % "{:,.2f}".format(p["cost_total"]))
+        L.append("Total cost:            %s" % dollars(p["cost_total"]))
         L.append("Business value:        not baselined (optional in V1)")
     if p.get("budget_per_success") is not None:
-        L.append("Budget: $%.2f/success, breaches: %d"
-                 % (p["budget_per_success"], p["budget_breaches"]))
+        L.append("Budget: %s/success, breaches: %d"
+                 % (dollars(p["budget_per_success"]), p["budget_breaches"]))
     return "\n".join(L)
 
 
@@ -177,8 +207,8 @@ def _bar(label, value, total, color):
     return (
         '<div class="brow"><span class="blabel">%s</span>'
         '<div class="btrack"><div class="bfill" style="width:%.1f%%;background:%s;"></div></div>'
-        '<span class="bval">$%s</span></div>'
-        % (_html.escape(label), width, color, "{:,.2f}".format(value))
+        '<span class="bval">%s</span></div>'
+        % (_html.escape(label), width, color, dollars(value))
     )
 
 
@@ -216,12 +246,12 @@ def _histogram_svg(costs, p50, p95):
             '<line x1="%.1f" y1="30" x2="%.1f" y2="%d" stroke="%s" '
             'stroke-width="2" stroke-dasharray="5,3"/>'
             '<text x="%.1f" y="20" fill="%s" font-size="12" text-anchor="middle">'
-            '%s $%.2f</text>' % (x, x, h - pad_b, col, x, col, lab, v))
+            '%s %s</text>' % (x, x, h - pad_b, col, x, col, lab, dollars(v)))
     parts.append(
-        '<text x="%d" y="%d" font-size="11" fill="#555">$%.2f</text>'
-        '<text x="%d" y="%d" font-size="11" fill="#555" text-anchor="end">$%.2f</text>'
+        '<text x="%d" y="%d" font-size="11" fill="#555">%s</text>'
+        '<text x="%d" y="%d" font-size="11" fill="#555" text-anchor="end">%s</text>'
         '<text x="%d" y="%.1f" font-size="11" fill="#555">%d attempts max bucket</text>'
-        % (pad_l, h - 8, lo, w - 20, h - 8, hi, pad_l, h - pad_b - ih - 6, peak))
+        % (pad_l, h - 8, dollars(lo), w - 20, h - 8, dollars(hi), pad_l, h - pad_b - ih - 6, peak))
     parts.append('</svg>')
     return "\n".join(parts)
 
@@ -237,27 +267,27 @@ def write_html(path, tracker, policy_sim=None, token_dashboard_per_success=None)
         mult = ps["fully_loaded"] / token_dashboard_per_success
         mult_card = ('<div class="card"><div class="k">Token-dashboard multiple</div>'
                      '<div class="v">%.1fx</div>'
-                     '<div class="s">real cost vs $%.2f dashboard view</div></div>'
-                     % (mult, token_dashboard_per_success))
+                     '<div class="s">real cost vs %s dashboard view</div></div>'
+                     % (mult, dollars(token_dashboard_per_success)))
     else:
         mult_card = ""
 
     unpriced_banner = ""
     if p["unpriced_spend"] > 0:
         unpriced_banner = (
-            '<div class="warn"><b>Estimated spend:</b> $%s of model spend uses '
+            '<div class="warn"><b>Estimated spend:</b> %s of model spend uses '
             'the documented fallback estimate (no vendor price for %s).</div>'
-            % ("{:,.2f}".format(p["unpriced_spend"]),
+            % (dollars(p["unpriced_spend"]),
                _html.escape(", ".join(p["unpriced_models"]))))
 
     # H2: tool spend from built-in estimates is flagged, never hidden.
     tool_est_banner = ""
     if p.get("tools_default_priced_spend", 0.0) > 0:
         tool_est_banner = (
-            '<div class="warn"><b>Estimated tool spend:</b> $%s of tool spend '
+            '<div class="warn"><b>Estimated tool spend:</b> %s of tool spend '
             'uses built-in per-call estimates (for %s) — measure your tool '
             'costs and pass them explicitly to log_tool_call.</div>'
-            % ("{:,.2f}".format(p["tools_default_priced_spend"]),
+            % (dollars(p["tools_default_priced_spend"]),
                _html.escape(", ".join(p.get("tools_default_priced_names", [])))))
 
     # missing usage data is not free inference: warn loudly so the $0.00
@@ -273,6 +303,12 @@ def write_html(path, tracker, policy_sim=None, token_dashboard_per_success=None)
                _html.escape(", ".join(missing_models))))
 
     inferred_outcome_banner = ""
+    all_inferred = (p["attempts"] > 0
+                    and p.get("inferred_outcomes", 0) >= p["attempts"])
+    # When no outcome labels were joined, "per accepted outcome" is unknown:
+    # the card shows per inferred success and says so.
+    per_success_label = ("per inferred success (no outcome labels joined)"
+                         if all_inferred else "per accepted outcome")
     if p.get("inferred_outcomes", 0):
         inferred_outcome_banner = (
             '<div class="warn"><b>Outcome labels needed:</b> %d of %d '
@@ -311,11 +347,11 @@ def write_html(path, tracker, policy_sim=None, token_dashboard_per_success=None)
         cards = []
         for f in top_findings:
             cards.append(
-                '<div class="finding %s"><div class="fk">%s FINDING &middot; $%s</div>'
+                '<div class="finding %s"><div class="fk">%s FINDING &middot; %s</div>'
                 '<div class="ft">%s</div><div class="fs">%s</div>'
                 '<div class="fa">&rarr; %s</div></div>'
                 % (f["severity"], f["severity"].upper(),
-                   "{:,.2f}".format(f["dollars"]),
+                   dollars(f["dollars"]),
                    _html.escape(f["title"]), _html.escape(f["detail"]),
                    _html.escape(f["action"])))
         insight_cards = ('<h2>What to do Monday morning</h2><div class="findings">%s</div>'
@@ -330,22 +366,43 @@ def write_html(path, tracker, policy_sim=None, token_dashboard_per_success=None)
         _bar("Tool calls", ps["tools"], ps_total, "#7ab648"),
         _bar("Human review", ps["human"], ps_total, "#c25bb5"),
     ])
+    # Data-quality buckets: every receipt dollar by provenance. The five
+    # layers are explanatory overlays on these dollars, never extra charges.
+    dq = p.get("data_quality") or {}
+    unknown_calls = dq.get("unknown_calls", 0)
+    unknown_line = (
+        "%d call%s with no usage data (shown as $0.00 &mdash; not free "
+        "inference)" % (unknown_calls, "s" if unknown_calls != 1 else "")
+        if unknown_calls else "none")
+    data_quality_block = (
+        '<h2>Data quality</h2><ul class="layers">'
+        '<li><b>Measured</b> (tokens &times; vendor prices): %s</li>'
+        '<li><b>Vendor-supplied</b> (billed): %s</li>'
+        '<li><b>Estimated</b> (fallback prices): %s</li>'
+        '<li><b>Unknown:</b> %s</li>'
+        '</ul><p class="fineprint">Provenance buckets partition model and '
+        'tool spend. Layers below explain that spend; they are not additional '
+        'charges.</p>'
+        % (dollars(dq.get("measured", 0.0)),
+           dollars(dq.get("billed", 0.0)),
+           dollars(dq.get("estimated", 0.0)),
+           unknown_line))
     # C3: never let the default labor assumption pass silently in the
     # visual report either.
     if p.get("human_rate_assumed", True):
         human_note = (
-            '<p class="s">Human review costed at $%.2f/hr loaded — '
+            '<p class="s">Human review costed at %s/hr loaded — '
             '<b>default assumption</b>, not a measured number. Pass '
             'human_cost_per_min=... with your real loaded rate.</p>'
-            % (p.get("human_cost_per_min", 0) * 60))
+            % (dollars(p.get("human_cost_per_min", 0) * 60)))
     else:
         human_note = ""
 
     tot_model = p["cost_model"] or 1
     model_rows = "".join(
-        '<tr><td>%s</td><td class="r">$%s</td>'
+        '<tr><td>%s</td><td class="r">%s</td>'
         '<td class="r">%.0f%% of model spend</td></tr>'
-        % (_html.escape(k), "{:,.2f}".format(v), v / tot_model * 100)
+        % (_html.escape(k), dollars(v), v / tot_model * 100)
         for k, v in sorted(p["per_model"].items(), key=lambda kv: -kv[1]))
 
     retry_rows = "".join(
@@ -353,9 +410,9 @@ def write_html(path, tracker, policy_sim=None, token_dashboard_per_success=None)
         % (c, _html.escape(r)) for r, c in p["top_retry_reasons"])
 
     costliest_rows = "".join(
-        '<tr><td>%s</td><td class="r">$%.2f</td><td>%s</td>'
+        '<tr><td>%s</td><td class="r">%s</td><td>%s</td>'
         '<td class="r">%d</td><td class="r">%.1f min</td></tr>'
-        % (_html.escape(str(c["case_id"])), c["total_cost"],
+        % (_html.escape(str(c["case_id"])), dollars(c["total_cost"]),
            "success" if c["success"] else "FAILED", c["retries"],
            c["human_min"])
         for c in p["costliest_attempts"])
@@ -366,23 +423,23 @@ def write_html(path, tracker, policy_sim=None, token_dashboard_per_success=None)
         policy_section = (
             '<h2>Historical policy screen (read only)</h2>'
             '<p class="lede"><b>%d completed runs</b> crossed these thresholds: '
-            '<b>%d failed</b> ($%s historical spend) and '
-            '<b>%d successful</b> ($%s historical spend).</p>'
+            '<b>%d failed</b> (%s historical spend) and '
+            '<b>%d successful</b> (%s historical spend).</p>'
             '<p class="s">Policy tested: max cost per attempt $%s, yield floor %s. '
             'Final outcomes and costs identify runs for review; this screen '
             'does not estimate savings, intervention timing, or lost outcomes.</p>'
             % (policy_sim["flagged_runs"], policy_sim["flagged_failed"],
-               "{:,.2f}".format(policy_sim["flagged_failed_spend"]),
+               dollars(policy_sim["flagged_failed_spend"]),
                policy_sim["flagged_success"],
-               "{:,.2f}".format(policy_sim["flagged_success_spend"]),
+               dollars(policy_sim["flagged_success_spend"]),
                _html.escape(str(pol["max_cost_per_attempt"])),
                _html.escape(str(pol["yield_floor"]))))
         if policy_sim["worst"]:
             policy_section += (
                 '<table><tr><th>Run</th><th>Cost</th><th>Outcome</th><th>Reason</th></tr>' +
                 "".join(
-                    '<tr><td>%s</td><td class="r">$%.2f</td><td>%s</td><td>%s</td></tr>'
-                    % (_html.escape(str(w["case_id"])), w["total_cost"],
+                    '<tr><td>%s</td><td class="r">%s</td><td>%s</td><td>%s</td></tr>'
+                    % (_html.escape(str(w["case_id"])), dollars(w["total_cost"]),
                        "success" if w["success"] else "FAILED",
                        _html.escape("; ".join(w["reasons"])))
                     for w in policy_sim["worst"]) + '</table>')
@@ -445,34 +502,35 @@ footer { margin-top: 24px; font-size: 12px; color: #8a94a1; text-align: center; 
 %(model_basis_banner)s
 %(stale_banner)s
 <div class="cards">
-<div class="card"><div class="k">Fully loaded</div><div class="v">$%(fully_loaded)s</div>
-<div class="s">per accepted outcome</div></div>
+<div class="card"><div class="k">Fully loaded</div><div class="v">%(fully_loaded)s</div>
+<div class="s">%(per_success_label)s</div></div>
 %(mult_card)s
 <div class="card"><div class="k">Yield ratio</div><div class="v">%(yield_ratio)s</div>
 <div class="s">terminal-path tokens / total</div></div>
 <div class="card"><div class="k">Top 5%% tail share</div><div class="v">%(tail_share)s</div>
 <div class="s">of total spend in costliest runs</div></div>
-<div class="card"><div class="k">Failed-run waste</div><div class="v">$%(failed_cost)s</div>
+<div class="card"><div class="k">Failed-run waste</div><div class="v">%(failed_cost)s</div>
 <div class="s">%(failed_share)s of spend, zero outcomes</div></div>
 </div>
 %(insight_cards)s
 <h2>Cost per successful outcome</h2>
 %(breakdown)s
 %(human_note)s
+%(data_quality_block)s
 <h2>Per-attempt cost distribution</h2>
 %(histogram)s
-<p class="s">p50 $%(p50).2f &middot; p95 $%(p95).2f &middot; max $%(max).2f per attempt</p>
+<p class="s">p50 %(p50)s &middot; p95 %(p95)s &middot; max %(max)s per attempt</p>
 <h2>The five layers</h2>
 <ul class="layers">
 <li><b>Context compounding:</b> %(growth).1fx input growth, first to last step.
-Context tax: <b>$%(context_tax)s</b> (%(tax_share).0f%% of model spend) vs a flat-context counterfactual.</li>
-<li><b>External tool spend:</b> $%(tools_total)s total, $%(tools_ps).2f per success
+Context tax: <b>%(context_tax)s</b> (%(tax_share).0f%% of model spend) vs a flat-context counterfactual.</li>
+<li><b>External tool spend:</b> %(tools_total)s total, %(tools_ps)s per success
 (invisible on provider invoices).</li>
 <li><b>Yield ratio:</b> %(yield).0f%% of tokens on the terminal path,
 %(waste).0f%% burned on retries and failed runs.</li>
-<li><b>Heavy tail:</b> p50 $%(p50).2f / p95 $%(p95).2f / max $%(max).2f per attempt;
+<li><b>Heavy tail:</b> p50 %(p50)s / p95 %(p95)s / max %(max)s per attempt;
 %(tail_label)s consumed %(tail_share)s of budget.</li>
-<li><b>Model mix:</b> $%(model_total)s total model spend (see table).
+<li><b>Model mix:</b> %(model_total)s total model spend (see table).
 %(cache_line)s</li>
 </ul>
 <h2>Top cost drivers (per model)</h2>
@@ -500,29 +558,31 @@ Context tax: <b>$%(context_tax)s</b> (%(tax_share).0f%% of model spend) vs a fla
         "stale_banner": stale_banner,
         "vintage_line": vintage_line,
         "human_note": human_note,
-        "fully_loaded": "{:,.2f}".format(ps["fully_loaded"]),        "mult_card": mult_card,
+        "fully_loaded": dollars(ps["fully_loaded"]),
+        "per_success_label": per_success_label,        "mult_card": mult_card,
         "yield_ratio": "%.0f%%" % (p["yield_ratio"] * 100),
         "tail_share": "%.0f%%" % (t["top5pct_share"] * 100),
         "tail_label": "the %s" % t["tail_label"],
-        "failed_cost": "{:,.2f}".format(p["cost_failed"]),
+        "failed_cost": dollars(p["cost_failed"]),
         "failed_share": "%.0f%%" % (p["failed_spend_share"] * 100),
         "insight_cards": insight_cards,
         "breakdown": breakdown,
+        "data_quality_block": data_quality_block,
         "histogram": _histogram_svg(costs, t["p50"], t["p95"]),
-        "p50": t["p50"], "p95": t["p95"], "max": t["max"],
+        "p50": dollars(t["p50"]), "p95": dollars(t["p95"]), "max": dollars(t["max"]),
         "growth": p["avg_context_growth"],
-        "context_tax": "{:,.2f}".format(p["context_tax"]),
+        "context_tax": dollars(p["context_tax"]),
         "tax_share": p["context_tax_share_of_model"] * 100,
-        "tools_total": "{:,.2f}".format(p["cost_tools"]),
-        "tools_ps": ps["tools"],
+        "tools_total": dollars(p["cost_tools"]),
+        "tools_ps": dollars(ps["tools"]),
         "yield": p["yield_ratio"] * 100,
         "waste": (1 - p["yield_ratio"]) * 100,
-        "model_total": "{:,.2f}".format(p["cost_model"]),
+        "model_total": dollars(p["cost_model"]),
         "cache_line": ("Prompt cache: {:,} input tokens cached, saving "
-                       "${:,.2f} (priced at {:.0f}% of input rate — "
+                       "{} (priced at {:.0f}% of input rate — "
                        "vendor-specific; override via "
                        "cache_read_discount).".format(p["cached_tokens"],
-                                          p["cache_savings"],
+                                          dollars(p["cache_savings"]),
                                           p.get("cache_read_discount", 0.10) * 100)
                        ) if p["cached_tokens"] and p["cache_savings"] > 0 else "",
         "model_rows": model_rows,

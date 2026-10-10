@@ -16,13 +16,20 @@ Event types (each event is a plain dict):
      "provider": str (optional), "input_tokens": number (default 0),
      "output_tokens": number (default 0),
      "cached_input_tokens": number (default 0),
-     "branch": str (optional)}
+     "branch": str (optional),
+     "billed_cost": number (optional),
+     "usage_known": bool (default True)}
         One LLM call. "provider" is the vendor key used by pricing
         (openai, anthropic, google, xai). If omitted, the provider is guessed
         from the model name with guess_provider(). "cached_input_tokens"
         are priced at the Tracker's cache_read_discount and the saving is
         reported. "branch" scopes retry-path marking to one parallel branch
-        (see Tracker.log_retry).
+        (see Tracker.log_retry). "billed_cost", when present, is a
+        vendor-supplied dollar figure (e.g. Langfuse calculatedTotalCost):
+        the dollars come from the vendor's metering, not our price table,
+        and the call is flagged as vendor-supplied. "usage_known=False"
+        marks calls that reported no token usage: cost is recorded as $0.00
+        with cost_basis "unknown" — unknown is never presented as free.
 
     {"type": "tool", "case_id": str, "name": str,
      "cost": number (optional), "latency_ms": number (optional),
@@ -120,7 +127,8 @@ def _parse_bool_tristate(value):
 
 
 def _apply_model_cost(tracker, provider, model, input_tokens, output_tokens,
-                      cost, cached_tokens=0, cache_saving=0.0, branch=None):
+                      cost, cached_tokens=0, cache_saving=0.0, branch=None,
+                      cost_basis="estimated"):
     """Apply a model call to the open attempt with an explicit cost.
 
     Mirrors Tracker.log_model_call's bookkeeping for the fallback path where
@@ -135,7 +143,7 @@ def _apply_model_cost(tracker, provider, model, input_tokens, output_tokens,
     cur["steps"].append({
         "in": input_tokens, "out": output_tokens, "cost": cost,
         "retry": tracker._step_is_waste(branch), "in_price": 0.0,
-        "cached": cached_tokens, "branch": branch,
+        "cached": cached_tokens, "branch": branch, "cost_basis": cost_basis,
     })
     key = "%s:%s" % (provider, model)
     cur["per_model"][key] = cur["per_model"].get(key, 0.0) + cost
@@ -144,15 +152,33 @@ def _apply_model_cost(tracker, provider, model, input_tokens, output_tokens,
 
 
 def _log_model_call(tracker, provider, model, input_tokens, output_tokens,
-                    cached_tokens=0, branch=None):
-    """log_model_call with a documented fallback for unpriced models."""
+                    cached_tokens=0, branch=None, billed_cost=None,
+                    usage_known=True):
+    """log_model_call with a documented fallback for unpriced models.
+
+    billed_cost, when not None, routes to log_model_billed_cost: the
+    dollars are vendor-supplied (higher confidence than our estimates).
+    usage_known=False marks the call as missing usage data ($0.00 recorded
+    as unknown, never as free).
+    """
+    if billed_cost is not None:
+        tracker.log_model_billed_cost(provider, model, billed_cost,
+                                      input_tokens=input_tokens,
+                                      output_tokens=output_tokens,
+                                      branch=branch)
+        return
     try:
         tracker.log_model_call(provider, model, input_tokens, output_tokens,
                                cached_input_tokens=cached_tokens,
-                               branch=branch)
+                               branch=branch,
+                               missing_usage=not usage_known)
     except KeyError:
         key = "%s:%s" % (provider, model)
         tracker.unpriced_models.add(key)
+        # Unpriced AND missing usage: we know neither tokens nor price —
+        # basis "unknown", counted, never presented as free or estimated.
+        if not usage_known:
+            tracker.unknown_usage_calls += 1
         # H-A: the fallback path applies the same cache-discount math as
         # log_model_call (priced at tracker.cache_read_discount, saving
         # recorded) — cached tokens were previously priced at the full
@@ -168,7 +194,9 @@ def _log_model_call(tracker, provider, model, input_tokens, output_tokens,
         _apply_model_cost(tracker, provider, model,
                           input_tokens, output_tokens, cost,
                           cached_tokens=cached, cache_saving=saving,
-                          branch=branch)
+                          branch=branch,
+                          cost_basis="unknown" if not usage_known
+                          else "estimated")
 
 
 def events_to_tracker(agent_name, events):
@@ -219,7 +247,9 @@ def events_to_tracker(agent_name, events):
                                 ev.get("input_tokens", 0) or 0,
                                 ev.get("output_tokens", 0) or 0,
                                 cached_tokens=ev.get("cached_input_tokens", 0) or 0,
-                                branch=ev.get("branch"))
+                                branch=ev.get("branch"),
+                                billed_cost=ev.get("billed_cost"),
+                                usage_known=ev.get("usage_known", True))
             elif etype == "tool":
                 tracker.log_tool_call(ev["name"], cost=ev.get("cost"),
                                       branch=ev.get("branch"))
@@ -270,6 +300,12 @@ def ledger_from_tracker(tracker, agent_name=None):
         # data, not free inference. getattr so foreign tracker-likes that
         # predate the field still export.
         "missing_usage_models": sorted(getattr(tracker, "missing_usage", [])),
+        # Vendor-supplied (billed) model costs: higher confidence than our
+        # estimates, tracked separately so reports can say so.
+        "billed_models": sorted(getattr(tracker, "billed_models", [])),
+        # Count of calls recorded with no reported usage (cost_basis
+        # "unknown"). Unknown is never $0.00-as-free; the count is reported.
+        "unknown_usage_calls": getattr(tracker, "unknown_usage_calls", 0),
         # C2: stamp which price table produced these dollars.
         "price_vintage": tracker.price_vintage,
         "attempts": [
@@ -293,6 +329,10 @@ def tracker_from_ledger(ledger):
     tracker.unpriced_models = set(ledger.get("unpriced_models", []))
     # Same for ledgers written before the missing_usage flag was exported.
     tracker.missing_usage = set(ledger.get("missing_usage_models", []))
+    # Vendor-supplied (billed) model keys; absent on older ledgers.
+    tracker.billed_models = set(ledger.get("billed_models", []))
+    # Count of unknown-usage calls; absent on older ledgers.
+    tracker.unknown_usage_calls = ledger.get("unknown_usage_calls", 0)
     # C2: restore the price vintage the dollars were computed under, so
     # reports on old ledgers stamp the old vintage instead of today's.
     # None (legacy ledgers) means "vintage unknown" — reports say so.
