@@ -1,6 +1,6 @@
 # Averth
 
-**The economic meter for AI agents.** Point it at your existing traces and get a one-page breakdown: what each workflow really costs per successful run, which step burns the most, and the one change worth testing first.
+**One command on your traces reveals the change worth testing.** Averth measures the fully-loaded cost of every AI agent run — model spend, retries, tool calls, human review — and names the single fix worth trying first.
 
 ```bash
 pip install git+https://github.com/Wesley3141/Averth.git
