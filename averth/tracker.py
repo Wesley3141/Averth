@@ -193,6 +193,12 @@ class Tracker:
         # Count of model calls recorded with no reported usage (cost_basis
         # "unknown"). Unknown is never $0.00-as-free; the count is reported.
         self.unknown_usage_calls = 0
+        # Model keys whose cached tokens were priced at a vendor cached
+        # rate (pricing.MODEL_CACHED_PRICES) rather than the generic
+        # discount. Kept as a set because ledger export drops per-step
+        # records, so pnl() cannot always derive this from steps alone;
+        # ledger_from_tracker / tracker_from_ledger carry it across.
+        self.vendor_cached_models = set()
         self._cur = None
 
     @property
@@ -248,7 +254,7 @@ class Tracker:
 
     def _record_step(self, provider, model, in_tok, out_tok, cost,
                      in_price_per_m, cached_tok=0, branch=None,
-                     cost_basis="measured"):
+                     cost_basis="measured", cached_price_per_m=None):
         cur = self._cur
         waste = self._step_is_waste(branch)
         cur["model"] += cost
@@ -256,6 +262,10 @@ class Tracker:
             "in": in_tok, "out": out_tok, "cost": cost,
             "retry": waste, "in_price": in_price_per_m,
             "cached": cached_tok, "branch": branch,
+            # Vendor cached-input price per 1M tokens, when one was
+            # applied to this step (pricing.MODEL_CACHED_PRICES);
+            # None means the generic cache_read_discount was used.
+            "cached_price": cached_price_per_m,
             # cost_basis: "measured" (tokens x vendor price),
             # "estimated" (fallback price), "billed" (vendor-supplied),
             # "unknown" (no usage reported; cost recorded as $0.00).
@@ -280,7 +290,11 @@ class Tracker:
     def log_model_call(self, provider, model, input_tokens, output_tokens,
                        cached_input_tokens=0, branch=None, missing_usage=False):
         """Record one model call. cached_input_tokens are priced at the
-        Tracker's cache_read_discount; the saving is tracked in
+        vendor cached rate from pricing.MODEL_CACHED_PRICES when the
+        model key has one (that rate wins over the generic
+        cache_read_discount, because it is the vendor's published rate,
+        not a generic assumption); otherwise they are priced at the
+        Tracker's cache_read_discount. The saving is tracked in
         cache_savings so it is visible, never silently netted.
 
         missing_usage=True: the call reported no token usage (e.g. streamed
@@ -300,18 +314,29 @@ class Tracker:
         except KeyError:
             raise KeyError("no price for %s; add it to MODEL_PRICES "
                            "or use log_model_cost_estimate" % key)
-        d = self.cache_read_discount
-        cost = ((in_tok - cached) / 1e6 * pin
-                + cached / 1e6 * pin * d
-                + out_tok / 1e6 * pout)
-        saving = cached / 1e6 * pin * (1.0 - d)
+        cached_price = pricing.MODEL_CACHED_PRICES.get(key)
+        if cached_price is not None:
+            cached_price = _check_nonneg("cached input price", cached_price)
+            if cached > 0:
+                self.vendor_cached_models.add(key)
+            cost = ((in_tok - cached) / 1e6 * pin
+                    + cached / 1e6 * cached_price
+                    + out_tok / 1e6 * pout)
+            saving = cached / 1e6 * (pin - cached_price)
+        else:
+            d = self.cache_read_discount
+            cost = ((in_tok - cached) / 1e6 * pin
+                    + cached / 1e6 * pin * d
+                    + out_tok / 1e6 * pout)
+            saving = cached / 1e6 * pin * (1.0 - d)
         self._cur["cache_savings"] += saving
         basis = "unknown" if missing_usage else "measured"
         if missing_usage:
             self.unknown_usage_calls += 1
         self._record_step(provider, model, in_tok, out_tok, cost,
                           pin, cached_tok=cached, branch=branch,
-                          cost_basis=basis)
+                          cost_basis=basis,
+                          cached_price_per_m=cached_price)
 
     def log_model_billed_cost(self, provider, model, cost,
                               input_tokens=0, output_tokens=0, branch=None):
@@ -478,7 +503,13 @@ class Tracker:
                 if s["in"] <= 0 or s["in_price"] <= 0:
                     continue
                 cached_frac = min(s["cached"] / s["in"], 1.0)
-                eff_price = s["in_price"] * (1.0 - cached_frac * (1.0 - d))
+                if s.get("cached_price") is not None:
+                    # Vendor cached rate for this step: effective price
+                    # is the token-weighted mix of full and cached rates.
+                    eff_price = (s["in_price"] * (1.0 - cached_frac)
+                                 + s["cached_price"] * cached_frac)
+                else:
+                    eff_price = s["in_price"] * (1.0 - cached_frac * (1.0 - d))
                 tax += (s["in"] - base_in) / 1e6 * eff_price
         a["context_tax"] = tax
         # layer 3: yield — terminal-path tokens vs total. Retry-path tokens
@@ -559,6 +590,15 @@ class Tracker:
         context_tax = sum(a.get("context_tax", 0.0) for a in atts)
         cache_savings = sum(a.get("cache_savings", 0.0) for a in atts)
         cached_tokens = sum(a.get("cached_tokens", 0) for a in atts)
+        # Model keys whose cached tokens were priced at a vendor cached
+        # rate (pricing.MODEL_CACHED_PRICES) rather than the generic
+        # discount, derived from step records so it survives ledger
+        # rehydration. Reports use this to avoid claiming a single
+        # generic discount rate when a vendor rate actually applied.
+        vendor_cached_models = sorted(
+            set(getattr(self, "vendor_cached_models", set())) | {
+                s.get("model_key") for a in atts for s in a.get("steps", [])
+                if s.get("cached_price") is not None and s.get("cached", 0) > 0})
         retry_tool = sum(a.get("retry_tool_cost", 0.0) for a in atts)
         per = (lambda x: x / s if s else 0.0)
 
@@ -698,6 +738,7 @@ class Tracker:
             "context_tax_share_of_model": context_tax / model if model else 0.0,
             "cache_savings": cache_savings,
             "cached_tokens": cached_tokens,
+            "vendor_cached_models": vendor_cached_models,
             "unpriced_spend": unpriced_spend,
             "per_success": {
                 "model": per(terminal_model),

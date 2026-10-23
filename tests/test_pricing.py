@@ -47,6 +47,13 @@ def test_validation_models_do_not_hit_fallback(key):
 # PRICE_TABLE_VERSION and move PRICE_TABLE_UPDATED. This is what makes the
 # "bump on any change" convention enforceable instead of aspirational.
 PINNED_MODEL_PRICES = {
+    # OpenAI list prices, verified 2026-10-23 from developers.openai.com
+    # model and pricing pages.
+    "openai:gpt-4o": (2.50, 10.00),
+    # Snapshot alias, same base-model price; verified on the GPT-4o
+    # model page (gpt-4o-2024-08-06 listed as a snapshot, $2.50/$10.00).
+    "openai:gpt-4o-2024-08-06": (2.50, 10.00),
+    "openai:gpt-4o-mini": (0.15, 0.60),
     "openai:gpt-5.6": (2.50, 10.00),
     "openai:gpt-5.6-mini": (0.30, 1.20),
     "openai:gpt-5-nano": (0.05, 0.40),
@@ -61,6 +68,10 @@ PINNED_MODEL_PRICES = {
     "google:gemini-3-pro": (2.00, 12.00),
     "google:gemini-3-flash": (0.50, 3.00),
     "xai:grok-4": (3.00, 15.00),
+    # Z.ai glm-5.3, verified 2026-10-23 from docs.z.ai/guides/overview/
+    # pricing (input $1.40, cached $0.26, output $4.40 per 1M tokens).
+    "unknown:glm-5.3": (1.40, 4.40),
+    "zai:glm-5.3": (1.40, 4.40),
 }
 
 PINNED_TOOL_PRICES = {
@@ -91,3 +102,27 @@ def test_future_table_date_rejected_loudly(monkeypatch):
     monkeypatch.setattr(pricing, "PRICE_TABLE_UPDATED", "2999-01-01")
     with pytest.raises(ValueError, match="in the future"):
         pricing.price_vintage()
+
+
+def test_vendor_cached_price_used_for_glm():
+    # glm-5.3: input $1.40, cached $0.26, output $4.40 per 1M.
+    # 1000 non-cached + 1000 cached + 1000 output must cost
+    # 0.001*1.40 + 0.001*0.26 + 0.001*4.40 = $0.00606, not the
+    # generic-discount figure 0.001*1.40 + 0.001*1.40*0.10 + 0.001*4.40.
+    t = Tracker("cached-vendor")
+    t.start_attempt(case_id="C-1")
+    t.log_model_call("unknown", "glm-5.3", 2000, 1000,
+                     cached_input_tokens=1000)
+    a = t.end_attempt(success=True)
+    assert a["model"] == pytest.approx(0.00606)
+    assert a["cache_savings"] == pytest.approx(0.00114)
+    assert t.pnl()["vendor_cached_models"] == ["unknown:glm-5.3"]
+
+
+def test_gpt4o_snapshot_alias_does_not_fall_back():
+    t = Tracker("snapshot")
+    t.start_attempt(case_id="C-1")
+    t.log_model_call("openai", "gpt-4o-2024-08-06", 1_000_000, 1_000_000)
+    t.end_attempt(success=True)
+    assert t.unpriced_models == set()
+    assert t.attempts[0]["model"] == pytest.approx(12.50)

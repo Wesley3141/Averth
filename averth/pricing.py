@@ -15,18 +15,36 @@ current status.
 """
 
 # Version of this price table. Bump on ANY price change.
-PRICE_TABLE_VERSION = 2
+PRICE_TABLE_VERSION = 5
 # ISO date this table was last verified against vendor list-price pages.
-PRICE_TABLE_UPDATED = "2026-10-02"
+# Dated 2026-10-22, the local date when the verification work ran in
+# America/Chicago. Dating it 2026-10-23 (UTC date) broke price_vintage()
+# for US local dates still on Oct 22, because that function compares
+# against local date.today().
+PRICE_TABLE_UPDATED = "2026-10-22"
 # Warn (loudly, in reports) when the table is older than this.
 PRICE_TABLE_STALE_AFTER_DAYS = 90
 # Where the numbers came from, so a reviewer can re-verify them.
 PRICE_TABLE_SOURCE = (
-    "vendor list-price pages as of 2026-10-02 (OpenAI, Anthropic, Google, xAI)"
+    "vendor list-price pages as of 2026-10-23 (OpenAI, Anthropic, Google, xAI); "
+    "GPT-4o / GPT-4o-mini from OpenAI's model and pricing pages; "
+    "Z.ai glm-5.3 from docs.z.ai/guides/overview/pricing (input $1.40, "
+    "cached input $0.26, output $4.40 per 1M tokens, verified 2026-10-23)"
 )
 
 # (input per 1M tokens, output per 1M tokens)
 MODEL_PRICES = {
+    # OpenAI list prices, verified 2026-10-23 from developers.openai.com
+    # model and pricing pages (GPT-4o-mini: $0.15/$0.60; GPT-4o: $2.50/$10.00).
+    "openai:gpt-4o": (2.50, 10.00),
+    # Snapshot alias, same base-model list price: the GPT-4o model page
+    # (developers.openai.com/api/docs/models/gpt-4o, read 2026-10-23)
+    # lists gpt-4o-2024-08-06 in its snapshot list and prices GPT-4o
+    # text tokens at $2.50 input / $1.25 cached input / $10.00 output
+    # per 1M tokens. POC 2's model key is openai:gpt-4o-2024-08-06, so
+    # without this entry it fell back to $1.00/$3.00 entirely.
+    "openai:gpt-4o-2024-08-06": (2.50, 10.00),
+    "openai:gpt-4o-mini": (0.15, 0.60),
     "openai:gpt-5.6": (2.50, 10.00),
     "openai:gpt-5.6-mini": (0.30, 1.20),
     "openai:gpt-5-nano": (0.05, 0.40),
@@ -40,6 +58,30 @@ MODEL_PRICES = {
     "google:gemini-3-pro": (2.00, 12.00),
     "google:gemini-3-flash": (0.50, 3.00),
     "xai:grok-4": (3.00, 15.00),
+    # Z.ai glm-5.3, verified 2026-10-23 from docs.z.ai/guides/overview/pricing.
+    # "unknown:" is the key the importer actually hits for a bare model
+    # name "glm-5.3" (guess_provider has no glm/z.ai rule); "zai:" covers
+    # an explicit zai provider. Both carry the same list prices.
+    "unknown:glm-5.3": (1.40, 4.40),
+    "zai:glm-5.3": (1.40, 4.40),
+}
+
+# Vendor cached-input prices per 1M tokens, where the vendor publishes one
+# separately from the input price. CONSUMED by Tracker.log_model_call:
+# for a model key present here, cached tokens are priced at this rate,
+# not at the generic CACHE_READ_DISCOUNT (0.10 of the input price).
+# Models absent from this dict keep the generic discount (or an explicit
+# Tracker cache_read_discount override). The saving reported for a
+# vendor-cached model is therefore input price minus this cached rate,
+# not input price minus the generic discount.
+MODEL_CACHED_PRICES = {
+    "unknown:glm-5.3": 0.26,
+    "zai:glm-5.3": 0.26,
+    # OpenAI cached rates verified 2026-10-22 from the GPT-4o model page:
+    # GPT-4o cached $1.25, GPT-4o-mini cached $0.075 per 1M tokens.
+    "openai:gpt-4o": 1.25,
+    "openai:gpt-4o-2024-08-06": 1.25,
+    "openai:gpt-4o-mini": 0.075,
 }
 
 # per-call cost for common tools.

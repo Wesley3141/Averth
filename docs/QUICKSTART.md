@@ -77,7 +77,7 @@ Prefer existing traces? Import one instead of instrumenting:
 averth trace run-2026-09.json --format jsonl --html report.html
 ```
 
-`--format` also accepts `otel` and `langsmith`.
+`--format` also accepts `otel`, `langsmith`, `langfuse`, and `claude` (Claude Code session JSONL).
 
 ## 3. Export the sanitized ledger (30 seconds)
 

@@ -303,6 +303,10 @@ def ledger_from_tracker(tracker, agent_name=None):
         # Vendor-supplied (billed) model costs: higher confidence than our
         # estimates, tracked separately so reports can say so.
         "billed_models": sorted(getattr(tracker, "billed_models", [])),
+        # Model keys whose cached tokens were priced at a vendor cached
+        # rate rather than the generic discount (see Tracker).
+        "vendor_cached_models": sorted(
+            getattr(tracker, "vendor_cached_models", [])),
         # Count of calls recorded with no reported usage (cost_basis
         # "unknown"). Unknown is never $0.00-as-free; the count is reported.
         "unknown_usage_calls": getattr(tracker, "unknown_usage_calls", 0),
@@ -331,6 +335,9 @@ def tracker_from_ledger(ledger):
     tracker.missing_usage = set(ledger.get("missing_usage_models", []))
     # Vendor-supplied (billed) model keys; absent on older ledgers.
     tracker.billed_models = set(ledger.get("billed_models", []))
+    # Model keys priced at a vendor cached rate; absent on older ledgers.
+    tracker.vendor_cached_models = set(
+        ledger.get("vendor_cached_models", []))
     # Count of unknown-usage calls; absent on older ledgers.
     tracker.unknown_usage_calls = ledger.get("unknown_usage_calls", 0)
     # C2: restore the price vintage the dollars were computed under, so

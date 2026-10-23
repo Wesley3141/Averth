@@ -20,7 +20,12 @@ la = load("trace-a-sequential-retry.json")
 a = la["attempts"]
 check(len(a) == 1, "trace-a: one attempt (single trace id)")
 a = a[0]
-check(a["success"] is False, "trace-a: ERROR tool span marks attempt failed")
+# Recovered-attempt rule (wave 1 otel fix, deliberate): an ERROR span
+# followed by substantive non-ERROR work downstream completes the
+# attempt as recovered (success=True, outcome inferred), with only the
+# failed call itself scoped as waste. Trace A recovers: refund_api
+# succeeds on retry and summarize/audit/webhook run after it.
+check(a["success"] is True, "trace-a: ERROR followed by substantive work marks attempt recovered, not failed")
 check(a["retries"] == 1, "trace-a: one retry event, got %d" % a["retries"])
 check(a["human_min"] == 3, "trace-a: 3 escalation minutes, got %s" % a["human_min"])
 check(abs(a["business_value"] - 12.50) < 1e-9, "trace-a: business_value override 12.50, got %s" % a["business_value"])
@@ -52,7 +57,11 @@ lb = load("trace-b-parallel-fanout.json")
 b = lb["attempts"]
 check(len(b) == 1, "trace-b: one attempt across 4 parallel branches")
 b = b[0]
-check(b["success"] is False, "trace-b: double-failed branch marks attempt failed")
+# Recovered-attempt rule (wave 1 otel fix, deliberate): Trace B
+# completes via the fan-in merge even though branch2 stays dead; the
+# attempt is recovered (success=True, outcome inferred) and the dead
+# branch's work stays visible as retry-path spend, not as a failed attempt.
+check(b["success"] is True, "trace-b: double-failed branch with completing fan-in merge marks attempt recovered, not failed")
 check(b["retries"] == 2, "trace-b: two retry events, got %d" % b["retries"])
 bpm = b["per_model"]
 # gemini via llm.token_count.prompt/completion: (2200,410) at 0.50/3.00

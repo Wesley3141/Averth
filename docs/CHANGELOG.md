@@ -4,6 +4,27 @@
 
 ### Added
 
+- `averth trace --format claude` — Claude Code session JSONL importer
+  (`averth/importers/claude.py`): one session file at a time, deduplication
+  by message id, sidechain records excluded by default, total-context
+  mapping so cache reads that dwarf uncached input do not crash or get
+  capped, cache-creation tokens priced at full input price (not at the
+  cache-read discount, and not at a separate write rate, which Averth
+  does not model). No retry inference, no tool spend, no acceptance
+  label is invented from a transcript; cost per accepted outcome stays
+  UNKNOWN unless labels are joined separately.
+- Price table v5: GPT-4o and GPT-4o-mini list prices, Z.ai glm-5.3
+  ($1.40 input / $0.26 cached input / $4.40 output per 1M tokens), and
+  a `gpt-4o-2024-08-06` snapshot alias at the GPT-4o price (that
+  snapshot is listed on the GPT-4o model page, which prices GPT-4o
+  text tokens at $2.50 input / $1.25 cached input / $10.00 output
+  per 1M tokens, verified 2026-10-22), plus vendor cached rates for
+  GPT-4o ($1.25) and GPT-4o-mini ($0.075).
+- Vendor cached-input pricing in the tracker: `pricing.MODEL_CACHED_PRICES`
+  is now consumed by `Tracker.log_model_call`, so a model with a
+  published cached rate (glm-5.3 at $0.26) is priced at that rate, not
+  at the generic 0.10 cache-read discount. Reports name the vendor
+  cached models instead of claiming a single generic discount rate.
 - `averth advise` — BYOK LLM advisor with three modes: `recommend` (the one
   change worth testing, with arithmetic), `explain` (plain-English receipt
   for budget owners), `investigate` (why an attempt cost what it did,
@@ -22,6 +43,35 @@
 
 ### Fixed
 
+- Langfuse importer dropped cached tokens to $0: it now reads cached
+  tokens from `usageDetails` / OpenAI-style cached fields and passes
+  them through as `cached_input_tokens`. Combined with vendor cached
+  pricing above, the reconstructed AcruxCore msg-06 trace now totals
+  $0.001972, matching the vendor-computed figure (316 non-cached
+  input, 1,600 cached input, 253 output), instead of $0.001075.
+  The msg-06 trace used here is reconstructed from the POC totals,
+  not the original trace file, which was not left in the workspace.
+- OTel importer marked any ERROR span as a terminal failure: an
+  attempt is now recovered, not failed, when substantive non-ERROR
+  work starts after the last ERROR span, with retries scoped to the
+  failed branch or call so post-recovery work is not counted as
+  waste. `validation-traces/otel-live/verify_expected.py` now asserts
+  the recovered rule for both traces (21 checks pass).
+- Reports labelled tokens-x-vendor-price spend "Measured" even when
+  tokens were estimated or prices were fallback: that label is
+  removed, replaced by "Priced (tokens x vendor prices; token
+  provenance unverified)" plus a COST BASIS banner on every report.
+  No true "Measured" label exists until token provenance is carried
+  through tracker/importers.
+- Price table pin test: `unknown:glm-5.3` and `zai:glm-5.3` are now in
+  `PINNED_MODEL_PRICES`, and the `gpt-4o-2024-08-06` snapshot alias
+  is pinned, so the combined wave-1 tree no longer fails
+  `test_all_model_prices_pinned`.
+- Price table date was set to the UTC date (2026-10-23) while
+  `price_vintage()` compares against local date, so the whole CLI
+  failed on US local dates still on Oct 22. Date is now 2026-10-22,
+  the local date the verification work ran, and the suite passes
+  in America/Chicago as well as UTC.
 - Fresh installs crashed: `report.py` imported uncommitted `averth/_money.py`.
 - Cases with zero billable events were silently dropped from receipts
   (LangSmith/Langfuse/OTel now emit a `start` marker per case).

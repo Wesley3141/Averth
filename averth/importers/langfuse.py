@@ -13,6 +13,24 @@ Mapping (documented here):
                   "input"/"output"/"total", "promptTokens"/"completionTokens",
                   or "prompt_tokens"/"completion_tokens" (first non-empty
                   wins per side).
+  cached tokens   Langfuse usage types split input into non-cached
+                  "input" and cached "input_cached" (also accepted:
+                  "inputCached", "cached_input", "cachedInput",
+                  "cached_tokens", "cachedTokens", "prompt_cached_tokens",
+                  "promptCachedTokens", "cache_read_input_tokens", and
+                  OpenAI-style prompt_tokens_details.cached_tokens).
+                  The importer passes cached tokens through as
+                  "cached_input_tokens" and passes total input
+                  (non-cached + cached, or the reported total when it
+                  matches) as "input_tokens", so the tracker can price
+                  them instead of dropping them to $0. The tracker
+                  prices cached tokens at the vendor-specific rate in
+                  pricing.MODEL_CACHED_PRICES when the model key has
+                  one (e.g. z.ai glm-5.3 at $0.26 vs $1.40 input), and
+                  at the generic CACHE_READ_DISCOUNT otherwise. Never
+                  quote an Averth total for a heavily cached trace as
+                  the vendor bill without checking which of those two
+                  rates applied.
   billed cost     "calculatedTotalCost" on a generation, when present and
                   positive, is the vendor's own metering and is recorded
                   as a vendor-supplied (billed) cost — higher confidence
@@ -60,19 +78,78 @@ def _first(d, *keys):
     return None
 
 
+def _scalar(value):
+    """Unwrap a Langfuse usage value that may be a bare number or a
+    {"value": n} dict; anything else falls back to 0 via _num."""
+    if isinstance(value, dict):
+        return value.get("value")
+    return value
+
+
 def _usage_tokens(obs):
-    """Return (input_tokens, output_tokens, has_usage) for a generation."""
+    """Return (total_input_tokens, output_tokens, cached_tokens,
+    has_usage) for a generation.
+
+    Langfuse usageDetails splits input into non-cached "input" and
+    cached "input_cached" (see the module docstring for aliases). When
+    both are present and no total field contradicts them, total input
+    is non-cached + cached. When a "total" field is present, it wins
+    if it matches either the sum or the input field alone. When cached
+    tokens come from OpenAI-style prompt_tokens_details, the input
+    field is already the total, so it is not added again.
+    """
     usage = obs.get("usageDetails") or obs.get("usage_details") or {}
     if not isinstance(usage, dict):
-        return 0.0, 0.0, False
-    in_raw = _first(usage, "input", "promptTokens", "prompt_tokens",
-                    "input_tokens")
-    out_raw = _first(usage, "output", "completionTokens", "completion_tokens",
-                     "output_tokens")
+        usage = {}
+    if not usage and isinstance(obs.get("usage"), dict):
+        usage = obs["usage"]
+    in_raw = _scalar(_first(usage, "input", "promptTokens", "prompt_tokens",
+                             "input_tokens"))
+    out_raw = _scalar(_first(usage, "output", "completionTokens",
+                             "completion_tokens", "output_tokens"))
+    cached_raw = _scalar(_first(
+        usage, "input_cached", "inputCached", "cached_input", "cachedInput",
+        "cached_tokens", "cachedTokens", "prompt_cached_tokens",
+        "promptCachedTokens", "cache_read_input_tokens", "cached"))
+    input_is_total = False
+    if cached_raw is None:
+        details = usage.get("prompt_tokens_details") or {}
+        if isinstance(details, dict):
+            cached_raw = _scalar(details.get("cached_tokens"))
+            if cached_raw is not None:
+                input_is_total = True
+    if cached_raw is None:
+        details = (obs.get("usage") or {}).get("prompt_tokens_details") \
+            if isinstance(obs.get("usage"), dict) else None
+        if isinstance(details, dict):
+            cached_raw = _scalar(details.get("cached_tokens"))
+            if cached_raw is not None:
+                input_is_total = True
+    total_raw = _scalar(_first(usage, "total", "totalTokens", "total_tokens"))
     in_tok = _num(in_raw)
     out_tok = _num(out_raw)
-    has_usage = in_raw is not None or out_raw is not None
-    return in_tok, out_tok, has_usage
+    cached_tok = _num(cached_raw)
+    if cached_tok:
+        if input_is_total:
+            total_in = in_tok
+        elif total_raw is not None and abs(_num(total_raw)
+                                           - (in_tok + cached_tok)) < 0.5:
+            total_in = _num(total_raw)
+        elif total_raw is not None and abs(_num(total_raw) - in_tok) < 0.5:
+            total_in = in_tok
+        elif total_raw is not None and abs(
+                _num(total_raw) - (in_tok + out_tok)) < 0.5:
+            # "total" here is input + output, so input already includes
+            # the cached subset; do not add cached again.
+            total_in = in_tok
+        else:
+            # Langfuse input / input_cached convention: disjoint.
+            total_in = in_tok + cached_tok
+    else:
+        total_in = in_tok
+    has_usage = (in_raw is not None or out_raw is not None
+                 or cached_raw is not None)
+    return total_in, out_tok, cached_tok, has_usage
 
 
 def _billed_cost(obs):
@@ -145,7 +222,7 @@ def load_langfuse(path, agent_name="langfuse-import"):
             if otype != "GENERATION":
                 continue
             model = obs.get("model") or "unknown"
-            in_tok, out_tok, has_usage = _usage_tokens(obs)
+            in_tok, out_tok, cached_tok, has_usage = _usage_tokens(obs)
             provider = meta.get("ls_provider") or guess_provider(model)
             billed = _billed_cost(obs)
             if not has_usage and billed is None:
@@ -153,6 +230,7 @@ def load_langfuse(path, agent_name="langfuse-import"):
             events.append({"type": "model", "case_id": case_id,
                            "provider": provider, "model": model,
                            "input_tokens": in_tok, "output_tokens": out_tok,
+                           "cached_input_tokens": cached_tok,
                            "billed_cost": billed,
                            "usage_known": has_usage or billed is not None})
         # trace-level business value overrides observation-level

@@ -27,6 +27,46 @@ def report_text(p, token_dashboard_per_success=None):
                      "dollar figures" % vint["stale_after_days"])
     else:
         L.append("Price table: vintage unknown (legacy ledger)")
+    # COST BASIS (fix for POCs 1, 2, 3, 5, 7, 10): the old report labelled
+    # any tokens-x-vendor-price spend "Measured", even when the token
+    # counts themselves were estimated (characters/4, tutorial estimates,
+    # or converted estimates) and even when pricing was fallback. Averth
+    # receives only numbers from a trace file; it cannot verify that a
+    # token count was recorded from a real provider response. So no model
+    # dollar is ever labelled "Measured" here again. The bucket formerly
+    # called "Measured" is now "Priced": vendor list prices applied to
+    # trace-supplied token counts, with token provenance unverified.
+    # Only vendor-supplied (billed) dollars are billed spend. A true
+    # "Measured" label would require recorded token provenance tracked
+    # through the tracker/importers, which this report does not have;
+    # until that exists, "Priced" is the honest ceiling.
+    _dq = p.get("data_quality") or {}
+    _estimated = _dq.get("estimated", 0.0)
+    _billed = _dq.get("billed", 0.0)
+    if _estimated > 0 or p.get("unpriced_spend", 0.0) > 0:
+        _unpriced = p.get("unpriced_models", [])
+        _reason = ("fallback prices (unpriced models: %s)"
+                   % ", ".join(_unpriced)) if _unpriced else (
+                       "built-in tool estimates")
+        L.append("COST BASIS: ESTIMATED — %s of spend uses %s. "
+                 "Remaining priced dollars apply vendor list prices to "
+                 "trace-supplied token counts that Averth does not verify "
+                 "as recorded usage. Do not quote this report as measured "
+                 "spend or as a bill."
+                 % (dollars(_estimated), _reason))
+    elif _billed > 0 and _billed >= p.get("cost_total", 0.0):
+        L.append("COST BASIS: vendor-supplied (billed) spend. Priced model "
+                 "dollars elsewhere in this report still apply vendor list "
+                 "prices to trace-supplied token counts that Averth does "
+                 "not verify as recorded usage.")
+    else:
+        L.append("COST BASIS: PRICED, NOT MEASURED — dollars apply vendor "
+                 "list prices to trace-supplied token counts. Averth does "
+                 "not verify that those counts were recorded from a real "
+                 "provider response; they may be estimated (characters/4, "
+                 "tutorial estimates, or converted estimates). Only "
+                 "vendor-supplied (billed) dollars are billed spend. Do "
+                 "not quote priced dollars as measured spend or as a bill.")
     L.append("MODEL COST BASIS: versioned list prices and reported token/cache usage; "
              "reconcile against the customer's invoice before calling this actual spend.")
     if p.get("inferred_outcomes", 0):
@@ -99,7 +139,9 @@ def report_text(p, token_dashboard_per_success=None):
     # additional charges.
     dq = p.get("data_quality") or {}
     L.append("Data quality (every dollar by provenance):")
-    L.append("  Measured (tokens x vendor prices): %s"
+    # Formerly "Measured (tokens x vendor prices)". Renamed: a priced
+    # bucket is not a measured one (see COST BASIS above).
+    L.append("  Priced (tokens x vendor prices; token provenance unverified): %s"
              % dollars(dq.get("measured", 0.0)))
     L.append("  Vendor-supplied (billed):          %s"
              % dollars(dq.get("billed", 0.0)))
@@ -136,13 +178,24 @@ def report_text(p, token_dashboard_per_success=None):
                  % (k, dollars(v), v / tot_model * 100))
     if p["cached_tokens"] and p["cache_savings"] > 0:
         # H3: name the discount rate — it is vendor-specific (10% is
-        # Anthropic's published rate), not a universal constant.
-        L.append("     Prompt cache: %s input tokens cached, saving %s "
-                 "(priced at %.0f%% of input rate; override per vendor via "
-                 "cache_read_discount=...)"
-                 % ("{:,}".format(p["cached_tokens"]),
-                    dollars(p["cache_savings"]),
-                    p.get("cache_read_discount", 0.10) * 100))
+        # Anthropic's published rate), not a universal constant. When a
+        # vendor cached rate applied (pricing.MODEL_CACHED_PRICES),
+        # say so instead of claiming the generic discount rate.
+        if p.get("vendor_cached_models"):
+            L.append("     Prompt cache: %s input tokens cached, saving %s "
+                     "(vendor cached rates applied for %s; other cached "
+                     "tokens priced at %.0f%% of input rate)"
+                     % ("{:,}".format(p["cached_tokens"]),
+                        dollars(p["cache_savings"]),
+                        ", ".join(p["vendor_cached_models"]),
+                        p.get("cache_read_discount", 0.10) * 100))
+        else:
+            L.append("     Prompt cache: %s input tokens cached, saving %s "
+                     "(priced at %.0f%% of input rate; override per vendor via "
+                     "cache_read_discount=...)"
+                     % ("{:,}".format(p["cached_tokens"]),
+                        dollars(p["cache_savings"]),
+                        p.get("cache_read_discount", 0.10) * 100))
     # Waste lenses, not additive partitions: a failed attempt's retry-path
     # spend appears in both the failed-runs and retry-path lines by design.
     L.append("")
@@ -317,6 +370,34 @@ def write_html(path, tracker, policy_sim=None, token_dashboard_per_success=None)
             'success as cost per accepted outcome.</div>'
             % (p["inferred_outcomes"], p["attempts"]))
 
+    # Same COST BASIS fix as report_text: never label tokens-x-price
+    # spend "Measured". The priced bucket is vendor list prices applied
+    # to trace-supplied token counts whose provenance Averth does not
+    # verify; only vendor-supplied (billed) dollars are billed spend.
+    _dq_html = p.get("data_quality") or {}
+    _est_html = _dq_html.get("estimated", 0.0)
+    _billed_html = _dq_html.get("billed", 0.0)
+    if _est_html > 0 or p.get("unpriced_spend", 0.0) > 0:
+        _unpriced_html = p.get("unpriced_models", [])
+        _reason_html = ("fallback prices (unpriced models: %s)"
+                        % _html.escape(", ".join(_unpriced_html))
+                        ) if _unpriced_html else "built-in tool estimates"
+        cost_basis_banner = (
+            '<div class="warn"><b>Cost basis: ESTIMATED.</b> %s of spend '
+            'uses %s. Remaining priced dollars apply vendor list '
+            'prices to trace-supplied token counts that Averth does not '
+            'verify as recorded usage. Do not quote this report as '
+            'measured spend or as a bill.</div>'
+            % (dollars(_est_html), _reason_html))
+    else:
+        cost_basis_banner = (
+            '<div class="warn"><b>Cost basis: PRICED, NOT MEASURED.</b> '
+            'Dollars apply vendor list prices to trace-supplied token '
+            'counts. Averth does not verify that those counts were '
+            'recorded from a real provider response; they may be '
+            'estimated (characters/4, tutorial estimates, or converted '
+            'estimates). Only vendor-supplied (billed) dollars are billed '
+            'spend.</div>')
     model_basis_banner = (
         '<div class="warn"><b>Model cost basis:</b> versioned list prices '
         'and reported token/cache usage. Reconcile against the customer&#x27;s '
@@ -376,7 +457,7 @@ def write_html(path, tracker, policy_sim=None, token_dashboard_per_success=None)
         if unknown_calls else "none")
     data_quality_block = (
         '<h2>Data quality</h2><ul class="layers">'
-        '<li><b>Measured</b> (tokens &times; vendor prices): %s</li>'
+        '<li><b>Priced</b> (tokens &times; vendor prices; token provenance unverified): %s</li>'
         '<li><b>Vendor-supplied</b> (billed): %s</li>'
         '<li><b>Estimated</b> (fallback prices): %s</li>'
         '<li><b>Unknown:</b> %s</li>'
@@ -500,6 +581,7 @@ footer { margin-top: 24px; font-size: 12px; color: #8a94a1; text-align: center; 
 %(missing_usage_banner)s
 %(inferred_outcome_banner)s
 %(model_basis_banner)s
+%(cost_basis_banner)s
 %(stale_banner)s
 <div class="cards">
 <div class="card"><div class="k">Fully loaded</div><div class="v">%(fully_loaded)s</div>
@@ -555,6 +637,7 @@ Context tax: <b>%(context_tax)s</b> (%(tax_share).0f%% of model spend) vs a flat
         "missing_usage_banner": missing_usage_banner,
         "inferred_outcome_banner": inferred_outcome_banner,
         "model_basis_banner": model_basis_banner,
+        "cost_basis_banner": cost_basis_banner,
         "stale_banner": stale_banner,
         "vintage_line": vintage_line,
         "human_note": human_note,
@@ -579,12 +662,20 @@ Context tax: <b>%(context_tax)s</b> (%(tax_share).0f%% of model spend) vs a flat
         "waste": (1 - p["yield_ratio"]) * 100,
         "model_total": dollars(p["cost_model"]),
         "cache_line": ("Prompt cache: {:,} input tokens cached, saving "
-                       "{} (priced at {:.0f}% of input rate — "
-                       "vendor-specific; override via "
-                       "cache_read_discount).".format(p["cached_tokens"],
-                                          dollars(p["cache_savings"]),
-                                          p.get("cache_read_discount", 0.10) * 100)
-                       ) if p["cached_tokens"] and p["cache_savings"] > 0 else "",
+                       "{} (vendor cached rates applied for {}; other "
+                       "cached tokens priced at {:.0f}% of input rate).".format(
+                           p["cached_tokens"], dollars(p["cache_savings"]),
+                           ", ".join(p["vendor_cached_models"]),
+                           p.get("cache_read_discount", 0.10) * 100)
+                       ) if p["cached_tokens"] and p["cache_savings"] > 0
+                       and p.get("vendor_cached_models") else
+                       ("Prompt cache: {:,} input tokens cached, saving "
+                        "{} (priced at {:.0f}% of input rate — "
+                        "vendor-specific; override via "
+                        "cache_read_discount).".format(p["cached_tokens"],
+                                           dollars(p["cache_savings"]),
+                                           p.get("cache_read_discount", 0.10) * 100)
+                        ) if p["cached_tokens"] and p["cache_savings"] > 0 else "",
         "model_rows": model_rows,
         "costliest_rows": costliest_rows,
         "retry_section": (

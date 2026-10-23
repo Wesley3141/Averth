@@ -40,7 +40,7 @@ pip install git+https://github.com/Wesley3141/Averth.git
 averth trace run-2026-09.json --format langfuse --html report.html
 ```
 
-Supported formats: `langfuse`, `langsmith`, `otel`, `jsonl`. The text receipt prints to stdout; `--html` writes a shareable report.
+Supported formats: `langfuse`, `langsmith`, `otel`, `jsonl`, `claude` (Claude Code session JSONL, one session file at a time; see the importer docstring for its cache and sidechain limits). The text receipt prints to stdout; `--html` writes a shareable report.
 
 **Want the AI read on it?** Bring your own key, get the recommendation:
 

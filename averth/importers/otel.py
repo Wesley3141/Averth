@@ -19,7 +19,27 @@ Attribute mapping (documented here because vendors emit several dialects):
                   tool name). Span duration becomes the tool event's
                   latency_ms.
   failure         status.code in ("ERROR", "STATUS_CODE_ERROR") marks the
-                  whole case failed.
+                  case failed ONLY if the error is terminal (see
+                  "recovered attempt" below). A recovered error does not
+                  make the whole attempt a failed run for zero outcomes.
+  recovered       An attempt is RECOVERED, not terminally failed, when
+  attempt         (a) at least one span has ERROR status, (b) no explicit
+                  averth.success override is present, and (c) at least one
+                  substantive span (a model call or a tool call) that is
+                  itself not ERROR starts after the last ERROR span.
+                  The recovered attempt ends success=True, with
+                  outcome_inferred=True (there is no acceptance label in
+                  an OTLP export; "recovered" means "completed downstream
+                  after discarding a failed segment", NOT "all work
+                  succeeded" and NOT "a human accepted the outcome").
+                  A case whose last substantive span is ERROR, or that
+                  has only non-substantive spans (agent.run, debug.note)
+                  after its last ERROR, is terminally failed, exactly as
+                  before. An explicit averth.success override always wins.
+                  This is stricter than the LangSmith importer's rule
+                  (failed only if the chronologically last run errored),
+                  because an OTLP export's last span by time is often a
+                  parent or debug span, not work.
   retry marker    attribute averth.retry -> retry event (reason = value);
                   an explicit falsy value (False, 0, "false", "no", "0")
                   means "not a retry" and emits no event; True/"true"/
@@ -31,6 +51,44 @@ Attribute mapping (documented here because vendors emit several dialects):
                   as retry-path, it does not retroactively taint the call
                   on its own span (for branch-scoped retries the branch
                   work is still caught by the retroactive branch rule).
+  recovered       In a RECOVERED attempt only, retry waste is scoped to
+  retry scope     the failed segment instead of the whole attempt, because
+                  the Tracker has no "clear the global retry flag" event:
+                  a global (unscoped) retry would taint every
+                  post-recovery step as waste forever, which is exactly
+                  the bug this rule fixes. Scoping, in priority order:
+                  (1) an explicit averth.branch on the span, unchanged;
+                  (2) a span-name prefix matching branch + digits
+                  (branch0, branch2, ...) -- the naming the OTel live
+                  validation generator uses -- which tags every model/tool
+                  event on that branch, so a branch retry retroactively
+                  marks that branch's past work (including a dead branch's
+                  model calls) as waste while leaving other branches and
+                  the fan-in merge terminal;
+                  (3) otherwise a unique scope for that one ERROR span
+                  (otel:recovered:<span id>), which tags only that span's
+                  own model/tool event, so only the failed call itself is
+                  waste and every post-recovery step stays terminal.
+                  In a terminally failed attempt, retry scoping is
+                  unchanged (global retries stay global), so existing
+                  global-retry tests are unaffected. Total cost never
+                  changes under this rule; only its allocation between
+                  failed, retry-path, and terminal buckets changes.
+                  Ambiguity, flagged, not hidden: in a fan-out, a dead
+                  branch that never recovers still leaves the attempt
+                  "recovered" if a downstream merge completes, because
+                  the merge is substantive work after the last ERROR.
+                  That success is attempt-level completion after
+                  discarding a branch, not branch-level success, and the
+                  dead branch's cost stays visible as retry-path spend.
+                  Likewise, a human escalation that precedes the failure
+                  (Trace A: review.human before refund_api ERROR) is NOT
+                  retry cost and is NOT removed by recovery; it stays in
+                  the attempt total. If a trace cannot distinguish "the
+                  last ERROR was superseded" from "the last ERROR was
+                  ignored", this rule chooses superseded when substantive
+                  work follows it, and the caller must not read the
+                  resulting success as an acceptance label.
   escalation      attribute averth.escalation_minutes -> escalation event
                   (only for a positive finite number of minutes; falsy or
                   non-numeric values emit nothing);
@@ -56,6 +114,7 @@ well as flat dict attributes, since exporters vary.
 
 import json
 import math
+import re
 
 from .common import (events_to_tracker, ledger_from_tracker, guess_provider,
                      _parse_bool_tristate)
@@ -185,6 +244,87 @@ def _brand(attrs, name):
     return attrs.get("averth." + name)
 
 
+def _is_error_span(span):
+    """True when an OTLP span carries an ERROR status code."""
+    status = span.get("status") or {}
+    return str(status.get("code", "")).upper() in ("ERROR", "STATUS_CODE_ERROR")
+
+
+def _span_tool_name(span, attrs):
+    """Tool name for a span, mirroring the event loop's detection."""
+    tool = _first(attrs, "tool.name", "mcp.tool.name")
+    if tool is None and span.get("name", "").startswith("tool."):
+        tool = span["name"].split(".", 1)[1]
+    return tool
+
+
+def _span_work_kind(span, attrs):
+    """'model', 'tool', or None: whether this span produces a work event.
+
+    Non-work spans (agent.run parents, debug.note, escalation-only spans)
+    never count as recovery evidence: a debug note after a terminal error
+    must not turn a failed attempt into a recovered one.
+    """
+    if _first(attrs, "gen_ai.request.model", "gen_ai.response.model",
+              "llm.model") is not None:
+        return "model"
+    if _span_tool_name(span, attrs) is not None:
+        return "tool"
+    return None
+
+
+def _branch_digit_prefix(name):
+    """Span-name prefix matching branch + digits (branch0, branch2, ...).
+
+    Only this narrow pattern is trusted as an inferred branch. Arbitrary
+    prefixes (payment, llm, tool, review) are NOT grouped: without a
+    parentSpanId there is no evidence two spans sharing a subsystem name
+    are the same parallel branch, and grouping them would invent waste
+    attribution. A trace whose branches are named anything else must use
+    an explicit averth.branch attribute to get branch-scoped waste.
+    """
+    prefix = name.split(".", 1)[0] if "." in name else ""
+    return prefix if re.fullmatch(r"branch\d+", prefix or "") else None
+
+
+def _recovery_scopes(ordered):
+    """Compute (recovered, scope_by_span_id) for one case's ordered spans.
+
+    ordered is a list of (span, attrs) sorted by start time, the same
+    order the event loop emits. recovered follows the module docstring:
+    an ERROR exists and a non-ERROR substantive span starts after the
+    last ERROR span. scope_by_span_id maps id(span) -> branch scope for
+    recovered cases only; it is empty for terminally failed cases, where
+    the old global-retry behaviour is preserved exactly.
+    """
+    error_positions = [i for i, (span, _attrs) in enumerate(ordered)
+                       if _is_error_span(span)]
+    if not error_positions:
+        return False, {}
+    last_error = error_positions[-1]
+    recovered = any(
+        _span_work_kind(span, attrs) is not None
+        and not _is_error_span(span)
+        for span, attrs in ordered[last_error + 1:])
+    if not recovered:
+        return False, {}
+    scopes = {}
+    for idx, (span, attrs) in enumerate(ordered):
+        explicit = _branch_name(_brand(attrs, "branch"))
+        if explicit is not None:
+            scopes[id(span)] = explicit
+            continue
+        prefix = _branch_digit_prefix(span.get("name", ""))
+        if prefix is not None:
+            scopes[id(span)] = prefix
+            continue
+        if (_retry_marker_present(_brand(attrs, "retry"))
+                or _is_error_span(span)):
+            sid = span.get("spanId") or span.get("span_id") or "pos-%d" % idx
+            scopes[id(span)] = "otel:recovered:%s" % sid
+    return True, scopes
+
+
 def _span_times(span):
     start = _num(span.get("startTimeUnixNano") or span.get("start_time_unix_nano"), 0)
     end = _num(span.get("endTimeUnixNano") or span.get("end_time_unix_nano"), start)
@@ -237,7 +377,18 @@ def load_otel(path, agent_name="otel-import"):
         # marker its "end" is stray and the case is silently dropped.
         events.append({"type": "start", "case_id": case_id})
         ordered = sorted(case["spans"], key=lambda sa: _span_times(sa[0])[0])
+        # Recovered-attempt rule (see module docstring): computed once per
+        # case, before any event is emitted, because retry scoping during
+        # emission depends on it. Terminally failed cases get an empty
+        # scope map and keep the old behaviour exactly.
+        recovered, scope_by_id = _recovery_scopes(ordered)
         for span, attrs in ordered:
+            # Scope for this span: in a recovered case, the recovery
+            # scope (explicit branch, branch-digit prefix, or the unique
+            # scope of that one ERROR span); otherwise the old explicit
+            # branch only, so global retries stay global.
+            scope = scope_by_id.get(id(span)) if recovered else \
+                _branch_name(_brand(attrs, "branch"))
             name = span.get("name", "")
             start, end = _span_times(span)
             latency_ms = (end - start) / 1e6 if end >= start else None
@@ -281,9 +432,33 @@ def load_otel(path, agent_name="otel-import"):
                 if cached_tok:
                     ev["cached_input_tokens"] = cached_tok
                 # M6: False/None/"" -> no branch; only non-empty strings.
-                branch = _branch_name(_brand(attrs, "branch"))
-                if branch is not None:
-                    ev["branch"] = branch
+                # In a recovered case, scope is the recovery scope above
+                # (explicit branch, branch-digit prefix, or unique ERROR
+                # scope), so a branch retry retroactively marks only that
+                # segment as waste and post-recovery steps stay terminal.
+                if scope is not None:
+                    ev["branch"] = scope
+                events.append(ev)
+
+            # Tool-first ordering for recovered scoping: a branch retry
+            # retroactively marks only PAST steps, so the failed tool
+            # call must be logged before its retry event, otherwise the
+            # retry finds no tool step to mark and the tool waste is
+            # silently lost. Model spans already emit the model event
+            # first (M2b); tool spans previously emitted the tool event
+            # after the retry, which lost exactly this marking.
+            tool = _first(attrs, "tool.name", "mcp.tool.name")
+            if tool is None and name.startswith("tool."):
+                tool = name.split(".", 1)[1]
+            if not model and tool:
+                ev = {"type": "tool", "case_id": case_id, "name": str(tool)}
+                if latency_ms is not None:
+                    ev["latency_ms"] = latency_ms
+                # Recovered case only: carry the recovery scope so the
+                # failed tool call itself is waste while a later
+                # successful call of the same tool stays terminal.
+                if recovered and scope is not None:
+                    ev["branch"] = scope
                 events.append(ev)
 
             # H1: explicit falsy retry markers ("false", False, 0, "no")
@@ -292,10 +467,12 @@ def load_otel(path, agent_name="otel-import"):
             if _retry_marker_present(_brand(attrs, "retry")):
                 ev = {"type": "retry", "case_id": case_id,
                       "reason": str(_brand(attrs, "retry"))}
-                # M6: same branch rule as the model event.
-                branch = _branch_name(_brand(attrs, "branch"))
-                if branch is not None:
-                    ev["branch"] = branch
+                # M6: same branch rule as the model event. In a recovered
+                # case this is the recovery scope, never a global retry:
+                # the Tracker has no clear-retry event, so a global retry
+                # here would taint every post-recovery step as waste.
+                if scope is not None:
+                    ev["branch"] = scope
                 events.append(ev)
             # M1: falsy/garbage escalation markers ("false", 0, negatives,
             # non-finite) fabricate nothing — the event is emitted only for
@@ -308,20 +485,19 @@ def load_otel(path, agent_name="otel-import"):
                                    "minutes": esc_minutes,
                                    "reason": str(_brand(attrs, "escalation_reason") or "")})
 
-            if model:
-                continue
+            # Model and tool events are already emitted above (model
+            # first, then tool, then retry, so a branch retry finds the
+            # failed step in the past). Nothing more to emit here.
 
-            tool = _first(attrs, "tool.name", "mcp.tool.name")
-            if tool is None and name.startswith("tool."):
-                tool = name.split(".", 1)[1]
-            if tool:
-                ev = {"type": "tool", "case_id": case_id, "name": str(tool)}
-                if latency_ms is not None:
-                    ev["latency_ms"] = latency_ms
-                events.append(ev)
-
-        success = (not case["failed"]) if case["success_override"] is None \
-            else case["success_override"]
+        # Recovered attempts end success=True (outcome still inferred
+        # unless an explicit override exists); terminally failed attempts
+        # keep the old rule. An explicit override always wins.
+        if case["success_override"] is not None:
+            success = case["success_override"]
+        elif recovered:
+            success = True
+        else:
+            success = not case["failed"]
         events.append({"type": "end", "case_id": case_id, "success": success,
                        "outcome_inferred": case["success_override"] is None,
                        "business_value": case["business_value"]})

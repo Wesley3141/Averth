@@ -63,6 +63,8 @@ def export_ledger(tracker, path):
         # Vendor-supplied (billed) model costs, and the count of calls with
         # unknown usage. Both survive the round trip like the flags above.
         "billed_models": sorted(tracker.billed_models),
+        "vendor_cached_models": sorted(
+            getattr(tracker, "vendor_cached_models", [])),
         "unknown_usage_calls": tracker.unknown_usage_calls,
         # C2: stamp which price table produced these dollars, so a ledger
         # read months later cannot be mistaken for current-price dollars.
