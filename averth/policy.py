@@ -31,7 +31,8 @@ LEDGER_ATTEMPT_KEYS = (
     "cached_tokens", "cache_savings",
     # cost-basis accumulators (provenance buckets that survive export)
     "billed_cost", "estimated_model_cost",
-    "success", "outcome_inferred", "reopened", "business_value", "per_model",
+    "success", "outcome_inferred", "outcome_unknown", "reopened",
+    "business_value", "per_model",
     "tool_latency_ms",
     # events: metadata only, preserves retry reasons (H5)
     "events", "tool_steps",

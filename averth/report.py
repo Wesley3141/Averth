@@ -74,6 +74,28 @@ def report_text(p, token_dashboard_per_success=None):
                  "Join customer acceptance labels before treating cost per success "
                  "as cost per accepted outcome."
                  % (p["inferred_outcomes"], p["attempts"]))
+    if p.get("unknown_outcome", 0):
+        L.append("OUTCOME UNKNOWN: %d of %d attempts recorded spend but no "
+                 "outcome was recorded (no result marker, no acceptance "
+                 "label). Their spend (%s) is NOT counted as failed spend "
+                 "and NOT counted as successful spend."
+                 % (p["unknown_outcome"], p["attempts"],
+                    dollars(p.get("cost_unknown_outcome", 0.0))))
+    # Zero-model guard (Google ADK lane): a tool-only trace with 0 tokens
+    # must never read as a cost report. The banner is explicit, and the
+    # vacuous percentages below are replaced with n/a.
+    _zero_tokens = (p.get("total_tokens") == 0)
+    # Unknown-only guard (Simon Willison Claude lane): when every attempt
+    # has an unknown outcome, there is no terminal path, so a 0% yield
+    # would read as 100% failed even though failed spend is $0. Yield
+    # is n/a, not 0%, in that case.
+    _unknown_only = (p.get("unknown_outcome", 0) == p.get("attempts", 0)
+                     and p.get("attempts", 0) > 0)
+    if _zero_tokens:
+        L.append("NOT A COST REPORT — no model spend recorded: this trace "
+                 "contains no model events and no tokens. Dollar figures "
+                 "here are tool estimates only and must not be quoted as "
+                 "a measurement.")
     L.append("")
     top = findings(p)[:1]
     if top:
@@ -156,17 +178,28 @@ def report_text(p, token_dashboard_per_success=None):
         L.append("  Unknown: none")
     L.append("")
     L.append("The five layers (explanations of the spend above, not extra charges):")
-    L.append("  1. Context compounding: %s input growth first-to-last step; "
-             "context tax %s (%.0f%% of model spend)"
-             % ("%.1fx" % p["avg_context_growth"],
-                dollars(p["context_tax"]),
-                p["context_tax_share_of_model"] * 100))
+    if _zero_tokens:
+        L.append("  1. Context compounding: n/a (no tokens recorded; "
+                 "not a cost report)")
+    else:
+        L.append("  1. Context compounding: %s input growth first-to-last step; "
+                 "context tax %s (%.0f%% of model spend)"
+                 % ("%.1fx" % p["avg_context_growth"],
+                    dollars(p["context_tax"]),
+                    p["context_tax_share_of_model"] * 100))
     L.append("  2. External tool spend: %s total, %s per success "
              "(invisible on provider invoices)"
              % (dollars(p["cost_tools"]), dollars(ps["tools"])))
-    L.append("  3. Yield ratio: %.0f%% of tokens on the terminal path "
-             "(%.0f%% burned on retries and failed runs)"
-             % (p["yield_ratio"] * 100, (1 - p["yield_ratio"]) * 100))
+    if _zero_tokens:
+        L.append("  3. Yield ratio: n/a (no tokens recorded; "
+                 "not a cost report)")
+    elif _unknown_only:
+        L.append("  3. Yield ratio: n/a (no known outcome; no terminal "
+                 "path established, so yield cannot be computed)")
+    else:
+        L.append("  3. Yield ratio: %.0f%% of tokens on the terminal path "
+                 "(%.0f%% burned on retries and failed runs)"
+                 % (p["yield_ratio"] * 100, (1 - p["yield_ratio"]) * 100))
     L.append("  4. Heavy tail: p50 %s / p95 %s / max %s per attempt; "
              "%s consumed %.0f%% of budget"
              % (dollars(t["p50"]), dollars(t["p95"]), dollars(t["max"]), t["tail_label"],
@@ -200,9 +233,13 @@ def report_text(p, token_dashboard_per_success=None):
     # spend appears in both the failed-runs and retry-path lines by design.
     L.append("")
     L.append("Waste accounting (lenses, not additive):")
-    L.append("  Failed runs:   %s (%.0f%% of spend, zero outcomes)"
-             % (dollars(p["cost_failed"]),
-                p["failed_spend_share"] * 100))
+    if _zero_tokens:
+        L.append("  Failed runs:   n/a (no tokens recorded; tool-only "
+                 "spend is not failed spend)")
+    else:
+        L.append("  Failed runs:   %s (%.0f%% of spend, zero outcomes)"
+                 % (dollars(p["cost_failed"]),
+                    p["failed_spend_share"] * 100))
     L.append("  Retry path:    %s model+retry spend on discarded paths "
              "(overlaps failed runs)"
              % dollars(p["cost_retry_path"]))
@@ -369,6 +406,29 @@ def write_html(path, tracker, policy_sim=None, token_dashboard_per_success=None)
             'Join customer acceptance labels before treating cost per '
             'success as cost per accepted outcome.</div>'
             % (p["inferred_outcomes"], p["attempts"]))
+
+    # Outcome-unknown line (HTML counterpart of the text report line).
+    unknown_outcome_banner = ""
+    if p.get("unknown_outcome", 0):
+        unknown_outcome_banner = (
+            '<div class="warn"><b>Outcome unknown:</b> %d of %d attempts '
+            'recorded spend but no outcome was recorded. Their spend '
+            '(%s) is NOT counted as failed spend and NOT counted as '
+            'successful spend.</div>'
+            % (p["unknown_outcome"], p["attempts"],
+               dollars(p.get("cost_unknown_outcome", 0.0))))
+
+    # Zero-model guard (HTML counterpart of the text banner).
+    _zero_tokens_html = (p.get("total_tokens") == 0)
+    _unknown_only_html = (p.get("unknown_outcome", 0) == p.get("attempts", 0)
+                          and p.get("attempts", 0) > 0)
+    zero_model_banner = ""
+    if _zero_tokens_html:
+        zero_model_banner = (
+            '<div class="warn"><b>NOT A COST REPORT &mdash; no model '
+            'spend recorded:</b> this trace contains no model events '
+            'and no tokens. Dollar figures here are tool estimates only '
+            'and must not be quoted as a measurement.</div>')
 
     # Same COST BASIS fix as report_text: never label tokens-x-price
     # spend "Measured". The priced bucket is vendor list prices applied
@@ -580,6 +640,8 @@ footer { margin-top: 24px; font-size: 12px; color: #8a94a1; text-align: center; 
 %(tool_est_banner)s
 %(missing_usage_banner)s
 %(inferred_outcome_banner)s
+%(unknown_outcome_banner)s
+%(zero_model_banner)s
 %(model_basis_banner)s
 %(cost_basis_banner)s
 %(stale_banner)s
@@ -592,7 +654,7 @@ footer { margin-top: 24px; font-size: 12px; color: #8a94a1; text-align: center; 
 <div class="card"><div class="k">Top 5%% tail share</div><div class="v">%(tail_share)s</div>
 <div class="s">of total spend in costliest runs</div></div>
 <div class="card"><div class="k">Failed-run waste</div><div class="v">%(failed_cost)s</div>
-<div class="s">%(failed_share)s of spend, zero outcomes</div></div>
+<div class="s">%(failed_share)s</div></div>
 </div>
 %(insight_cards)s
 <h2>Cost per successful outcome</h2>
@@ -604,12 +666,10 @@ footer { margin-top: 24px; font-size: 12px; color: #8a94a1; text-align: center; 
 <p class="s">p50 %(p50)s &middot; p95 %(p95)s &middot; max %(max)s per attempt</p>
 <h2>The five layers</h2>
 <ul class="layers">
-<li><b>Context compounding:</b> %(growth).1fx input growth, first to last step.
-Context tax: <b>%(context_tax)s</b> (%(tax_share).0f%% of model spend) vs a flat-context counterfactual.</li>
+<li><b>Context compounding:</b> %(context_layer)s</li>
 <li><b>External tool spend:</b> %(tools_total)s total, %(tools_ps)s per success
 (invisible on provider invoices).</li>
-<li><b>Yield ratio:</b> %(yield).0f%% of tokens on the terminal path,
-%(waste).0f%% burned on retries and failed runs.</li>
+<li><b>Yield ratio:</b> %(yield_layer)s</li>
 <li><b>Heavy tail:</b> p50 %(p50)s / p95 %(p95)s / max %(max)s per attempt;
 %(tail_label)s consumed %(tail_share)s of budget.</li>
 <li><b>Model mix:</b> %(model_total)s total model spend (see table).
@@ -636,6 +696,8 @@ Context tax: <b>%(context_tax)s</b> (%(tax_share).0f%% of model spend) vs a flat
         "tool_est_banner": tool_est_banner,
         "missing_usage_banner": missing_usage_banner,
         "inferred_outcome_banner": inferred_outcome_banner,
+        "unknown_outcome_banner": unknown_outcome_banner,
+        "zero_model_banner": zero_model_banner,
         "model_basis_banner": model_basis_banner,
         "cost_basis_banner": cost_basis_banner,
         "stale_banner": stale_banner,
@@ -643,11 +705,32 @@ Context tax: <b>%(context_tax)s</b> (%(tax_share).0f%% of model spend) vs a flat
         "human_note": human_note,
         "fully_loaded": dollars(ps["fully_loaded"]),
         "per_success_label": per_success_label,        "mult_card": mult_card,
-        "yield_ratio": "%.0f%%" % (p["yield_ratio"] * 100),
+        "yield_ratio": ("n/a" if (_zero_tokens_html or _unknown_only_html)
+                         else "%.0f%%" % (p["yield_ratio"] * 100)),
         "tail_share": "%.0f%%" % (t["top5pct_share"] * 100),
         "tail_label": "the %s" % t["tail_label"],
-        "failed_cost": dollars(p["cost_failed"]),
-        "failed_share": "%.0f%%" % (p["failed_spend_share"] * 100),
+        "failed_cost": ("n/a" if _zero_tokens_html
+                        else dollars(p["cost_failed"])),
+        "failed_share": ("no tokens recorded; tool-only spend is not "
+                         "failed spend" if _zero_tokens_html
+                         else "%.0f%%" % (p["failed_spend_share"] * 100)
+                         + " of spend, zero outcomes"),
+        "context_layer": ("n/a (no tokens recorded; not a cost report)"
+                          if _zero_tokens_html
+                          else "%.1fx input growth, first to last step. "
+                          "Context tax: <b>%s</b> (%.0f%% of model spend) "
+                          "vs a flat-context counterfactual."
+                          % (p["avg_context_growth"],
+                             dollars(p["context_tax"]),
+                             p["context_tax_share_of_model"] * 100)),
+        "yield_layer": ("n/a (no tokens recorded; not a cost report)"
+                        if _zero_tokens_html
+                        else ("n/a (no known outcome; no terminal path "
+                              "established)" if _unknown_only_html
+                              else "%.0f%% of tokens on the terminal path, "
+                              "%.0f%% burned on retries and failed runs."
+                              % (p["yield_ratio"] * 100,
+                                 (1 - p["yield_ratio"]) * 100))),
         "insight_cards": insight_cards,
         "breakdown": breakdown,
         "data_quality_block": data_quality_block,

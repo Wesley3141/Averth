@@ -65,6 +65,11 @@ PINNED_MODEL_PRICES = {
     # verified 2026-10-02 against Anthropic's official pricing page
     # (via economize.cloud): was wrongly (0.80, 4.00) before review pass 2.
     "anthropic:claude-haiku-4-5": (1.00, 5.00),
+    # Dated snapshot alias, same Haiku 4.5 list price; verified
+    # 2026-10-22 (Anthropic Haiku 4.5 announcement $1/$5; dated id
+    # listed at $1.00/$5.00). Without it, real Claude Code sessions
+    # fell back to $1.00/$3.00 estimated.
+    "anthropic:claude-haiku-4-5-20251001": (1.00, 5.00),
     "google:gemini-3-pro": (2.00, 12.00),
     "google:gemini-3-flash": (0.50, 3.00),
     "xai:grok-4": (3.00, 15.00),

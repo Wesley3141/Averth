@@ -466,12 +466,19 @@ class Tracker:
         self._cur["events"].append(("escalation", reason, minutes))
 
     def end_attempt(self, success, business_value=0.0, reopened=False,
-                    outcome_inferred=False):
+                    outcome_inferred=False, outcome_unknown=False):
         self._req()
         business_value = _check_finite("business_value", business_value)
         a = self._cur
         a["success"] = bool(success)
         a["outcome_inferred"] = bool(outcome_inferred)
+        # outcome_unknown: the trace recorded spend but no outcome at
+        # all (no result marker, no acceptance label). Such an attempt
+        # is neither a success nor a failure: pnl() excludes it from
+        # both buckets, and reports must not present its spend as
+        # failed spend. success is kept False so no cost-per-success
+        # is ever computed from it.
+        a["outcome_unknown"] = bool(outcome_unknown)
         a["business_value"] = business_value
         a["reopened"] = bool(reopened)
         a["human_cost"] = a["human_min"] * self.human_cost_per_min
@@ -567,12 +574,18 @@ class Tracker:
     def pnl(self):
         atts = self.attempts
         n = len(atts)
-        ok = [a for a in atts if a["success"]]
+        ok = [a for a in atts if a["success"]
+              and not a.get("outcome_unknown")]
         s = len(ok)
         esc = [a for a in atts if a["human_min"] > 0]
         reopened_atts = [a for a in atts if a.get("reopened")]
         reopened_ok_n = sum(1 for a in reopened_atts if a["success"])
-        failed = [a for a in atts if not a["success"]]
+        # Outcome-unknown attempts are excluded from failed (and from
+        # successes above): no outcome was recorded, so their spend is
+        # neither proven waste nor a success.
+        unknown = [a for a in atts if a.get("outcome_unknown")]
+        failed = [a for a in atts
+                  if not a["success"] and not a.get("outcome_unknown")]
         model = sum(a["model"] for a in atts)
         tools = sum(a["tools"] for a in atts)
         retry = sum(a["retry_cost"] for a in atts)
@@ -731,6 +744,9 @@ class Tracker:
             "cost_total": total,
             "cost_failed": failed_cost,
             "failed_spend_share": failed_cost / total if total else 0.0,
+            "unknown_outcome": len(unknown),
+            "cost_unknown_outcome": sum(a["total_cost"] for a in unknown),
+            "total_tokens": sum(a.get("total_tokens", 0) for a in atts),
             "cost_reopened": reopened_cost,
             "reopened_spend_share": reopened_cost / total if total else 0.0,
             "context_tax": context_tax,

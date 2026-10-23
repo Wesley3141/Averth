@@ -2,7 +2,7 @@
 
 from averth import Tracker
 from averth.policy import simulate_policy
-from averth.report import write_html
+from averth.report import report_text, write_html
 
 
 def _build_tracker():
@@ -50,6 +50,27 @@ def test_write_html_basic(tmp_path):
     assert "Reconcile against the customer&#x27;s invoice" in body
 
 
+def test_zero_model_trace_is_not_a_cost_report(tmp_path):
+    # Google ADK lane: tool-only input (21 tool uses, 0 model events,
+    # 0 tokens) produced a $0.04 receipt with 100% failed-run share,
+    # 100% yield, and 1.0x context growth, all vacuous. Now the
+    # report must banner itself and suppress those percentages.
+    t = Tracker("tool-only")
+    t.start_attempt(case_id="C-001")
+    t.log_tool_call("web_search")
+    t.end_attempt(success=False)
+    text = report_text(t.pnl())
+    assert "NOT A COST REPORT" in text
+    assert "Yield ratio: n/a" in text
+    assert "Context compounding: n/a" in text
+    assert "Failed runs:   n/a" in text
+    assert "100% of spend, zero outcomes" not in text
+    out = tmp_path / "tool-only.html"
+    write_html(str(out), t)
+    body = out.read_text(encoding="utf-8")
+    assert "NOT A COST REPORT" in body
+
+
 def test_write_html_with_policy(tmp_path):
     t = _build_tracker()
     from averth.policy import export_ledger, load_ledger
@@ -65,3 +86,23 @@ def test_write_html_with_policy(tmp_path):
     assert "does not estimate savings" in body
     assert f"${sim['flagged_failed_spend']:,.2f}" in body
     assert "pure savings" not in body
+
+
+def test_unknown_only_yield_is_na_not_zero(tmp_path):
+    from averth.importers import claude
+    import json, tempfile, os
+    rec = {"type": "assistant", "sessionId": "sess-u",
+           "message": {"id": "msg_u", "model": "claude-haiku-4-5-20251001",
+                      "usage": {"input_tokens": 100, "output_tokens": 50}}}
+    with tempfile.NamedTemporaryFile("w", suffix=".jsonl", delete=False) as f:
+        f.write(json.dumps(rec) + "\n")
+        path = f.name
+    try:
+        ledger = claude.load_claude(path)
+        from averth.importers.common import tracker_from_ledger
+        t = tracker_from_ledger(ledger)
+        text = report_text(t.pnl())
+        assert "Yield ratio: n/a (no known outcome" in text
+        assert "Failed runs:   $0.00" in text
+    finally:
+        os.unlink(path)

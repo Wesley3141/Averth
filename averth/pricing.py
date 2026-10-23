@@ -15,7 +15,7 @@ current status.
 """
 
 # Version of this price table. Bump on ANY price change.
-PRICE_TABLE_VERSION = 5
+PRICE_TABLE_VERSION = 6
 # ISO date this table was last verified against vendor list-price pages.
 # Dated 2026-10-22, the local date when the verification work ran in
 # America/Chicago. Dating it 2026-10-23 (UTC date) broke price_vintage()
@@ -54,6 +54,12 @@ MODEL_PRICES = {
     "anthropic:claude-3-7-sonnet-20250219": (3.00, 15.00),  # published list price
     "anthropic:claude-3-5-sonnet-20241022": (3.00, 15.00),  # published list price
     "anthropic:claude-haiku-4-5": (1.00, 5.00),  # verified 2026-10-02
+    # Dated snapshot of the same model, as it appears in real Claude
+    # Code session exports (Simon Willison session, 2025-12-19).
+    # Anthropic's own Haiku 4.5 announcement prices Haiku 4.5 at
+    # $1/$5 per 1M tokens, and the dated id claude-haiku-4-5-20251001
+    # is listed at the same $1.00/$5.00 rate (verified 2026-10-22).
+    "anthropic:claude-haiku-4-5-20251001": (1.00, 5.00),
     # (was 0.80/4.00 — wrong; corrected per review pass 2)
     "google:gemini-3-pro": (2.00, 12.00),
     "google:gemini-3-flash": (0.50, 3.00),

@@ -268,7 +268,8 @@ def events_to_tracker(agent_name, events):
                     business_value=ev.get("business_value", 0.0) or 0.0,
                     reopened=ev.get("reopened", False),
                     outcome_inferred=ev.get("outcome_inferred",
-                                            "success" not in ev))
+                                            "success" not in ev),
+                    outcome_unknown=ev.get("outcome_unknown", False))
                 started = False
             else:
                 raise ValueError("unknown event type: %r" % (etype,))
@@ -328,6 +329,7 @@ def tracker_from_ledger(ledger):
     # customer's system of record. Treat unknown provenance conservatively.
     for attempt in tracker.attempts:
         attempt.setdefault("outcome_inferred", True)
+        attempt.setdefault("outcome_unknown", False)
     # .get for backward compatibility with ledgers written before the
     # unpriced_models flag was exported.
     tracker.unpriced_models = set(ledger.get("unpriced_models", []))

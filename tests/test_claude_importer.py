@@ -130,6 +130,48 @@ class TestClaudeImporter(unittest.TestCase):
         # Total tokens: example 825111 + second call 110 = 825221.
         self.assertEqual(ledger["attempts"][0]["total_tokens"], 825221)
 
+    def test_duplicate_growing_output_keeps_per_field_max(self):
+        # Real-session defect (Simon Willison session): the same
+        # message id is logged twice with output growing 7 -> 402.
+        # Keeping the first record undercounted output ~99%; summing
+        # would double count. Per-field max gives 402.
+        lines = [
+            _assistant("msg_grow", usage={"input_tokens": 100,
+                                          "output_tokens": 7}),
+            _assistant("msg_grow", usage={"input_tokens": 100,
+                                          "output_tokens": 402}),
+        ]
+        path = _write(lines)
+        try:
+            ledger = claude.load_claude(path)
+        finally:
+            os.unlink(path)
+        stats = ledger["claude_import_stats"]
+        self.assertEqual(stats["model_calls_kept"], 1)
+        self.assertEqual(stats["duplicates_skipped"], 1)
+        self.assertEqual(stats["output_tokens"], 402)
+        # Total tokens = 100 input + 402 output, not 100 + 7.
+        self.assertEqual(ledger["attempts"][0]["total_tokens"], 502)
+
+    def test_no_result_session_is_outcome_unknown_not_failed(self):
+        # A session with model calls but no result line records spend
+        # with no outcome: it must not be counted as a failed attempt.
+        path = _write([_assistant("msg_1", usage={"input_tokens": 100,
+                                                 "output_tokens": 10})])
+        try:
+            ledger = claude.load_claude(path)
+        finally:
+            os.unlink(path)
+        attempt = ledger["attempts"][0]
+        self.assertTrue(attempt["outcome_unknown"])
+        self.assertFalse(attempt["success"])
+        tracker = tracker_from_ledger(ledger)
+        p = tracker.pnl()
+        self.assertEqual(p["unknown_outcome"], 1)
+        self.assertEqual(p["cost_failed"], 0.0)
+        self.assertAlmostEqual(p["cost_unknown_outcome"],
+                               attempt["total_cost"])
+
     def test_no_usage_record_does_not_block_later_duplicate_with_usage(self):
         lines = [
             _assistant("msg_x", usage=None),

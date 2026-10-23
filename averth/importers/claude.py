@@ -55,15 +55,22 @@ normal rule on the mapped event:
 
 Deduplication, stated explicitly:
 One API response can be logged several times while streaming, sharing
-one message id and one usage object. A naive sum double counts it.
-This importer keeps only the FIRST record for a given message id that
-carries usage, and counts every later record with that id in
-stats["duplicates_skipped"]. A record with no message id falls back to
-its line "uuid" as the dedupe key. A record with no usage at all is NOT
-marked seen, so a later record for the same id that does carry usage
-still counts. The aggregated "modelUsage" object, when present on a
-record, is IGNORED: it already includes the per-message usage, so
-counting both would double count.
+one message id. A naive sum double counts it, but a naive FIRST-record
+rule undercounts it: in real sessions (Simon Willison's published
+session, 2025-12-19) the usage object GROWS across the records for one
+id (output 7 on the first record, 402 on the later one), so keeping
+only the first record undercounted output by ~99% on that session.
+This importer therefore keeps, PER FIELD, the MAXIMUM across all
+records for a given message id (input, cache_read, cache_creation,
+output each take their own max), and adjusts the stats totals by the
+delta when a later record raises a field. Every later record with
+that id still counts in stats["duplicates_skipped"], and
+stats["model_calls_kept"] counts distinct ids, not records. A record
+with no message id falls back to its line "uuid" as the dedupe key.
+A record with no usage at all is NOT marked seen, so a later record
+for the same id that does carry usage still counts. The aggregated
+"modelUsage" object, when present on a record, is IGNORED: it already
+includes the per-message usage, so counting both would double count.
 
 Subagent / sidechain records, stated explicitly:
 A record is a sidechain record when "isSidechain" is true (also
@@ -86,8 +93,14 @@ them would add built-in $0.002 defaults and invent tool spend). A
 "tool_result" line is not a retry marker: it may be an error, a
 success, or quoted repo output, and inferring a retry from it would be
 guessing. This importer therefore emits NO retry events. If a session
-has no "result" end marker, the attempt is auto-ended by
-events_to_tracker with success=False and outcome_inferred=True.
+has model calls but no "result" end marker, this importer emits an
+EXPLICIT end event with success=False, outcome_inferred=True, and
+outcome_unknown=True: no outcome was recorded, so the attempt is
+neither a success nor a failure, and its spend must not be presented
+as failed spend. (This is not a change to the global auto-end rule in
+events_to_tracker, which still auto-ends a case with no end event as
+failed; the Claude importer replaces that auto-end with an explicit
+unknown-outcome end for its own cases.)
 A "result" marker with is_error=false (or subtype "success") ends the
 attempt with success=True but outcome_inferred=True, because execution
 completion is not customer acceptance: cost per accepted outcome is
@@ -260,8 +273,12 @@ def parse_claude_session(path, include_sidechain=False):
         "total_context_tokens": 0,
         "output_tokens": 0,
     }
-    seen_ids = set()
+    # dedupe_id -> (event dict, (input, cache_read, cache_creation,
+    # output)) for the kept record, so a later record can raise any
+    # field to its per-field maximum.
+    seen = {}
     cases_with_models = set()
+    cases_ended = set()
 
     with open(path) as f:
         for line_no, line in enumerate(f, start=1):
@@ -309,6 +326,7 @@ def parse_claude_session(path, include_sidechain=False):
                 events.append({"type": "end", "case_id": case_id,
                                "success": success,
                                "outcome_inferred": True})
+                cases_ended.add(case_id)
                 continue
 
             if rtype != "assistant":
@@ -344,13 +362,34 @@ def parse_claude_session(path, include_sidechain=False):
                 uuid = record.get("uuid")
                 if isinstance(uuid, str) and uuid:
                     dedupe_id = "uuid:%s" % uuid
-            if dedupe_id is not None and dedupe_id in seen_ids:
-                stats["duplicates_skipped"] += 1
-                continue
-            if dedupe_id is not None:
-                seen_ids.add(dedupe_id)
-
             in_tok, cache_read, cache_creation, out_tok = counts
+            if dedupe_id is not None and dedupe_id in seen:
+                # Per-field MAX: streaming records for one id carry a
+                # growing usage object. Keeping the first record
+                # undercounted output ~99% on a real session; summing
+                # would double count. Max per field is the final usage.
+                stats["duplicates_skipped"] += 1
+                kept_event, kept_counts = seen[dedupe_id]
+                merged = tuple(max(old, new) for old, new
+                             in zip(kept_counts, counts))
+                if merged != kept_counts:
+                    d_in = merged[0] - kept_counts[0]
+                    d_read = merged[1] - kept_counts[1]
+                    d_creation = merged[2] - kept_counts[2]
+                    d_out = merged[3] - kept_counts[3]
+                    seen[dedupe_id] = (kept_event, merged)
+                    kept_event["input_tokens"] = (
+                        merged[0] + merged[1] + merged[2])
+                    kept_event["cached_input_tokens"] = merged[1]
+                    kept_event["output_tokens"] = merged[3]
+                    stats["input_tokens_uncached"] += d_in
+                    stats["cache_read_tokens"] += d_read
+                    stats["cache_creation_tokens"] += d_creation
+                    stats["total_context_tokens"] += (
+                        d_in + d_read + d_creation)
+                    stats["output_tokens"] += d_out
+                continue
+
             total_input = in_tok + cache_read + cache_creation
             # By construction cached (cache_read) <= total_input, so the
             # Tracker never needs to clamp, and no token is dropped.
@@ -364,6 +403,8 @@ def parse_claude_session(path, include_sidechain=False):
             if _is_sidechain(record):
                 event["branch"] = "sidechain"
             events.append(event)
+            if dedupe_id is not None:
+                seen[dedupe_id] = (event, counts)
             cases_with_models.add(case_id)
             stats["model_calls_kept"] += 1
             stats["input_tokens_uncached"] += in_tok
@@ -375,6 +416,13 @@ def parse_claude_session(path, include_sidechain=False):
             # on purpose (it aggregates the per-message usage already
             # counted above); it is not a separate exclusion count,
             # because it rides on a kept record, not a skipped one.
+    # Cases with model calls but no result end marker: emit an explicit
+    # unknown-outcome end, so events_to_tracker's global auto-end (failed)
+    # never mislabels a session that simply lacks a result record.
+    for case_id in sorted(cases_with_models - cases_ended):
+        events.append({"type": "end", "case_id": case_id,
+                       "success": False, "outcome_inferred": True,
+                       "outcome_unknown": True})
     return events, stats
 
 

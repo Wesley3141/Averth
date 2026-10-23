@@ -13,6 +13,13 @@
   does not model). No retry inference, no tool spend, no acceptance
   label is invented from a transcript; cost per accepted outcome stays
   UNKNOWN unless labels are joined separately.
+- Price table v6: adds `anthropic:claude-haiku-4-5-20251001` at
+  $1.00 input / $5.00 output per 1M, verified from Anthropic's Haiku
+  4.5 pricing, 2026-10-22.
+- Outcome-unknown attempts: a trace with spend but no result marker
+  or acceptance label is now reported as OUTCOME UNKNOWN, excluded
+  from failed spend and from successes, with yield n/a when no known
+  outcome exists, instead of being labelled 100% failed.
 - Price table v5: GPT-4o and GPT-4o-mini list prices, Z.ai glm-5.3
   ($1.40 input / $0.26 cached input / $4.40 output per 1M tokens), and
   a `gpt-4o-2024-08-06` snapshot alias at the GPT-4o price (that
@@ -72,6 +79,15 @@
   failed on US local dates still on Oct 22. Date is now 2026-10-22,
   the local date the verification work ran, and the suite passes
   in America/Chicago as well as UTC.
+- Claude importer kept the FIRST record per message id, undercounting
+  output by about 99% on a real session where streaming records grow
+  (7 then 402): it now keeps the per-field maximum across duplicates.
+  The Simon Willison session now totals $0.19 priced, output 9,708,
+  outcome unknown, failed $0.00, instead of $0.14 estimated, output
+  96, 100% failed.
+- Zero-token traces no longer read as cost reports: reports print
+  NOT A COST REPORT and replace failed, yield, and context figures
+  with n/a when a trace has no model events and no tokens.
 - Fresh installs crashed: `report.py` imported uncommitted `averth/_money.py`.
 - Cases with zero billable events were silently dropped from receipts
   (LangSmith/Langfuse/OTel now emit a `start` marker per case).
