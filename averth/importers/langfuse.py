@@ -15,7 +15,11 @@ Mapping (documented here):
                   wins per side).
   cached tokens   Langfuse usage types split input into non-cached
                   "input" and cached "input_cached" (also accepted:
-                  "inputCached", "cached_input", "cachedInput",
+                  "input_cached_tokens" — the field in the real
+                  AcruxCore msg-06 trace, missing until 2026-10-22
+                  when its absence made that trace total $0.001556
+                  instead of $0.001972 — plus "inputCached",
+                  "cached_input", "cachedInput",
                   "cached_tokens", "cachedTokens", "prompt_cached_tokens",
                   "promptCachedTokens", "cache_read_input_tokens", and
                   OpenAI-style prompt_tokens_details.cached_tokens).
@@ -108,7 +112,8 @@ def _usage_tokens(obs):
     out_raw = _scalar(_first(usage, "output", "completionTokens",
                              "completion_tokens", "output_tokens"))
     cached_raw = _scalar(_first(
-        usage, "input_cached", "inputCached", "cached_input", "cachedInput",
+        usage, "input_cached", "input_cached_tokens", "inputCached",
+        "cached_input", "cachedInput",
         "cached_tokens", "cachedTokens", "prompt_cached_tokens",
         "promptCachedTokens", "cache_read_input_tokens", "cached"))
     input_is_total = False

@@ -88,6 +88,11 @@
 - Zero-token traces no longer read as cost reports: reports print
   NOT A COST REPORT and replace failed, yield, and context figures
   with n/a when a trace has no model events and no tokens.
+- Langfuse importer missed the real cached-token field
+  `input_cached_tokens` used in the AcruxCore msg-06 trace, so that
+  trace totalled $0.001556 with cached 0 instead of the vendor
+  $0.001972. The alias is added, with a regression test, and the
+  real trace now totals $0.001972 with cached 1,600.
 - Fresh installs crashed: `report.py` imported uncommitted `averth/_money.py`.
 - Cases with zero billable events were silently dropped from receipts
   (LangSmith/Langfuse/OTel now emit a `start` marker per case).

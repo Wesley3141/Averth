@@ -130,3 +130,18 @@ def test_tracker_billed_api_directly():
     assert p["cost_billed"] == pytest.approx(0.02)
     assert p["billed_models"] == ["anthropic:claude-sonnet-4-6"]
     assert p["data_quality"]["billed"] == pytest.approx(0.02)
+
+
+def test_input_cached_tokens_field_is_read(tmp_path):
+    # Regression, 2026-10-22: the real AcruxCore msg-06 trace uses
+    # input_cached_tokens, which was missing from the alias list, so
+    # that trace totalled $0.001556 with cached 0 instead of $0.001972.
+    trace = {"id": "t1", "observations": [
+        _gen("g1", model="glm-5.3",
+             usage={"input": 316, "output": 253,
+                    "input_cached_tokens": 1600}),
+    ]}
+    ledger = langfuse.load_langfuse(_write(tmp_path, [trace]))
+    attempt = ledger["attempts"][0]
+    assert attempt["cached_tokens"] == 1600
+    assert attempt["total_cost"] == pytest.approx(0.001972, abs=1e-6)
