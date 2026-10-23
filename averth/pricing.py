@@ -15,7 +15,7 @@ current status.
 """
 
 # Version of this price table. Bump on ANY price change.
-PRICE_TABLE_VERSION = 7
+PRICE_TABLE_VERSION = 8
 # ISO date this table was last verified against vendor list-price pages.
 # 2026-10-23, the America/Chicago local date when the wave-5
 # verification work ran. Dating it with a UTC-future date broke
@@ -40,11 +40,15 @@ PRICE_TABLE_STALE_AFTER_DAYS = 90
 # pro-002 (absent from Google's current models page), minimax and qwen
 # keys (no single vendor list price verified from the vendor page;
 # Qwen 2.5-72B is open-weight with provider-varying proxy prices).
-# NOTE (flagged, not changed): Anthropic's current pricing page lists
-# Claude Opus 4.6 at $5/$25 per 1M, while this table still carries the
-# v6 Opus 4.6 entry at $15/$75. Changing it would rewrite the
-# tarsur385 Opus 4.6 lane totals (11, 37, 42, 51) and was out of the
-# wave-5 brief; it needs an explicit decision before any edit.
+# Wave-5b correction (verified 2026-10-23 from Anthropic's own pricing
+# page, docs.anthropic.com/en/docs/about-claude/pricing): Claude Opus
+# 4.6 is $5.00 input / $0.50 cached / $25.00 output per 1M. The v6/v7
+# Opus 4.6 entry at $15/$75 was Opus 4.1's price carried onto the wrong
+# model (that same page lists Opus 4.1 at $15/$75, Opus 4 at $15/$75).
+# Applying the correction rewrites the tarsur385 Opus 4.6 lane totals
+# (11, 37, 42, 51); those lanes were rerun under v8 and carry addenda.
+# Opus 4.1 keeps its own $15/$75 entry below — the two models are
+# distinct and must never be merged.
 PRICE_TABLE_SOURCE = (
     "vendor list-price pages as of 2026-10-23 (OpenAI model pages, "
     "Anthropic pricing page, Z.ai pricing page); GPT-4o / GPT-4o-mini "
@@ -100,13 +104,15 @@ MODEL_PRICES = {
     # and "claude-4.5-haiku-high" are those same models at high effort
     # (the effort parameter changes token consumption, not the
     # per-token price), so they carry the base-model rates — never a
-    # remap to Opus 4.6 or any other model. The pre-existing
-    # claude-opus-4-6 entry at $15/$75 is left untouched in v7 (see the
-    # NOTE above: the current Anthropic page lists Opus 4.6 at $5/$25).
+    # remap to Opus 4.6 or any other model.
     "anthropic:claude-opus-4-5": (5.00, 25.00),
     "anthropic:claude-4.5-opus-high": (5.00, 25.00),
     "anthropic:claude-4.5-haiku-high": (1.00, 5.00),
-    "anthropic:claude-opus-4-6": (15.00, 75.00),
+    # Wave-5b correction: Opus 4.6 at its own Anthropic list price
+    # ($5.00/$0.50 cached/$25.00), not Opus 4.1's $15/$75.
+    "anthropic:claude-opus-4-6": (5.00, 25.00),
+    # Opus 4.1, distinct model, Anthropic pricing page: $15/$75.
+    "anthropic:claude-opus-4-1": (15.00, 75.00),
     "anthropic:claude-sonnet-4-5": (3.00, 15.00),
     "anthropic:claude-sonnet-4-20250514": (3.00, 15.00),  # published list price
     "anthropic:claude-3-7-sonnet-20250219": (3.00, 15.00),  # published list price
@@ -168,6 +174,9 @@ MODEL_CACHED_PRICES = {
     "anthropic:claude-opus-4-5": 0.50,
     "anthropic:claude-4.5-opus-high": 0.50,
     "anthropic:claude-4.5-haiku-high": 0.10,
+    # Wave-5b: Opus 4.6 cache read $0.50, Opus 4.1 cache read $1.50.
+    "anthropic:claude-opus-4-6": 0.50,
+    "anthropic:claude-opus-4-1": 1.50,
     # Wave 5 cached rates, Z.ai pricing page (verified 2026-10-23):
     # GLM-5 cached input $0.20 per 1M.
     "unknown:glm-5": 0.20,

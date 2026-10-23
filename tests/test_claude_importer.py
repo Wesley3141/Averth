@@ -67,15 +67,16 @@ class TestClaudeImporter(unittest.TestCase):
         self.assertEqual(attempt["total_tokens"], 825111)
         # Cached = cache_read only, never capped, never dropped.
         self.assertEqual(attempt["cached_tokens"], 815193)
-        # claude-opus-4-6 = 15.00/75.00 per 1M:
-        #   (137 + 5521) * 15.00 / 1e6 = 0.08487  (uncached + creation,
-        #                                          creation at FULL price)
-        #   815193 * 15.00 * 0.10 / 1e6 = 1.2227895 (cache reads)
-        #   4260 * 75.00 / 1e6 = 0.3195 (output)
-        #   total = 1.6271595, matching POC 6 Test 3 ($1.63 rounded).
-        self.assertAlmostEqual(attempt["total_cost"], 1.6271595, places=6)
-        # Cache saving at 0.10 discount: 815193 * 15.00 * 0.90 / 1e6.
-        self.assertAlmostEqual(attempt["cache_savings"], 11.0051055, places=6)
+        # Wave-5b: claude-opus-4-6 = 5.00/25.00 per 1M, cache read
+        # $0.50 (the v6/v7 $15/$75 was Opus 4.1's price, not 4.6's):
+        #   (137 + 5521) * 5.00 / 1e6 = 0.02829  (uncached + creation,
+        #                                        creation at FULL price)
+        #   815193 * 0.50 / 1e6 = 0.4075965 (cache reads)
+        #   4260 * 25.00 / 1e6 = 0.1065 (output)
+        #   total = 0.5423865 ($0.54 rounded).
+        self.assertAlmostEqual(attempt["total_cost"], 0.5423865, places=6)
+        # Cache saving: 815193 * (5.00 - 0.50) / 1e6.
+        self.assertAlmostEqual(attempt["cache_savings"], 3.6683685, places=6)
         # No acceptance label in a transcript: outcome is inferred,
         # so cost per success is UNKNOWN (auto-ended, not a success).
         self.assertTrue(attempt["outcome_inferred"])
@@ -83,18 +84,19 @@ class TestClaudeImporter(unittest.TestCase):
 
     def test_cache_creation_is_priced_at_full_not_dropped_or_discounted(self):
         # If creation tokens were dropped, total input would be 815330
-        # and cost would be 1.5443295. If creation were priced at the
-        # 0.10 cache-read discount, cost would be 1.5527195. The
-        # documented choice is full price: 1.6271595.
+        # and cost would be 0.5147815. If creation were priced at the
+        # 0.10 cache-read discount, cost would be 0.517542. The
+        # documented choice is full price: 0.5423865 (wave-5b Opus 4.6
+        # $5/$25 rates; the old $15/$75 figures were Opus 4.1's).
         path = _write([_assistant("msg_01", usage=EXAMPLE_USAGE)])
         try:
             ledger = claude.load_claude(path)
         finally:
             os.unlink(path)
         cost = ledger["attempts"][0]["total_cost"]
-        self.assertGreater(cost, 1.62)
-        self.assertNotAlmostEqual(cost, 1.5443295, places=4)
-        self.assertNotAlmostEqual(cost, 1.5527195, places=4)
+        self.assertGreater(cost, 0.54)
+        self.assertNotAlmostEqual(cost, 0.5147815, places=4)
+        self.assertNotAlmostEqual(cost, 0.517542, places=4)
 
     def test_cached_greater_than_uncached_does_not_crash_or_cap(self):
         # The original POC 6 failure: cached 815193 >> uncached 137.
@@ -335,7 +337,7 @@ class TestClaudeImporter(unittest.TestCase):
         tracker = tracker_from_ledger(ledger)
         self.assertEqual(tracker.pnl()["attempts"], 1)
         self.assertAlmostEqual(
-            tracker.pnl()["cost_total"], 1.6271595, places=6)
+            tracker.pnl()["cost_total"], 0.5423865, places=6)
 
 
 if __name__ == "__main__":

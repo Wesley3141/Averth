@@ -220,8 +220,9 @@ def test_retry_finding_decomposes_to_waste_lens():
 
 # ---- (f) price table v7 ----------------------------------------------
 
-def test_price_table_v7_version_and_date():
-    assert pricing.PRICE_TABLE_VERSION == 7
+def test_price_table_v8_version_and_date():
+    # Was v7 in wave 5; wave-5b bumped to v8 for the Opus 4.6 correction.
+    assert pricing.PRICE_TABLE_VERSION == 8
     assert pricing.PRICE_TABLE_UPDATED == "2026-10-23"
 
 
@@ -270,3 +271,20 @@ def test_wave5_cached_rates():
     assert pricing.MODEL_CACHED_PRICES["anthropic:claude-opus-4-5"] == 0.50
     assert pricing.MODEL_CACHED_PRICES["anthropic:claude-4.5-haiku-high"] == 0.10
     assert pricing.MODEL_CACHED_PRICES["unknown:glm-5-high"] == 0.20
+
+
+def test_wave5b_opus_46_not_opus_41_price():
+    # Wave-5b: Anthropic's pricing page (2026-10-23) lists Opus 4.6 at
+    # $5/$25 and Opus 4.1 at $15/$75. v6/v7 wrongly carried the 4.1
+    # rates onto 4.6; the two models must stay distinct.
+    assert pricing.MODEL_PRICES["anthropic:claude-opus-4-6"] == (5.00, 25.00)
+    assert pricing.MODEL_PRICES["anthropic:claude-opus-4-1"] == (15.00, 75.00)
+    assert pricing.MODEL_CACHED_PRICES["anthropic:claude-opus-4-6"] == 0.50
+    assert pricing.MODEL_CACHED_PRICES["anthropic:claude-opus-4-1"] == 1.50
+    assert pricing.model_call_cost(
+        "anthropic", "claude-opus-4-6", 1_000_000, 1_000_000
+    ) == pytest.approx(30.00)
+    assert pricing.model_call_cost(
+        "anthropic", "claude-opus-4-1", 1_000_000, 1_000_000
+    ) == pytest.approx(90.00)
+    assert pricing.PRICE_TABLE_VERSION == 8

@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+### Corrected
+
+- Price table v8 (verified 2026-10-23 from Anthropic's own pricing
+  page, docs.anthropic.com/en/docs/about-claude/pricing):
+  `anthropic:claude-opus-4-6` corrected from $15.00/$75.00 to
+  $5.00/$25.00 per 1M tokens ($0.50 cached). The $15/$75 figure was
+  Opus 4.1's price, wrongly carried onto Opus 4.6 in v6/v7; Opus 4.1
+  keeps its own $15.00/$75.00 entry ($1.50 cached) as a distinct
+  model. This supersedes the v6/v7 totals for the tarsur385
+  Opus 4.6 lanes (11 django, 37 astropy, 42 matplotlib, 51 xarray),
+  which were rerun under v8 with addenda in their POC files. The
+  v7 changelog note saying the entry was "untouched pending a
+  decision" is superseded by this correction.
+
 ### Added
 
 - Price table v7 (verified 2026-10-23 from each vendor's own pricing

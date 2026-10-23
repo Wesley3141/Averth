@@ -74,12 +74,16 @@ PINNED_MODEL_PRICES = {
     "openai:gpt-5-nano": (0.05, 0.40),
     # Wave 5 (v7, verified 2026-10-23 from Anthropic's pricing page):
     # Opus 4.5 $5/$25, Haiku 4.5 $1/$5; the "-high" dataset labels are
-    # those same models at high effort. The pre-existing Opus 4.6
-    # $15/$75 entry is deliberately untouched in v7 (see pricing.py).
+    # those same models at high effort.
     "anthropic:claude-opus-4-5": (5.00, 25.00),
     "anthropic:claude-4.5-opus-high": (5.00, 25.00),
     "anthropic:claude-4.5-haiku-high": (1.00, 5.00),
-    "anthropic:claude-opus-4-6": (15.00, 75.00),
+    # Wave-5b correction (v8, Anthropic pricing page 2026-10-23):
+    # Opus 4.6 is $5/$25, NOT the $15/$75 that v6/v7 carried onto it.
+    # Opus 4.1 is a distinct model at $15/$75; the two must never
+    # be merged or the v6 error returns.
+    "anthropic:claude-opus-4-6": (5.00, 25.00),
+    "anthropic:claude-opus-4-1": (15.00, 75.00),
     "anthropic:claude-sonnet-4-5": (3.00, 15.00),
     "anthropic:claude-sonnet-4-20250514": (3.00, 15.00),
     "anthropic:claude-3-7-sonnet-20250219": (3.00, 15.00),
