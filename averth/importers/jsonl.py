@@ -20,10 +20,19 @@ Expected schema (see averth.importers.common for the full definition):
     {"type": "end", "case_id": "CASE-1", "success": true,
      "business_value": 11.20, "reopened": false}
 
+    {"type": "end", "case_id": "CASE-1", "outcome_unknown": true}
+    (Wave 5: closes the attempt with no outcome at all — neither a
+    success nor a failure. "success" must be absent or false alongside
+    "outcome_unknown".)
+
 Field rules, enforced strictly:
   - every line must be a JSON object with a known "type"
   - "case_id" is always required and must be a string
   - "provider" is optional (guessed from the model name when omitted)
+  - "tokens_estimated" (model events, optional bool, Wave 5) marks
+    token counts estimated by the converter (characters/4 or similar),
+    not recorded from a provider response; priced spend on such calls
+    is reported as Estimated, never as Priced/recorded
   - numeric fields (input_tokens, output_tokens, cached_input_tokens, cost,
     latency_ms, minutes) must be int/float (not bool), finite, and >= 0;
     business_value must be finite but may be negative
@@ -33,9 +42,13 @@ Field rules, enforced strictly:
     events it tags which branch made the call, so retry-path tool spend
     is attributed to the discarded path (an untagged tool step survives
     a branch-scoped retry unmarked).
-  - "success" and "reopened" must be real booleans, not 0/1
+  - "success", "reopened", "tokens_estimated", and "outcome_unknown"
+    must be real booleans, not 0/1
   - unknown keys are rejected
-  - a case with no "end" line is auto-ended with success=False
+  - a case with no "end" line is auto-ended outcome_unknown (Wave 5):
+    a JSONL trace that records model calls but no outcome label is a
+    cost-only diagnosis, not a failed run. (Other importers keep the
+    historical failed auto-end; see common.events_to_tracker.)
 
 Any violation raises ValueError naming the offending line number.
 """
@@ -75,13 +88,18 @@ _SPECS = {
     "start": ({"case_id": str}, {}),
     "model": ({"case_id": str, "model": str},
               {"provider": str, "input_tokens": None, "output_tokens": None,
-               "cached_input_tokens": None, "branch": str}),
+               "cached_input_tokens": None, "branch": str,
+               "tokens_estimated": None}),
     "tool": ({"case_id": str, "name": str},
              {"cost": None, "latency_ms": None, "branch": str}),
     "retry": ({"case_id": str}, {"reason": str, "branch": str}),
     "escalation": ({"case_id": str, "minutes": None}, {"reason": str}),
-    "end": ({"case_id": str, "success": None},
-            {"business_value": None, "reopened": None}),
+    # Wave 5: "success" is optional on "end" — an outcome_unknown end
+    # carries no success claim at all, and events_to_tracker defaults
+    # a missing success to False (forced False for unknown outcomes).
+    "end": ({"case_id": str},
+            {"success": None, "business_value": None, "reopened": None,
+             "outcome_unknown": None}),
 }
 
 _NUM_FIELDS = {"input_tokens", "output_tokens", "cached_input_tokens",
@@ -122,6 +140,15 @@ def _validate(line_no, ev):
         _check_bool(line_no, ev, "success")
     if "reopened" in ev:
         _check_bool(line_no, ev, "reopened")
+    if "tokens_estimated" in ev:
+        _check_bool(line_no, ev, "tokens_estimated")
+    if "outcome_unknown" in ev:
+        _check_bool(line_no, ev, "outcome_unknown")
+        if ev["outcome_unknown"] and ev.get("success") is True:
+            raise ValueError(
+                "line %d: 'outcome_unknown' cannot accompany "
+                "'success': true — an unknown outcome is neither a "
+                "success nor a failure" % line_no)
     if "cached_input_tokens" in ev and "input_tokens" in ev:
         if ev["cached_input_tokens"] > ev["input_tokens"]:
             raise ValueError(
@@ -151,5 +178,9 @@ def load_jsonl(path, agent_name="jsonl-import"):
             except json.JSONDecodeError as exc:
                 raise ValueError("line %d: invalid JSON: %s" % (line_no, exc))
             events.append(_validate(line_no, ev))
-    tracker = events_to_tracker(agent_name, events)
+    # Wave 5: JSONL auto-end is outcome_unknown, not failed — a case
+    # with recorded calls but no outcome label is a cost-only
+    # diagnosis, and labelling it failed invented a 100%-burned
+    # headline out of missing data.
+    tracker = events_to_tracker(agent_name, events, auto_end_unknown=True)
     return ledger_from_tracker(tracker)

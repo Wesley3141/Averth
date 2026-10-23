@@ -13,6 +13,14 @@ def dollars(x):
         v = float(x)
     except (TypeError, ValueError):
         return "$?"
+    # Wave 5: a tiny NONZERO float (e.g. -1e-9 from a rounding residue)
+    # formatted as "-$0" by the old code ("-" + dollars(tiny positive),
+    # which itself renders "$0"). A nonzero residue below half a
+    # micro-dollar renders as $0, so the sign must never survive on a
+    # zero rendering. Exact zero keeps the standard "$0.00" rendering
+    # (other tests and reports pin it).
+    if v != 0 and abs(v) < 0.0000005:
+        return "$0"
     if v < 0:
         return "-" + dollars(-v)
     if v == 0 or v >= 0.01:

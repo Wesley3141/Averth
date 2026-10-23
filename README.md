@@ -25,7 +25,7 @@ Teams discover this when the invoice arrives, not when the workflow ships.
 Averth reads the traces you already have (Langfuse, LangSmith, OpenTelemetry, or JSONL) and produces a trustworthy cost receipt:
 
 - **Fully-loaded cost per attempt** — model spend, retry paths, tool calls, and human review time, shown as separate lines
-- **Data quality, stated honestly** — every dollar labeled by provenance: vendor-billed, measured (tokens x prices), estimated, or unknown. Missing usage data is flagged loudly, never rendered as free.
+- **Data quality, stated honestly** — every dollar labeled by provenance: vendor-billed, priced on recorded tokens, estimated (fallback prices, tokens estimated from text, or tool estimates), or unknown. Spend from estimated tokens lands in Estimated, never Priced. Missing usage data is flagged loudly, never rendered as free; context tax on fallback-priced runs prints n/a, not $0.00.
 - **The five cost layers** — context compounding, tool spend, yield ratio, heavy-tail outliers, and per-model attribution, explaining *why* the number is what it is
 - **One change worth testing** — top retry reasons, costliest attempts, and failed-run waste, pointing at the single highest-leverage fix
 

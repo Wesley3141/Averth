@@ -18,7 +18,8 @@ Event types (each event is a plain dict):
      "cached_input_tokens": number (default 0),
      "branch": str (optional),
      "billed_cost": number (optional),
-     "usage_known": bool (default True)}
+     "usage_known": bool (default True),
+     "tokens_estimated": bool (default False)}
         One LLM call. "provider" is the vendor key used by pricing
         (openai, anthropic, google, xai). If omitted, the provider is guessed
         from the model name with guess_provider(). "cached_input_tokens"
@@ -30,6 +31,10 @@ Event types (each event is a plain dict):
         and the call is flagged as vendor-supplied. "usage_known=False"
         marks calls that reported no token usage: cost is recorded as $0.00
         with cost_basis "unknown" — unknown is never presented as free.
+        "tokens_estimated=True" marks counts estimated by the converter
+        (characters/4 or similar), not recorded from a provider response:
+        the dollars still use vendor list prices, but pnl() reports them
+        as Estimated, never as Priced/recorded.
 
     {"type": "tool", "case_id": str, "name": str,
      "cost": number (optional), "latency_ms": number (optional),
@@ -55,9 +60,18 @@ Event types (each event is a plain dict):
         Human review time, costed at the Tracker's loaded per-minute rate.
 
     {"type": "end", "case_id": str, "success": bool,
-     "business_value": number (default 0.0), "reopened": bool (default False)}
-        Closes the attempt. A case with no "end" event is auto-ended with
-        success=False (a trace that never finished is not a success).
+     "business_value": number (default 0.0), "reopened": bool (default False),
+     "outcome_unknown": bool (default False)}
+        Closes the attempt. "outcome_unknown=True" closes it with no
+        outcome at all: the attempt is neither a success nor a failure,
+        its spend is excluded from failed spend, and yield is n/a when
+        no known outcome exists (same semantics as the Claude
+        importer). A case with no "end" event is auto-ended with
+        success=False, except when events_to_tracker is called with
+        auto_end_unknown=True (the JSONL importer does this): then a
+        case with recorded model calls but no outcome label is
+        auto-ended outcome_unknown instead of failed, because a
+        missing label is not evidence of failure.
 
 Pricing fallback: model names missing from pricing.MODEL_PRICES do not crash
 the import. They are costed at FALLBACK_PRICE (1.00 USD per 1M input tokens,
@@ -128,14 +142,18 @@ def _parse_bool_tristate(value):
 
 def _apply_model_cost(tracker, provider, model, input_tokens, output_tokens,
                       cost, cached_tokens=0, cache_saving=0.0, branch=None,
-                      cost_basis="estimated"):
+                      cost_basis="estimated", tokens_estimated=False):
     """Apply a model call to the open attempt with an explicit cost.
 
     Mirrors Tracker.log_model_call's bookkeeping for the fallback path where
     pricing has no entry for the model. Cached tokens are priced at the
     Tracker's cache_read_discount (same discount math as log_model_call)
     and the saving is recorded, so the EVENT-schema docstring holds on the
-    fallback path too.
+    fallback path too. The fallback path is already in the Estimated
+    bucket via the unpriced-model flag, so tokens_estimated here is
+    recorded on the step for provenance only and never double-counted
+    into the estimated-token accumulator (that accumulator is for
+    priced models only, via Tracker._record_step).
     """
     cur = tracker._cur
     cur["model"] += cost
@@ -144,6 +162,7 @@ def _apply_model_cost(tracker, provider, model, input_tokens, output_tokens,
         "in": input_tokens, "out": output_tokens, "cost": cost,
         "retry": tracker._step_is_waste(branch), "in_price": 0.0,
         "cached": cached_tokens, "branch": branch, "cost_basis": cost_basis,
+        "tokens_estimated": bool(tokens_estimated),
     })
     key = "%s:%s" % (provider, model)
     cur["per_model"][key] = cur["per_model"].get(key, 0.0) + cost
@@ -153,13 +172,15 @@ def _apply_model_cost(tracker, provider, model, input_tokens, output_tokens,
 
 def _log_model_call(tracker, provider, model, input_tokens, output_tokens,
                     cached_tokens=0, branch=None, billed_cost=None,
-                    usage_known=True):
+                    usage_known=True, tokens_estimated=False):
     """log_model_call with a documented fallback for unpriced models.
 
     billed_cost, when not None, routes to log_model_billed_cost: the
     dollars are vendor-supplied (higher confidence than our estimates).
     usage_known=False marks the call as missing usage data ($0.00 recorded
-    as unknown, never as free).
+    as unknown, never as free). tokens_estimated=True marks counts
+    estimated by the converter: priced spend on them lands in the
+    Estimated bucket (see Tracker.log_model_call).
     """
     if billed_cost is not None:
         tracker.log_model_billed_cost(provider, model, billed_cost,
@@ -171,7 +192,8 @@ def _log_model_call(tracker, provider, model, input_tokens, output_tokens,
         tracker.log_model_call(provider, model, input_tokens, output_tokens,
                                cached_input_tokens=cached_tokens,
                                branch=branch,
-                               missing_usage=not usage_known)
+                               missing_usage=not usage_known,
+                               tokens_estimated=tokens_estimated)
     except KeyError:
         key = "%s:%s" % (provider, model)
         tracker.unpriced_models.add(key)
@@ -196,17 +218,22 @@ def _log_model_call(tracker, provider, model, input_tokens, output_tokens,
                           cached_tokens=cached, cache_saving=saving,
                           branch=branch,
                           cost_basis="unknown" if not usage_known
-                          else "estimated")
+                          else "estimated",
+                          tokens_estimated=tokens_estimated)
 
 
-def events_to_tracker(agent_name, events):
+def events_to_tracker(agent_name, events, auto_end_unknown=False):
     """Build a Tracker from an ordered list of EVENT-schema dicts.
 
     Events are grouped by case_id (first-seen order). Each group becomes one
     or more attempts: an attempt auto-starts on the first event for a case,
     "end" closes it, and any events after an "end" start a new attempt for
     the same case. A case with no "end" event is auto-ended with
-    success=False.
+    success=False, unless auto_end_unknown=True: then it is auto-ended
+    outcome_unknown (spend recorded, no outcome recorded), because a
+    missing outcome label is not evidence of failure. The JSONL
+    importer passes auto_end_unknown=True; other importers keep the
+    historical failed auto-end unless they opt in explicitly.
     """
     tracker = Tracker(agent_name)
     if not hasattr(tracker, "unpriced_models"):
@@ -249,7 +276,9 @@ def events_to_tracker(agent_name, events):
                                 cached_tokens=ev.get("cached_input_tokens", 0) or 0,
                                 branch=ev.get("branch"),
                                 billed_cost=ev.get("billed_cost"),
-                                usage_known=ev.get("usage_known", True))
+                                usage_known=ev.get("usage_known", True),
+                                tokens_estimated=ev.get("tokens_estimated",
+                                                        False))
             elif etype == "tool":
                 tracker.log_tool_call(ev["name"], cost=ev.get("cost"),
                                       branch=ev.get("branch"))
@@ -263,18 +292,27 @@ def events_to_tracker(agent_name, events):
             elif etype == "escalation":
                 tracker.log_escalation(ev["minutes"], reason=ev.get("reason", ""))
             elif etype == "end":
+                _unknown = bool(ev.get("outcome_unknown", False))
                 tracker.end_attempt(
                     success=ev.get("success", False),
                     business_value=ev.get("business_value", 0.0) or 0.0,
                     reopened=ev.get("reopened", False),
-                    outcome_inferred=ev.get("outcome_inferred",
-                                            "success" not in ev),
-                    outcome_unknown=ev.get("outcome_unknown", False))
+                    # An explicit unknown outcome is not an inferred
+                    # outcome: nothing was recorded at all, so the
+                    # inferred-outcome warning must not fire on it.
+                    outcome_inferred=ev.get(
+                        "outcome_inferred",
+                        False if _unknown else "success" not in ev),
+                    outcome_unknown=_unknown)
                 started = False
             else:
                 raise ValueError("unknown event type: %r" % (etype,))
         if started:
-            tracker.end_attempt(success=False, outcome_inferred=True)
+            if auto_end_unknown:
+                tracker.end_attempt(success=False, outcome_inferred=False,
+                                    outcome_unknown=True)
+            else:
+                tracker.end_attempt(success=False, outcome_inferred=True)
     return tracker
 
 
@@ -330,6 +368,9 @@ def tracker_from_ledger(ledger):
     for attempt in tracker.attempts:
         attempt.setdefault("outcome_inferred", True)
         attempt.setdefault("outcome_unknown", False)
+        # Wave 5 keys, absent on ledgers written before wave 5.
+        attempt.setdefault("estimated_token_cost", 0.0)
+        attempt.setdefault("context_tax_incomplete", False)
     # .get for backward compatibility with ledgers written before the
     # unpriced_models flag was exported.
     tracker.unpriced_models = set(ledger.get("unpriced_models", []))

@@ -53,10 +53,32 @@ PINNED_MODEL_PRICES = {
     # Snapshot alias, same base-model price; verified on the GPT-4o
     # model page (gpt-4o-2024-08-06 listed as a snapshot, $2.50/$10.00).
     "openai:gpt-4o-2024-08-06": (2.50, 10.00),
+    # Wave 5 (v7, verified 2026-10-23 from OpenAI's own model pages):
+    # gpt-4o-2024-05-13 and gpt-4o-mini-2024-07-18 are listed as
+    # snapshots on their base-model pages; gpt-4.1, gpt-4.1-mini,
+    # gpt-5.2, gpt-5-mini, and o1-mini (+ its 2024-09-12 snapshot)
+    # carry their model-page list prices. "gpt-5.2-high" is GPT-5.2
+    # at high reasoning effort, same per-token price.
+    "openai:gpt-4o-2024-05-13": (2.50, 10.00),
     "openai:gpt-4o-mini": (0.15, 0.60),
+    "openai:gpt-4o-mini-2024-07-18": (0.15, 0.60),
+    "openai:gpt-4.1": (2.00, 8.00),
+    "openai:gpt-4.1-mini": (0.40, 1.60),
+    "openai:gpt-5.2": (1.75, 14.00),
+    "openai:gpt-5.2-high": (1.75, 14.00),
+    "openai:gpt-5-mini": (0.25, 2.00),
+    "openai:o1-mini": (1.10, 4.40),
+    "openai:o1-mini-2024-09-12": (1.10, 4.40),
     "openai:gpt-5.6": (2.50, 10.00),
     "openai:gpt-5.6-mini": (0.30, 1.20),
     "openai:gpt-5-nano": (0.05, 0.40),
+    # Wave 5 (v7, verified 2026-10-23 from Anthropic's pricing page):
+    # Opus 4.5 $5/$25, Haiku 4.5 $1/$5; the "-high" dataset labels are
+    # those same models at high effort. The pre-existing Opus 4.6
+    # $15/$75 entry is deliberately untouched in v7 (see pricing.py).
+    "anthropic:claude-opus-4-5": (5.00, 25.00),
+    "anthropic:claude-4.5-opus-high": (5.00, 25.00),
+    "anthropic:claude-4.5-haiku-high": (1.00, 5.00),
     "anthropic:claude-opus-4-6": (15.00, 75.00),
     "anthropic:claude-sonnet-4-5": (3.00, 15.00),
     "anthropic:claude-sonnet-4-20250514": (3.00, 15.00),
@@ -77,6 +99,12 @@ PINNED_MODEL_PRICES = {
     # pricing (input $1.40, cached $0.26, output $4.40 per 1M tokens).
     "unknown:glm-5.3": (1.40, 4.40),
     "zai:glm-5.3": (1.40, 4.40),
+    # Wave 5 (v7, verified 2026-10-23 from docs.z.ai pricing page):
+    # GLM-5 $1.00/$3.20; "glm-5-high" is GLM-5 at high effort.
+    "unknown:glm-5": (1.00, 3.20),
+    "zai:glm-5": (1.00, 3.20),
+    "unknown:glm-5-high": (1.00, 3.20),
+    "zai:glm-5-high": (1.00, 3.20),
 }
 
 PINNED_TOOL_PRICES = {

@@ -244,6 +244,13 @@ class Tracker:
                      # survives export even though raw steps do not)
                      "billed_cost": 0.0,
                      "estimated_model_cost": 0.0,
+                     # Wave 5 token provenance: spend on priced models
+                     # whose token counts were estimated (characters/4
+                     # or similar), not recorded from a provider
+                     # response. Survives ledger export so the CLI
+                     # round-trip (which drops raw steps) can still
+                     # move this spend out of the Priced bucket.
+                     "estimated_token_cost": 0.0,
                      "cached_tokens": 0,
                      "cache_savings": 0.0}
 
@@ -254,7 +261,8 @@ class Tracker:
 
     def _record_step(self, provider, model, in_tok, out_tok, cost,
                      in_price_per_m, cached_tok=0, branch=None,
-                     cost_basis="measured", cached_price_per_m=None):
+                     cost_basis="measured", cached_price_per_m=None,
+                     tokens_estimated=False):
         cur = self._cur
         waste = self._step_is_waste(branch)
         cur["model"] += cost
@@ -272,7 +280,16 @@ class Tracker:
             "cost_basis": cost_basis,
             # "provider:model": which model made this call (invoice-join key)
             "model_key": "%s:%s" % (provider, model),
+            # Wave 5: True when the token counts behind this step were
+            # estimated by the caller (characters/4 or similar), not
+            # recorded from a provider response. Priced spend on
+            # estimated tokens is NOT measured spend: pnl() moves it
+            # out of the Priced bucket into Estimated.
+            "tokens_estimated": bool(tokens_estimated),
         })
+        if tokens_estimated and cost_basis == "measured":
+            cur["estimated_token_cost"] = cur.get("estimated_token_cost",
+                                                  0.0) + cost
         key = "%s:%s" % (provider, model)
         cur["per_model"][key] = cur["per_model"].get(key, 0.0) + cost
         cur["events"].append((("model_billed" if cost_basis == "billed"
@@ -288,7 +305,8 @@ class Tracker:
                                                   0.0) + cost
 
     def log_model_call(self, provider, model, input_tokens, output_tokens,
-                       cached_input_tokens=0, branch=None, missing_usage=False):
+                       cached_input_tokens=0, branch=None, missing_usage=False,
+                       tokens_estimated=False):
         """Record one model call. cached_input_tokens are priced at the
         vendor cached rate from pricing.MODEL_CACHED_PRICES when the
         model key has one (that rate wins over the generic
@@ -301,6 +319,11 @@ class Tracker:
         responses without usage, exports without token_usage). The cost is
         recorded as $0.00 with cost_basis "unknown" and the call is counted
         in unknown_usage_calls — unknown is never presented as free.
+
+        tokens_estimated=True: the token counts were estimated by the
+        caller (characters/4 or similar), not recorded from a provider
+        response. The dollars are still computed at vendor list prices,
+        but pnl() reports them as Estimated, never as Priced/recorded.
         """
         self._req()
         in_tok = _check_nonneg_int("input_tokens", input_tokens)
@@ -336,7 +359,8 @@ class Tracker:
         self._record_step(provider, model, in_tok, out_tok, cost,
                           pin, cached_tok=cached, branch=branch,
                           cost_basis=basis,
-                          cached_price_per_m=cached_price)
+                          cached_price_per_m=cached_price,
+                          tokens_estimated=tokens_estimated)
 
     def log_model_billed_cost(self, provider, model, cost,
                               input_tokens=0, output_tokens=0, branch=None):
@@ -470,6 +494,12 @@ class Tracker:
         self._req()
         business_value = _check_finite("business_value", business_value)
         a = self._cur
+        # Wave 5: outcome_unknown is exclusive with success. A caller
+        # passing both (e.g. a dataset label True alongside an unknown
+        # flag) must never produce a "successful" attempt that pnl()
+        # then excludes from successes — the attempt is unknown, full stop.
+        if outcome_unknown:
+            success = False
         a["success"] = bool(success)
         a["outcome_inferred"] = bool(outcome_inferred)
         # outcome_unknown: the trace recorded spend but no outcome at
@@ -497,6 +527,16 @@ class Tracker:
         # so taxing them at full price would overstate compounding.
         base_in = steps[0]["in"] if steps else 0
         tax = 0.0
+        # Wave 5: whether the tax is incomplete. A step skipped below
+        # because its in_price is 0 (fallback-priced or vendor-billed
+        # calls record in_price 0.0) contributes growth but no tax, so a
+        # $0.00 tax on a run with large growth is NOT "context was free"
+        # — it is uncomputed. pnl() surfaces this flag and reports print
+        # n/a (or "partial") instead of $0.00. The zero-token-first-step
+        # guard below is a separate case (no baseline at all) and does
+        # NOT set this flag: there the tax is $0.00 by definition, and
+        # the existing hostile-review test pins it.
+        tax_incomplete = False
         # HOSTILE_REVIEW H2 (second half): a zero-token first step — exactly
         # what the OpenAI wrapper logs for streaming calls with no usage —
         # is not a baseline. Without this guard the entire second step's
@@ -508,6 +548,8 @@ class Tracker:
             d = self.cache_read_discount
             for s in steps[1:]:
                 if s["in"] <= 0 or s["in_price"] <= 0:
+                    if s["in"] > 0 and s["in_price"] <= 0:
+                        tax_incomplete = True
                     continue
                 cached_frac = min(s["cached"] / s["in"], 1.0)
                 if s.get("cached_price") is not None:
@@ -519,6 +561,7 @@ class Tracker:
                     eff_price = s["in_price"] * (1.0 - cached_frac * (1.0 - d))
                 tax += (s["in"] - base_in) / 1e6 * eff_price
         a["context_tax"] = tax
+        a["context_tax_incomplete"] = tax_incomplete
         # layer 3: yield — terminal-path tokens vs total. Retry-path tokens
         # are waste; every token of a failed attempt is waste (no terminal
         # path exists without an accepted outcome).
@@ -677,6 +720,28 @@ class Tracker:
         # .get defaults: ledgers written before these keys existed.
         billed_spend = sum(a.get("billed_cost", 0.0) for a in atts)
         estimated_model = sum(a.get("estimated_model_cost", 0.0) for a in atts)
+        # Wave 5 token provenance: priced-model spend on estimated
+        # tokens (see log_model_call tokens_estimated). This is NOT
+        # part of estimated_model (fallback pricing); it is vendor
+        # list prices applied to estimated counts, and it leaves the
+        # Priced bucket for Estimated below.
+        estimated_token_spend = sum(a.get("estimated_token_cost", 0.0)
+                                    for a in atts)
+        # Wave 5: retry-path decomposition, so the retry finding can be
+        # reconciled with the waste lens instead of merely asserting a
+        # number. Failed attempts contribute their whole model spend
+        # (no terminal path); successful attempts contribute only
+        # retry-flagged steps plus extra_model_cost; unknown attempts
+        # are reported separately and are neither.
+        retry_path_failed = sum(a.get("retry_path_cost", 0.0) for a in atts
+                                if not a["success"]
+                                and not a.get("outcome_unknown"))
+        retry_path_success = sum(a.get("retry_path_cost", 0.0) for a in atts
+                                 if a["success"])
+        retry_path_unknown = sum(a.get("retry_path_cost", 0.0) for a in atts
+                                 if a.get("outcome_unknown"))
+        context_tax_incomplete = any(a.get("context_tax_incomplete", False)
+                                     for a in atts)
         # Backward compatibility: ancient ledgers lack the accumulators but
         # have unpriced_models; fall back to the key heuristic for those.
         if not any("estimated_model_cost" in a for a in atts):
@@ -708,21 +773,27 @@ class Tracker:
             if not ts.get("explicit_cost", True)})
 
         # Data-quality buckets: every receipt dollar is classified by how
-        # it was produced. Measured = tokens x vendor price. Billed =
-        # vendor-supplied cost. Estimated = fallback prices or built-in
-        # tool estimates. Unknown = calls with no reported usage (recorded
+        # it was produced. Measured = RECORDED tokens x vendor price.
+        # Wave 5: vendor prices applied to ESTIMATED tokens are not
+        # measured spend — they move from "measured" to "estimated"
+        # (estimated_token_spend), even though the price itself is a
+        # vendor list price. Billed = vendor-supplied cost. Estimated =
+        # fallback prices, estimated-token spend, or built-in tool
+        # estimates. Unknown = calls with no reported usage (recorded
         # $0.00, counted separately — never free). The five layers (retry
         # path, context tax, yield, tail, per-model) are explanatory
         # overlays on these dollars, never additional charges: total ==
         # model + tools + retry(extra) + human, and the overlays are
         # subsets/shares of model spend.
         estimated_model = unpriced_spend
-        measured_model = model - billed_spend - estimated_model
+        measured_model = (model - billed_spend - estimated_model
+                          - estimated_token_spend)
         measured_tools = tools - default_tool_spend
         data_quality = {
             "measured": measured_model + measured_tools,
             "billed": billed_spend,
-            "estimated": estimated_model + default_tool_spend,
+            "estimated": (estimated_model + default_tool_spend
+                          + estimated_token_spend),
             "unknown_calls": self.unknown_usage_calls,
         }
         return {
@@ -740,6 +811,10 @@ class Tracker:
             "cost_retry": retry,
             "cost_retry_path": retry_path,
             "cost_retry_tools": retry_tool,
+            "cost_retry_path_failed": retry_path_failed,
+            "cost_retry_path_success": retry_path_success,
+            "cost_retry_path_unknown": retry_path_unknown,
+            "estimated_token_spend": estimated_token_spend,
             "cost_human": human,
             "cost_total": total,
             "cost_failed": failed_cost,
@@ -750,6 +825,7 @@ class Tracker:
             "cost_reopened": reopened_cost,
             "reopened_spend_share": reopened_cost / total if total else 0.0,
             "context_tax": context_tax,
+            "context_tax_incomplete": context_tax_incomplete,
             "context_tax_per_success": per(context_tax),
             "context_tax_share_of_model": context_tax / model if model else 0.0,
             "cache_savings": cache_savings,

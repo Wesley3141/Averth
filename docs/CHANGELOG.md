@@ -4,6 +4,66 @@
 
 ### Added
 
+- Price table v7 (verified 2026-10-23 from each vendor's own pricing
+  page; `PRICE_TABLE_UPDATED` 2026-10-23, America/Chicago local date):
+  OpenAI `gpt-4o-2024-05-13` ($2.50/$10.00, $1.25 cached) and
+  `gpt-4o-mini-2024-07-18` ($0.15/$0.60, $0.075 cached) as snapshots
+  listed on their base-model pages; `gpt-4.1` ($2.00/$8.00, $0.50
+  cached) and `gpt-4.1-mini` ($0.40/$1.60, $0.10 cached); `gpt-5.2`
+  and `gpt-5.2-high` ($1.75/$14.00, $0.175 cached — high is GPT-5.2 at
+  high reasoning effort, same model); `gpt-5-mini` ($0.25/$2.00,
+  $0.025 cached); `o1-mini` and `o1-mini-2024-09-12` ($1.10/$4.40,
+  $0.55 cached); Anthropic `claude-opus-4-5` and
+  `claude-4.5-opus-high` ($5.00/$25.00, $0.50 cached — the dataset
+  label is Opus 4.5 at high effort, never a remap to Opus 4.6) and
+  `claude-4.5-haiku-high` ($1.00/$5.00, $0.10 cached); Z.ai `glm-5`
+  and `glm-5-high` ($1.00/$3.20, $0.20 cached). Deliberately NOT
+  added: `deepseek:deepseek-chat` (alias retired July 2026;
+  peak/off-peak dual pricing, no single standard rate),
+  `google:gemini-1.5-pro-002` (absent from Google's models page),
+  `minimax:minimax-m2.5-high` and `qwen-2.5-72b-instruct` (no single
+  vendor list price verified). The pre-existing Opus 4.6 $15/$75
+  entry is untouched in v7 pending a decision: Anthropic's current
+  page lists Opus 4.6 at $5/$25, which would rewrite earlier
+  Opus 4.6 lane totals if applied.
+- Token provenance: `Tracker.log_model_call` accepts
+  `tokens_estimated`; spend computed from estimated (chars/4, not
+  recorded) tokens is accumulated as `estimated_token_spend` and
+  lands in the Estimated bucket, not Priced, including across the
+  ledger round-trip (`LEDGER_ATTEMPT_KEYS` carries
+  `estimated_token_cost`). Converters and the JSONL importer accept
+  and validate a `tokens_estimated` flag. Reports label the Priced
+  bucket "vendor prices on recorded tokens" (legacy traces without
+  a provenance flag still land there), name fallback-price, vendor-
+  price-on-estimated-token, and tool-estimate contributions in the
+  COST BASIS banner, and print an "of which vendor prices on
+  estimated tokens" line when that spend is nonzero.
+- JSONL outcome-unknown: `averth/importers/jsonl.py` passes
+  `auto_end_unknown=True` to `events_to_tracker`, so a JSONL case
+  with recorded calls but no end line ends outcome_unknown (cost
+  $0 failed, yield n/a) instead of auto-failed. Explicit JSONL end
+  events accept `outcome_unknown` (rejected with `success: true`);
+  `Tracker.end_attempt` forces `success=False` when
+  `outcome_unknown=True`. Other importers keep the historical failed
+  auto-end.
+- Context-tax completeness: `Tracker.end_attempt` sets
+  `context_tax_incomplete` when a nonzero-baseline attempt skipped
+  a step because its input price was 0 (fallback-priced or
+  vendor-billed calls). Reports print context tax n/a with a
+  "growth is not free" note in that case, and "partial" when the
+  flag is set and tax is nonzero. The zero-token-first-step case
+  still reports tax $0.00 by definition.
+- Retry-finding decomposition: `pnl()` now exposes
+  `cost_retry_path_failed`, `cost_retry_path_success`, and
+  `cost_retry_path_unknown`, and the retry-waste finding decomposes
+  its headline into the waste-lens model figure plus retry-path
+  tool spend. The text waste accounting prints a "Retry-path
+  tools" line when that spend is nonzero, so the finding and the
+  lens reconcile on the page.
+- `tests/test_wave5.py` — regression tests for every wave-5 fix.
+
+### Added
+
 - `averth trace --format claude` — Claude Code session JSONL importer
   (`averth/importers/claude.py`): one session file at a time, deduplication
   by message id, sidechain records excluded by default, total-context
@@ -47,6 +107,21 @@
 - `--anomaly` flag on `averth trace` — runaway lens: flags cost outliers
   above p95 with their dominant driver, ranked by dollars. Cost-anomaly
   detection, never attack attribution ("inspect, not accusations").
+
+### Fixed
+
+- Text reports printed "-$0" for the priced bucket when it was a
+  tiny negative float (rounding residue): `dollars()` now renders
+  any nonzero value below half a micro-dollar as "$0". Exact zero
+  keeps the standard "$0.00" rendering.
+- The retry-waste finding fired on attempts with zero retries and
+  labelled failed-run spend as retry spend: it no longer fires
+  when `retries == 0` (failed spend keeps its own finding), and
+  when it fires its detail decomposes into the waste-lens figure
+  so the two lenses can no longer diverge silently.
+- JSONL end events now accept an outcome-unknown outcome without
+  requiring a `success` field (a missing success defaults to
+  False, and is forced False for unknown outcomes).
 
 ### Fixed
 

@@ -195,11 +195,14 @@ class TestJsonlImporter(unittest.TestCase):
         self.assertEqual(p["successes"], 2)
         self.assertGreater(p["cost_total"], 0)
 
-        failed = [a for a in tracker.attempts if not a["success"]]
-        self.assertEqual(len(failed), 1)
-        # case-3 has no end event: auto-ended as failed; the unknown model
-        # was costed at the fallback estimate (visible in per_model)
-        self.assertEqual(failed[0]["case_id"], "case-3")
+        # Wave 5: case-3 has no end event, so the JSONL importer
+        # auto-ends it outcome_unknown, not failed — a missing label
+        # is not evidence of failure. The unknown model was costed at
+        # the fallback estimate (visible in per_model).
+        self.assertEqual(p["unknown_outcome"], 1)
+        unknown = [a for a in tracker.attempts if a["outcome_unknown"]]
+        self.assertEqual(unknown[0]["case_id"], "case-3")
+        self.assertEqual(p["cost_failed"], 0.0)
         self.assertGreater(p["per_model"].get("unknown:command-r", 0), 0)
 
         case2 = [a for a in tracker.attempts if a["case_id"] == "case-2"][0]

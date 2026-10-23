@@ -74,9 +74,20 @@ def findings(p):
     # 3. Retry-path waste with the top reason named. Dollars include
     # retry-path tool spend (M3): a $5 tool call on a discarded path is
     # retry waste, not just "tools".
+    # Wave 5 reconciliation (the top-finding vs waste-lens gap): the
+    # waste lens in the report prints cost_retry_path (model/retry
+    # spend only), while this finding adds cost_retry_tools — the
+    # $0.52/$2.37-style gaps lanes kept flagging were exactly that
+    # tool component, plus failed-attempt model spend folded into
+    # cost_retry_path. Two fixes: (1) this finding never fires when
+    # retries == 0 — failed-attempt spend with zero retries is covered
+    # by the failed_spend finding, and calling it "retry loops" was a
+    # mislabel; (2) the detail now decomposes the figure into the
+    # waste-lens model figure, the retry-path tool figure, and the
+    # failed-vs-successful split, so the two lenses tie out exactly.
     retry_dollars = p["cost_retry_path"] + p.get("cost_retry_tools", 0.0)
     retry_share = retry_dollars / total if total else 0.0
-    if retry_share >= 0.20 and retry_dollars > 0:
+    if retry_share >= 0.20 and retry_dollars > 0 and p["retries"] > 0:
         top = p["top_retry_reasons"][0] if p["top_retry_reasons"] else None
         reason_bit = (" Top culprit: '%s' (%s)."
                       % (top[0], _plural(top[1], "retry", "retries"))) if top else ""
@@ -90,9 +101,19 @@ def findings(p):
             "Retry loops burned $%s (%.0f%% of spend)"
             % ("{:,.2f}".format(retry_dollars), retry_share * 100),
             "Yield is %.0f%%: %s across %s, and the "
-            "discarded paths cost real money, not just tokens.%s"
+            "discarded paths cost real money, not just tokens.%s "
+            "Breakdown (ties to the waste lens): $%.2f model/retry "
+            "spend on discarded paths — $%.2f from failed attempts "
+            "(no terminal path), $%.2f retry-flagged steps on "
+            "successful attempts, $%.2f on outcome-unknown attempts "
+            "— plus $%.2f retry-path tool spend."
             % (p["yield_ratio"] * 100, _plural(p["retries"], "retry", "retries"),
-               _plural(n, "attempt"), reason_bit),
+               _plural(n, "attempt"), reason_bit,
+               p["cost_retry_path"],
+               p.get("cost_retry_path_failed", 0.0),
+               p.get("cost_retry_path_success", 0.0),
+               p.get("cost_retry_path_unknown", 0.0),
+               p.get("cost_retry_tools", 0.0)),
             retry_dollars, action))
 
     # 4. Human labor dominance.

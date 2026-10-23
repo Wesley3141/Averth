@@ -44,10 +44,21 @@ def report_text(p, token_dashboard_per_success=None):
     _estimated = _dq.get("estimated", 0.0)
     _billed = _dq.get("billed", 0.0)
     if _estimated > 0 or p.get("unpriced_spend", 0.0) > 0:
+        # Wave 5: the ESTIMATED reason is now a composition, not a
+        # single guess — fallback prices, vendor prices applied to
+        # estimated tokens, and/or built-in tool estimates can all
+        # contribute, and the banner must name each one that does.
+        _reasons = []
         _unpriced = p.get("unpriced_models", [])
-        _reason = ("fallback prices (unpriced models: %s)"
-                   % ", ".join(_unpriced)) if _unpriced else (
-                       "built-in tool estimates")
+        if _unpriced:
+            _reasons.append("fallback prices (unpriced models: %s)"
+                            % ", ".join(_unpriced))
+        if p.get("estimated_token_spend", 0.0) > 0:
+            _reasons.append("vendor list prices applied to estimated "
+                            "token counts (not recorded usage)")
+        if not _reasons:
+            _reasons.append("built-in tool estimates")
+        _reason = "; ".join(_reasons)
         L.append("COST BASIS: ESTIMATED — %s of spend uses %s. "
                  "Remaining priced dollars apply vendor list prices to "
                  "trace-supplied token counts that Averth does not verify "
@@ -162,13 +173,20 @@ def report_text(p, token_dashboard_per_success=None):
     dq = p.get("data_quality") or {}
     L.append("Data quality (every dollar by provenance):")
     # Formerly "Measured (tokens x vendor prices)". Renamed: a priced
-    # bucket is not a measured one (see COST BASIS above).
-    L.append("  Priced (tokens x vendor prices; token provenance unverified): %s"
+    # bucket is not a measured one (see COST BASIS above). Wave 5:
+    # the Priced bucket now holds only vendor prices on token counts
+    # NOT flagged estimated; spend on estimated tokens is in
+    # Estimated and is broken out on its own line when present.
+    L.append("  Priced (vendor prices on recorded tokens; legacy traces "
+             "without a provenance flag still land here): %s"
              % dollars(dq.get("measured", 0.0)))
     L.append("  Vendor-supplied (billed):          %s"
              % dollars(dq.get("billed", 0.0)))
-    L.append("  Estimated (fallback prices):       %s"
-             % dollars(dq.get("estimated", 0.0)))
+    L.append("  Estimated (fallback prices, estimated tokens, tool "
+             "estimates): %s" % dollars(dq.get("estimated", 0.0)))
+    if p.get("estimated_token_spend", 0.0) > 0:
+        L.append("    of which vendor prices on estimated tokens: %s"
+                 % dollars(p["estimated_token_spend"]))
     unknown_calls = dq.get("unknown_calls", 0)
     if unknown_calls:
         L.append("  Unknown: %d call%s with no usage data (recorded $0.00 — "
@@ -181,6 +199,21 @@ def report_text(p, token_dashboard_per_success=None):
     if _zero_tokens:
         L.append("  1. Context compounding: n/a (no tokens recorded; "
                  "not a cost report)")
+    elif p.get("context_tax_incomplete") and p["context_tax"] == 0:
+        # Wave 5: fallback/billed calls record in_price 0.0, so the tax
+        # loop skips them and a $0.00 tax on large growth is uncomputed,
+        # not free. Never print $0.00 here.
+        L.append("  1. Context compounding: %s input growth first-to-last step; "
+                 "context tax n/a (input prices missing for fallback/billed "
+                 "calls, so the tax cannot be computed — growth is not free)"
+                 % ("%.1fx" % p["avg_context_growth"]))
+    elif p.get("context_tax_incomplete"):
+        L.append("  1. Context compounding: %s input growth first-to-last step; "
+                 "context tax %s (%.0f%% of model spend; partial — "
+                 "fallback/billed calls excluded)"
+                 % ("%.1fx" % p["avg_context_growth"],
+                    dollars(p["context_tax"]),
+                    p["context_tax_share_of_model"] * 100))
     else:
         L.append("  1. Context compounding: %s input growth first-to-last step; "
                  "context tax %s (%.0f%% of model spend)"
@@ -243,6 +276,12 @@ def report_text(p, token_dashboard_per_success=None):
     L.append("  Retry path:    %s model+retry spend on discarded paths "
              "(overlaps failed runs)"
              % dollars(p["cost_retry_path"]))
+    # Wave 5 tie-out: the retry finding adds retry-path tool spend to
+    # this figure; print it here so the two numbers reconcile exactly.
+    if p.get("cost_retry_tools", 0.0) > 0:
+        L.append("  Retry-path tools: %s tool spend on discarded paths "
+                 "(the retry finding adds this to the retry-path line)"
+                 % dollars(p["cost_retry_tools"]))
     if p["reopened"]:
         L.append("  Reopened:      %s (%.0f%% of spend)"
                  % (dollars(p["cost_reopened"]),
@@ -438,10 +477,20 @@ def write_html(path, tracker, policy_sim=None, token_dashboard_per_success=None)
     _est_html = _dq_html.get("estimated", 0.0)
     _billed_html = _dq_html.get("billed", 0.0)
     if _est_html > 0 or p.get("unpriced_spend", 0.0) > 0:
+        # Wave 5: same reason composition as the text report.
+        _reasons_html = []
         _unpriced_html = p.get("unpriced_models", [])
-        _reason_html = ("fallback prices (unpriced models: %s)"
-                        % _html.escape(", ".join(_unpriced_html))
-                        ) if _unpriced_html else "built-in tool estimates"
+        if _unpriced_html:
+            _reasons_html.append(
+                "fallback prices (unpriced models: %s)"
+                % _html.escape(", ".join(_unpriced_html)))
+        if p.get("estimated_token_spend", 0.0) > 0:
+            _reasons_html.append(
+                "vendor list prices applied to estimated token counts "
+                "(not recorded usage)")
+        if not _reasons_html:
+            _reasons_html.append("built-in tool estimates")
+        _reason_html = "; ".join(_reasons_html)
         cost_basis_banner = (
             '<div class="warn"><b>Cost basis: ESTIMATED.</b> %s of spend '
             'uses %s. Remaining priced dollars apply vendor list '
@@ -515,11 +564,18 @@ def write_html(path, tracker, policy_sim=None, token_dashboard_per_success=None)
         "%d call%s with no usage data (shown as $0.00 &mdash; not free "
         "inference)" % (unknown_calls, "s" if unknown_calls != 1 else "")
         if unknown_calls else "none")
+    _est_token_line = (
+        '<li>Of estimated, vendor prices on estimated tokens: %s</li>'
+        % dollars(p.get("estimated_token_spend", 0.0))
+        ) if p.get("estimated_token_spend", 0.0) > 0 else ""
     data_quality_block = (
         '<h2>Data quality</h2><ul class="layers">'
-        '<li><b>Priced</b> (tokens &times; vendor prices; token provenance unverified): %s</li>'
+        '<li><b>Priced</b> (vendor prices on recorded tokens; legacy '
+        'traces without a provenance flag still land here): %s</li>'
         '<li><b>Vendor-supplied</b> (billed): %s</li>'
-        '<li><b>Estimated</b> (fallback prices): %s</li>'
+        '<li><b>Estimated</b> (fallback prices, estimated tokens, tool '
+        'estimates): %s</li>'
+        '%s'
         '<li><b>Unknown:</b> %s</li>'
         '</ul><p class="fineprint">Provenance buckets partition model and '
         'tool spend. Layers below explain that spend; they are not additional '
@@ -527,6 +583,7 @@ def write_html(path, tracker, policy_sim=None, token_dashboard_per_success=None)
         % (dollars(dq.get("measured", 0.0)),
            dollars(dq.get("billed", 0.0)),
            dollars(dq.get("estimated", 0.0)),
+           _est_token_line,
            unknown_line))
     # C3: never let the default labor assumption pass silently in the
     # visual report either.
@@ -717,6 +774,23 @@ footer { margin-top: 24px; font-size: 12px; color: #8a94a1; text-align: center; 
                          + " of spend, zero outcomes"),
         "context_layer": ("n/a (no tokens recorded; not a cost report)"
                           if _zero_tokens_html
+                          else ("%.1fx input growth, first to last step. "
+                                "Context tax: <b>n/a</b> (input prices "
+                                "missing for fallback/billed calls, so the "
+                                "tax cannot be computed — growth is not "
+                                "free)."
+                                % p["avg_context_growth"]
+                                ) if (p.get("context_tax_incomplete")
+                                      and p["context_tax"] == 0)
+                          else ("%.1fx input growth, first to last step. "
+                                "Context tax: <b>%s</b> (%.0f%% of model "
+                                "spend; partial — fallback/billed calls "
+                                "excluded) vs a flat-context "
+                                "counterfactual."
+                                % (p["avg_context_growth"],
+                                   dollars(p["context_tax"]),
+                                   p["context_tax_share_of_model"] * 100)
+                                ) if p.get("context_tax_incomplete")
                           else "%.1fx input growth, first to last step. "
                           "Context tax: <b>%s</b> (%.0f%% of model spend) "
                           "vs a flat-context counterfactual."

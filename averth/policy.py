@@ -31,6 +31,9 @@ LEDGER_ATTEMPT_KEYS = (
     "cached_tokens", "cache_savings",
     # cost-basis accumulators (provenance buckets that survive export)
     "billed_cost", "estimated_model_cost",
+    # Wave 5: priced-model spend on estimated tokens, and whether the
+    # context tax skipped fallback/billed steps (tax incomplete, not $0).
+    "estimated_token_cost", "context_tax_incomplete",
     "success", "outcome_inferred", "outcome_unknown", "reopened",
     "business_value", "per_model",
     "tool_latency_ms",
