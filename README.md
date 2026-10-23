@@ -67,16 +67,16 @@ Attempts above p95 with their dominant driver, ranked by dollars. Cost anomalies
 
 - **No outcome labels, no cost-per-success.** Without accepted-outcome labels joined to traces, cost per successful outcome renders as UNKNOWN. An error-free trace is not an accepted outcome.
 - **Missing usage is flagged, never zero-filled.** Calls with no token data are recorded at $0.00 and labeled unknown, with a loud warning — never presented as free.
-- **Prices are versioned and dated.** Every report stamps the price-table vintage; a warning fires when the table is older than 90 days.
+- **Prices are versioned and dated.** Every report stamps the price-table vintage (currently v8, dated 2026-10-23); a warning fires when the table is older than 90 days.
 - **Read-only.** The meter makes no network calls and exfiltrates no data. The ledger contains cost/token/timing metadata only — no prompts, completions, or tool payloads.
 
 ## Repository layout
 
 ```
 averth/            the package (tracker, importers, reporting, policy sim)
-tests/             334 tests, including an adversarial chaos suite
+tests/             412 passing, 1 skipped, including an adversarial chaos suite
 pilot-sim/         clean-install prospect simulation (fake traces, all formats)
-examples/          demo.py — simulated 2,000-ticket month across all five layers
+examples/          demo.py — simulated 2,000-ticket month across all five layers; validated-diagnoses/ — the 40-POC outreach-ready index plus all 43 counted A-lane POC files (see examples/validated-diagnoses/README.md for what the dollars are not)
 docs/              QUICKSTART, PILOT, VALIDATION, and design docs
 benchmark/         pinned-ticket benchmark + deployment-gate shadow harness
 validation-traces/ saved trace fixtures with expected outputs
