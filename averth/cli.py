@@ -1,7 +1,7 @@
 """Command line interface for averth.
 
 Usage:
-    averth trace <file> --format otel|langsmith|jsonl|langfuse|claude [--html PATH]
+    averth trace <file> --format otel|langsmith|jsonl|langfuse|claude|codex [--html PATH]
                  [--policy-cap FLOAT] [--policy-yield FLOAT] [--agent NAME]
     averth simulate --attempts N --seed S [--jsonl PATH] [--html PATH]
                  [--agent NAME]
@@ -39,7 +39,10 @@ def _importer_for(fmt):
     if fmt == "claude":
         from averth.importers import claude as mod
         return mod.load_claude, "averth.importers.claude"
-    raise ValueError("unsupported format: %r (use otel, langsmith, langfuse, jsonl, or claude)"
+    if fmt == "codex":
+        from averth.importers import codex as mod
+        return mod.load_codex, "averth.importers.codex"
+    raise ValueError("unsupported format: %r (use otel, langsmith, langfuse, jsonl, claude, or codex)"
                      % (fmt,))
 
 
@@ -49,7 +52,7 @@ def build_parser():
     t = sub.add_parser("trace", help="Build a P&L report from an agent trace file.")
     t.add_argument("file", help="Trace file to parse.")
     t.add_argument("--format", required=True,
-                   choices=["otel", "langsmith", "langfuse", "jsonl", "claude"],
+                   choices=["otel", "langsmith", "langfuse", "jsonl", "claude", "codex"],
                    help="Trace format.")
     t.add_argument("--html", default=None, metavar="PATH",
                    help="HTML report output path (default: <inputfile>.html in cwd).")
@@ -89,7 +92,7 @@ def build_parser():
                             "Bring your own API key.")
     a.add_argument("file", help="Trace file to parse.")
     a.add_argument("--format", required=True,
-                   choices=["otel", "langsmith", "langfuse", "jsonl", "claude"],
+                   choices=["otel", "langsmith", "langfuse", "jsonl", "claude", "codex"],
                    help="Trace format.")
     a.add_argument("--mode", default="recommend",
                    choices=["recommend", "explain", "investigate"],

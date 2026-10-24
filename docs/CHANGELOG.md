@@ -18,6 +18,21 @@
 
 ### Added
 
+- Codex CLI rollout importer (`averth trace <file> --format codex`,
+  also accepted by `averth advise --format codex`): one rollout file
+  at a time, never a directory. Codex token_count snapshots are
+  cumulative, so the importer counts deltas between snapshots;
+  the model comes from turn_context, and a token_count seen before
+  any turn_context is priced at the documented fallback estimate
+  and flagged unpriced. Compaction resets the baseline instead of
+  going negative. Tool records are not emitted as spend, no retry
+  is inferred, and every case ends outcome-unknown, so no
+  cost-per-success is quoted from a Codex import alone. The
+  rollout format is undocumented and changes across versions, so
+  the importer accepts both payload-wrapped and flattened lines
+  and validates loudly; dollars are list-price estimates until
+  checked against a real Codex bill, and subagent rollouts with a
+  replayed parent prefix can overcount (flagged in stats).
 - Price table v7 (verified 2026-10-23 from each vendor's own pricing
   page; `PRICE_TABLE_UPDATED` 2026-10-23, America/Chicago local date):
   OpenAI `gpt-4o-2024-05-13` ($2.50/$10.00, $1.25 cached) and

@@ -40,7 +40,7 @@ pip install git+https://github.com/Wesley3141/Averth.git
 averth trace run-2026-09.json --format langfuse --html report.html
 ```
 
-Supported formats: `langfuse`, `langsmith`, `otel`, `jsonl`, `claude` (Claude Code session JSONL, one session file at a time; see the importer docstring for its cache and sidechain limits). The text receipt prints to stdout; `--html` writes a shareable report.
+Supported formats: `langfuse`, `langsmith`, `otel`, `jsonl`, `claude` (Claude Code session JSONL, one session file at a time; see the importer docstring for its cache and sidechain limits), `codex` (Codex CLI rollout JSONL, one rollout file at a time; token_count snapshots are cumulative, so the importer counts deltas, and the model comes from turn_context; see the importer docstring for its compaction, subagent, and pricing limits). The text receipt prints to stdout; `--html` writes a shareable report.
 
 **Want the AI read on it?** Bring your own key, get the recommendation:
 
