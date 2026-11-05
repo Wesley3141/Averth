@@ -1,0 +1,1 @@
+{"allowed_flags":["test"],"allowed_relative_paths":[],"approved_by":"operator name, fill in before use","approved_date":"2026-11-04","commands":[{"command":"npm test","label":"npm tests"}],"runner":"npm","sandbox":"run only in the repo checkout, operator watches output, no network assumed","timeout_seconds":300,"workflow":"example-app npm tests"}

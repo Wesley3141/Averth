@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "averth-evidence"
+version = "0.2.0"
+description = "Averth V0 evidence verifier: local-first, read-only retrospective evidence verifier for coding-agent work"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.9"
+dependencies = []
+
+[project.scripts]
+averth-evidence = "cli:main"
+
+[project.urls]
+Homepage = "https://github.com/Wesley3141/Averth"
+
+[tool.setuptools]
+py-modules = [
+    "cli",
+    "trace_adapter",
+    "requirement_spec",
+    "evidence_ledger",
+    "verifier",
+    "reporter",
+    "recorded_run_converter",
+    "runner_allowlist",
+    "allowlist_runner",
+    "pr_evidence_converter",
+    "pr_live_fetch",
+    "trace_normaliser",
+    "timestamp_capture",
+    "artifact_snapshot",
+]
+
+[tool.setuptools.package-data]
+"*" = ["examples/*.json", "examples/*.log", "examples/*.md"]

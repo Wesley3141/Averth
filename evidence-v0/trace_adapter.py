@@ -13,8 +13,21 @@ Two input shapes, both local files the operator names:
 No network, no model calls, no credentials.
 """
 import json
+import os
+import re
 import shlex
 from pathlib import Path
+
+# Fix 2026-11-04 (Gap 0, generality review): the previous version dropped
+# the first token unconditionally, so "npm test", "cargo test" and
+# "make test" all normalised to "test" and could all cite the same npm
+# run. Only a Python interpreter token may be dropped; every other
+# first token is part of the command and must be kept.
+_PYTHON_INTERPRETER_RE = re.compile(r"^python(\d+(\.\d+)*)?(\.exe)?$")
+
+
+def _is_python_interpreter(token):
+    return bool(_PYTHON_INTERPRETER_RE.match(os.path.basename(token)))
 
 
 def normalize_command(command):
@@ -24,6 +37,8 @@ def normalize_command(command):
     and under bare ``python`` is the same check. Everything after the
     interpreter (executable, args, targets) must match exactly.
     The raw command is always retained alongside the normalised form.
+    Non-Python first tokens (npm, cargo, make, go, pytest, ...) are
+    kept: dropping them collapsed distinct runners onto one another.
     """
     if isinstance(command, (list, tuple)):
         parts = [str(p) for p in command]
@@ -31,7 +46,9 @@ def normalize_command(command):
         parts = shlex.split(str(command))
     if not parts:
         return ""
-    return " ".join(parts[1:])
+    if len(parts) > 1 and _is_python_interpreter(parts[0]):
+        return " ".join(parts[1:])
+    return " ".join(parts)
 
 
 def sha256_text(text):
