@@ -1,9 +1,9 @@
-# Install Averth V0 evidence verifier, branch checkout
+# Install Averth V0 evidence verifier, master checkout
 
-Status: branch checkout install only. This tool is NOT
+Status: master checkout install only. This tool is NOT
 published to PyPI yet. Do not tell a customer it is on
 PyPI, and do not install it from PyPI, because no such
-release exists. The install below uses the branch checkout
+release exists. The install below uses the master checkout
 itself, which is the only verified install path in wave 2.
 
 ## Requirements
@@ -16,16 +16,13 @@ itself, which is the only verified install path in wave 2.
   environment with pip install pytest, or pass a python
   that already has pytest with cli.py --python.
 
-## Install from a branch checkout, tested path
+## Install from a master checkout, tested path
 
-Wave 2 is uncommitted in the branch checkout, so the
-clone path below is NOT yet a working install path: a
-fresh clone does not contain the uncommitted wave 2
-packaging files, and pip install ./evidence-v0 would
-fail there. The clone path becomes valid only after
-wave 2 is committed and pushed. The currently tested
-path is a local checkout install, using a checkout
-that already contains the wave 2 files:
+Wave 2 is merged to master (commit ceee254, PR 2), so the
+clone path below is a working install path: a fresh clone
+of master contains the wave 2 packaging files. The tested
+path is a master checkout install, verified by a fresh-clone
+smoke test on 2026-11-05:
 
 ```bash
 python3 -m venv .venv-evidence
@@ -133,9 +130,8 @@ writes only to the --out directory the operator names.
 
 ## Wave 3: universal ingest, generic allowlist, observe mode
 
-Wave 3 is uncommitted in the branch checkout, so the clone
-path above is still not a working install path until wave 3
-is committed and pushed. The local checkout install path is
+Wave 3 is merged to master (commit 36ab10d, PR 2, merge a50f7a0), so the clone
+path above is a working install path. The master checkout install path is
 unchanged. Once installed, wave 3 adds three modes, all
 local, none of them a verdict by itself:
 

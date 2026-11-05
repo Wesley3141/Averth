@@ -188,8 +188,7 @@ evaluation environment, never local credentials.
 
 ## Wave 2 build status, 2026-11-05, branch checkout, uncommitted
 
-Built in this wave, in the branch checkout only, not merged
-to master, not pushed, not deployed, not published to PyPI:
+Built in this wave, merged to master in PR 2 (commit 36ab10d, merge a50f7a0), not deployed, not published to PyPI:
 
 - Install packaging: evidence-v0/pyproject.toml, package
   averth-evidence, version 0.2.0, console script
@@ -251,10 +250,9 @@ a prod-ready product, and no customer install should be
 promised on the basis of it until reviewers verify wave
 2 and a real workflow is run.
 
-## Wave 3 build status, 2026-11-05, branch checkout, uncommitted
+## Wave 3 build status, 2026-11-05, merged to master
 
-Built in this wave, in the branch checkout only, not merged
-to master, not pushed, not deployed, not published to PyPI:
+Built in this wave, merged to master in PR 2 (commit 36ab10d, merge a50f7a0), not deployed, not published to PyPI:
 
 - Universal ingestion, universal_ingest.py: accept JSON,
   JSON array, JSONL, pretty printed JSON, plain text logs,
@@ -265,10 +263,23 @@ to master, not pushed, not deployed, not published to PyPI:
   verbatim, and unknown fields are preserved in the run
   record. A new format is a new adapter in that module,
   not a rewrite of the verifier.
-- Runner detection across languages: pytest, npm, yarn,
-  pnpm, cargo, go, make, gradle, maven, dotnet, phpunit,
-  rspec, jest, vitest, shell scripts, docker runs, and any
-  other command through a generic runner path. A check is
+- Span and event rules: a span becomes a run only when its
+  attributes carry an explicit command; a span name alone is
+  never promoted to a command. A meter style event is kept
+  as an event, not a run, unless it also carries a command;
+  a command-bearing event with no exit code becomes a run
+  recorded with a missing exit code, never assumed to have
+  passed. For span records, status code maps to an exit code
+  only as OK to 0, ERROR to 1, and UNSET to missing; UNSET
+  never becomes a pass or a fail.
+- Runner detection across languages: pytest, python, python3,
+  npm, yarn, pnpm, node, cargo, go, make, gradle, gradlew,
+  maven, mvn, dotnet, phpunit, php, rspec, ruby, jest, vitest,
+  bun, deno, ctest, bazel, buck2, swift, xcodebuild, sh, bash,
+  zsh, docker, podman, tox, nox, and any other command through
+  a generic runner path. A .sh script path maps to shell, and
+  a literal shell first token is generic, not a known runner;
+  any other first token is generic, not a failure. A check is
   judged only from its own exact command run, never from
   another runner's run. Missing exit codes are NOT
   OBSERVED, never FAILED and never VERIFIED.
@@ -288,7 +299,8 @@ to master, not pushed, not deployed, not published to PyPI:
   and artifacts with zero human judgments, which never
   passes. With --infer-checks, observed commands become
   INFERRED rows, always NOT OBSERVED, labelled inferred,
-  never human acceptance, never VERIFIED.
+  never human acceptance, never VERIFIED. Each inferred row
+  carries the flag inferred_not_human.
 - Artifact handling for any repo: snapshot_repo already
   digests every file type with SHA-256, and wave 3 tests
   cover Rust, JavaScript, and binary artifacts. Remote

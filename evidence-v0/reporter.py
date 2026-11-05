@@ -65,7 +65,7 @@ def build_markdown(ledger):
     lines.append("## Judgments")
     lines.append("")
     for j in ledger["judgments"]:
-        lines.append(f"### {j['criterion_id']} — {j['criterion_text']}")
+        lines.append(f"### {j['criterion_id']}: {j['criterion_text']}")
         lines.append(f"- Status: **{j['status']}**. Trust tier: {j['trust_tier']}. Evidence source: {j['evidence_source']}. Evidence ID: {j['evidence_id']}.")
         for field in ("command", "working_directory", "start_timestamp", "end_timestamp",
                       "exit_code", "output_digest", "artifact_digest", "test_target", "after_final_edit"):
