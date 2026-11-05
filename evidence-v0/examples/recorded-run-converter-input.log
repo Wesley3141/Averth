@@ -1,0 +1,17 @@
+label: npm run
+command: npm test
+working_directory: /tmp/example-app
+start_timestamp: 2026-11-04T20:00:00Z
+end_timestamp: 2026-11-04T20:05:00Z
+exit_code: 0
+stdout: ok
+stderr:
+
+label: cargo run
+command: cargo test
+working_directory: /tmp/example-app
+start_timestamp: 2026-11-04T20:00:00Z
+end_timestamp: 2026-11-04T20:06:00Z
+exit_code: 1
+stdout:
+stderr: 1 test failed
