@@ -36,10 +36,14 @@ from pathlib import Path
 from evidence_ledger import is_superseded, parse_time, sha256_text
 from trace_adapter import normalize_command
 
-# Execution allowlist for --execute mode. The ONLY commands this tool
-# will ever run are pytest invocations whose arguments are relative
-# test paths/nodes inside the repo. No shell, no arbitrary command
-# from a README, PR, issue, or transcript is ever executed.
+# Execution allowlist for --execute mode. Without an allowlist file,
+# the ONLY commands this tool will ever run are pytest invocations
+# whose arguments are relative test paths/nodes inside the repo.
+# With an operator-written allowlist file (cli --allowlist), any
+# command listed exactly, token for token, may run, any runner,
+# with the destructive-command review warning in run_via_allowlist.
+# No shell, no arbitrary command from a README, PR, issue, or
+# transcript is ever executed.
 ALLOWED_PYTEST_FLAGS = {"-q", "-v", "--tb=short", "--tb=line"}
 
 
@@ -64,6 +68,57 @@ def execute_allowed(command_str, repo_path, interpreter=None):
         if not (repo / arg.split("::")[0]).exists():
             return None
     return [interpreter or sys.executable] + parts[1:]
+
+
+def run_via_allowlist(command_str, repo_path, allowlist):
+    """Execute one command listed exactly in an allowlist file.
+
+    Wave 3 generic execution path: unlike run_allowlisted,
+    which is pytest only, this path works for any runner,
+    because the gate is exact listing, not the runner name.
+    The operator must have written the allowlist, named an
+    approver, and the caller must pass the loaded allowlist
+    dict. A command not listed exactly is refused, never
+    run. Warning, kept verbatim from wave 1: an allowlist
+    does not make a command safe in general. If the listed
+    command itself deletes files, it will run, because the
+    operator approved that exact command. Review the listed
+    commands before approving them, and never approve a
+    list copied from an untrusted source. Quoting limit:
+    listed commands are split with shlex, so prefer script
+    files over -c code.
+    """
+    import shlex as _shlex
+    from runner_allowlist import validate_command as _validate
+    entry = _validate(command_str, allowlist)
+    if entry is None:
+        raise ValueError(f"command is not in the allowlist, not run: {command_str!r}")
+    argv_list = _shlex.split(command_str)
+    repo = Path(repo_path).resolve()
+    start = datetime.now(timezone.utc)
+    try:
+        proc = subprocess.run(argv_list, cwd=str(repo), capture_output=True,
+                              text=True, timeout=allowlist.get("timeout_seconds", 300))
+        output, exit_code = proc.stdout + proc.stderr, proc.returncode
+        stdout, stderr = proc.stdout, proc.stderr
+    except subprocess.TimeoutExpired as exc:
+        output = (exc.stdout or "") + (exc.stderr or "")
+        exit_code, stdout, stderr = 124, exc.stdout or "", exc.stderr or ""
+    end = datetime.now(timezone.utc)
+    return {
+        "label": entry.get("label", command_str),
+        "command_raw": command_str,
+        "command_normalized": normalize_command(command_str),
+        "working_directory": str(repo),
+        "start_timestamp": start.isoformat(),
+        "end_timestamp": end.isoformat(),
+        "exit_code": exit_code,
+        "output_digest": sha256_text(output),
+        "stdout": stdout,
+        "stderr": stderr,
+        "source": "allowlist_recorder",
+        "trust_tier": 2,
+    }
 
 
 def run_allowlisted(command_str, repo_path, interpreter=None):
@@ -129,6 +184,27 @@ def judge(check, runs, snapshot, final_edit_marker):
         return row
 
     ctype = check.get("check_type")
+    if ctype == "inferred":
+        # Wave 3: an inferred check is never a human check and
+        # never a pass. It records that a command was observed,
+        # and stays NOT OBSERVED, so a workflow with no human
+        # checks can never pass by inference alone.
+        row["status"] = "NOT OBSERVED"
+        row["evidence_source"] = "inferred"
+        row["trust_tier"] = None
+        row["flags"].append("inferred_not_human")
+        row["scope_limitation"] = (
+            "INFERRED, not human acceptance: this row was generated "
+            "from an observed command, not written by a human, and "
+            "it is never VERIFIED and never presented as acceptance."
+        )
+        row["recommended_next_action"] = (
+            "Supply 3 to 5 human-written checks, or a named human "
+            "confirmation, if this behaviour is to be judged."
+        )
+        row["after_final_edit"] = None
+        return row
+
     if ctype == "recorded_run":
         wanted = normalize_command(check["required_command"])
         candidates = [r for r in runs if r["command_normalized"] == wanted]
@@ -149,6 +225,17 @@ def judge(check, runs, snapshot, final_edit_marker):
             row["output_digest"] = run["output_digest"]
             row["test_target"] = check.get("test_target")
             row["after_final_edit"] = True
+            if run["exit_code"] is None:
+                # Wave 3: a missing exit code is unknown, never
+                # a pass and never a failure. It cannot decide
+                # a check, so the check stays NOT OBSERVED.
+                row["status"] = "NOT OBSERVED"
+                row["flags"].append("missing_exit_code")
+                row["recommended_next_action"] = (
+                    "Re-record the run with an exit code; a run "
+                    "without an exit code cannot decide a check."
+                )
+                return row
             if run["exit_code"] == 0:
                 row["status"] = "VERIFIED"
                 # Digest check: observed state must match the expected
@@ -167,12 +254,25 @@ def judge(check, runs, snapshot, final_edit_marker):
                 row["status"] = "FAILED"
             return row
         if candidates:
-            row["flags"].append("superseded_only")
-            row["recommended_next_action"] = (
-                "Re-run the prescribed command after the final edit and "
-                "record the new run; the superseded run is retained in "
-                "history and is never cited."
-            )
+            # Distinguish the two honest reasons for no cited
+            # run: a parseable run before the marker is
+            # superseded, a run with no parseable start is
+            # not citable for a different reason. Labelling
+            # the second case superseded_only was misleading.
+            if any(parse_time(r.get("start_timestamp")) is not None
+                   for r in candidates):
+                row["flags"].append("superseded_only")
+                row["recommended_next_action"] = (
+                    "Re-run the prescribed command after the final edit and "
+                    "record the new run; the superseded run is retained in "
+                    "history and is never cited."
+                )
+            else:
+                row["flags"].append("no_parseable_timestamp")
+                row["recommended_next_action"] = (
+                    "Re-record the run with a parseable start timestamp; "
+                    "a run without one is retained but never cited."
+                )
         else:
             row["recommended_next_action"] = (
                 "Run the prescribed command in an instrumented run and "

@@ -250,3 +250,86 @@ with a tested install path, but it is not, by itself,
 a prod-ready product, and no customer install should be
 promised on the basis of it until reviewers verify wave
 2 and a real workflow is run.
+
+## Wave 3 build status, 2026-11-05, branch checkout, uncommitted
+
+Built in this wave, in the branch checkout only, not merged
+to master, not pushed, not deployed, not published to PyPI:
+
+- Universal ingestion, universal_ingest.py: accept JSON,
+  JSON array, JSONL, pretty printed JSON, plain text logs,
+  OpenTelemetry style span records, and meter style event
+  records, without requiring the sender to pre-convert to
+  ledger shape. Format is detected from content, not from
+  file extension. Original record IDs, command strings
+  verbatim, and unknown fields are preserved in the run
+  record. A new format is a new adapter in that module,
+  not a rewrite of the verifier.
+- Runner detection across languages: pytest, npm, yarn,
+  pnpm, cargo, go, make, gradle, maven, dotnet, phpunit,
+  rspec, jest, vitest, shell scripts, docker runs, and any
+  other command through a generic runner path. A check is
+  judged only from its own exact command run, never from
+  another runner's run. Missing exit codes are NOT
+  OBSERVED, never FAILED and never VERIFIED.
+- Generic executed mode: cli.py --execute with an
+  operator-written --allowlist file runs any exactly
+  listed command, any runner (one runner per allowlist file),
+  with a confirmation style
+  exact match gate. Without an allowlist, --execute stays
+  pytest only. The destructive command review warning is
+  kept: a listed destructive command will run, because
+  the operator approved that exact command. Review a list
+  before approving it, and never approve a list copied
+  from an untrusted source. Quoting limit kept: prefer
+  script files over -c code.
+- No test workflows: cli.py without --checks runs in
+  observe only mode, producing a ledger of observed runs
+  and artifacts with zero human judgments, which never
+  passes. With --infer-checks, observed commands become
+  INFERRED rows, always NOT OBSERVED, labelled inferred,
+  never human acceptance, never VERIFIED.
+- Artifact handling for any repo: snapshot_repo already
+  digests every file type with SHA-256, and wave 3 tests
+  cover Rust, JavaScript, and binary artifacts. Remote
+  URLs are still rejected as digests. Missing artifacts
+  in a recorded run context are NOT OBSERVED, not
+  assumed present. Note: artifact_presence checks still
+  return FAILED when the tool itself scans and finds the
+  file absent, because that scan is evidence, not absence
+  of a record. That distinction is documented in the
+  verifier rules and is not changed by wave 3.
+- Timestamps for any format: ISO, common space and
+  slash date forms, and epoch seconds, milliseconds,
+  microseconds, and nanoseconds. Unparseable timestamps
+  are kept as raw text, the run is not citable, and no
+  timestamp is ever invented.
+- Failure tolerance: malformed lines, unknown fields,
+  unknown runners, missing exit codes, and mixed
+  language runs all produce a ledger, not a crash, with
+  unparseable counts, generic runner counts, missing
+  exit code counts, and unknown rate reported.
+- Tests: 53 passed, 0 failed, with the Averth repo venv
+  python, 32 before wave 3 plus 21 new wave 3 tests,
+  covering Python, Node, Rust, Go, shell, a multi
+  language repo, a frontend build and lint run, a run
+  with no tests, a run with no exit code, a malformed
+  JSONL file, and an OpenTelemetry style trace. Each
+  fixture has an expected ledger count in its test.
+
+Still true after wave 3, stated in plain language, and
+still a limit on any prod claim: unknown inputs are
+reported as unknown, not judged. A ledger is not proof
+of correctness, acceptance, value, time saved, or
+willingness to pay. V0 has still not run on a real
+developer workflow with permission and scope. Zero live
+benchmarks, zero paying customers, no validated repair,
+no measured improvement, no measured saving. The live
+PR fetch is still mocked only, not live verified. A
+workflow that is completely different from every
+fixture is not proven by fixtures: wave 3 makes the
+tool ingest it without crashing and report what is
+unknown, it does not make the tool judge it correctly
+without human checks, a repo snapshot, timestamps,
+and permission. No customer, savings, repair, or
+validation claim is made on the basis of this wave.

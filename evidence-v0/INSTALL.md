@@ -130,3 +130,70 @@ do not edit the expected count to match a new run.
 
 No other system change is made by the install. The tool
 writes only to the --out directory the operator names.
+
+## Wave 3: universal ingest, generic allowlist, observe mode
+
+Wave 3 is uncommitted in the branch checkout, so the clone
+path above is still not a working install path until wave 3
+is committed and pushed. The local checkout install path is
+unchanged. Once installed, wave 3 adds three modes, all
+local, none of them a verdict by itself:
+
+Universal ingest, any supported input shape, never executed:
+
+```bash
+averth-evidence --repo repo --checks checks.json \
+  --ingest runs.jsonl --ingest trace.json --out out
+```
+
+Ingest accepts JSON, JSON array, JSONL, pretty printed
+JSON, plain text logs, OpenTelemetry style spans, and
+meter style events, detected from content. Malformed
+records are counted, not crashed on, and missing exit
+codes stay NOT OBSERVED.
+
+Generic executed mode, any runner (one runner per allowlist file), allowlist gated:
+
+```bash
+averth-evidence --repo repo --checks checks.json --execute \
+  --allowlist allowlist.json --out out
+```
+
+Without --allowlist, --execute stays pytest only. With an
+operator written allowlist, any command listed exactly,
+token for token, may run, any runner (one runner per
+allowlist file). Review the list
+before approving it. A listed destructive command will
+run, because the operator approved that exact command.
+Never approve a list copied from an untrusted source.
+
+Observe only mode, a workflow with no human checks:
+
+```bash
+averth-evidence --repo repo --ingest runs.jsonl \
+  --infer-checks --out out
+```
+
+This produces a ledger of observed runs and artifacts
+with inferred rows only. Inferred rows are always NOT
+OBSERVED, labelled not human acceptance, and never a pass.
+A workflow with no human checks must not pass, and this
+mode does not change that.
+
+## Wave 3 limits, in plain language
+
+Wave 3 does not change the limits that matter for any
+prod claim. Unknown inputs are reported as unknown, not
+judged. A ledger is not proof of correctness, acceptance,
+value, time saved, or willingness to pay. V0 has still not
+run on a real developer workflow with permission and scope.
+Zero live benchmarks, zero paying customers, no validated
+repair, no measured improvement, no measured saving. The
+live PR fetch is still mocked only, not live verified.
+Ingesting a workflow without crashing is not judging it
+correctly: a workflow completely different from every
+fixture is not proven by fixtures, and judging it still
+needs human checks, a repo snapshot, timestamps, and
+permission. No customer install is promised on the basis
+of this install guide until reviewers verify wave 3 and a
+real workflow is run.

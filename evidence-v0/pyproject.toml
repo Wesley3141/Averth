@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "averth-evidence"
-version = "0.2.0"
+version = "0.3.0"
 description = "Averth V0 evidence verifier: local-first, read-only retrospective evidence verifier for coding-agent work"
 readme = "README.md"
 license = { text = "MIT" }
@@ -33,6 +33,7 @@ py-modules = [
     "trace_normaliser",
     "timestamp_capture",
     "artifact_snapshot",
+    "universal_ingest",
 ]
 
 [tool.setuptools.package-data]

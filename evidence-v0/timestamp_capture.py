@@ -63,19 +63,15 @@ EXCLUDE_DIRS = {".git", "__pycache__", ".pytest_cache", ".venv", "venv"}
 
 
 def validate_iso(value):
-    """Return a timezone-aware datetime, or None if unparseable."""
-    if value is None:
-        return None
-    if isinstance(value, datetime):
-        return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
-    text = str(value).replace("Z", "+00:00")
-    try:
-        dt = datetime.fromisoformat(text)
-    except ValueError:
-        return None
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    return dt
+    """Return a timezone-aware datetime, or None if unparseable.
+
+    Wave 3: delegates to the universal time parser, so ISO,
+    common date forms, and epoch seconds, millis, micros,
+    and nanos are all accepted. Unparseable input still
+    returns None, never an invented time.
+    """
+    from universal_ingest import parse_any_time
+    return parse_any_time(value)
 
 
 def marker_from_directory(directory, exclude_dirs=None):

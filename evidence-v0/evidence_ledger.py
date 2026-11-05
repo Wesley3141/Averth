@@ -35,18 +35,51 @@ def sha256_text(text):
 
 
 def parse_time(value):
+    """Parse ISO, common date forms, and epoch times, or None.
+
+    Wave 3 extension, backward compatible: naive ISO is still
+    treated as UTC, unparseable input still returns None and
+    is never given an invented time. Epoch seconds, millis,
+    micros, and nanos are accepted, as are space separated
+    date times and slash dates.
+    """
     if value is None:
         return None
     if isinstance(value, datetime):
-        return value
-    text = str(value).replace("Z", "+00:00")
-    try:
-        dt = datetime.fromisoformat(text)
-    except ValueError:
+        return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        v = float(value)
+        if abs(v) >= 1e18:
+            v = v / 1e9
+        elif abs(v) >= 1e15:
+            v = v / 1e6
+        elif abs(v) >= 1e12:
+            v = v / 1e3
+        try:
+            return datetime.fromtimestamp(v, tz=timezone.utc)
+        except (ValueError, OverflowError, OSError):
+            return None
+    text = str(value).strip()
+    if not text:
         return None
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    return dt
+    import re as _re
+    if _re.match(r"^-?\d+(\.\d+)?$", text):
+        return parse_time(float(text))
+    iso = text.replace("Z", "+00:00")
+    try:
+        dt = datetime.fromisoformat(iso)
+        return dt if dt.tzinfo is not None else dt.replace(tzinfo=timezone.utc)
+    except ValueError:
+        pass
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y/%m/%d %H:%M:%S",
+                "%m/%d/%Y %H:%M:%S", "%Y-%m-%d %H:%M",
+                "%d %b %Y %H:%M:%S", "%a, %d %b %Y %H:%M:%S %Z"):
+        try:
+            dt = datetime.strptime(text, fmt)
+            return dt.replace(tzinfo=timezone.utc)
+        except ValueError:
+            continue
+    return None
 
 
 def snapshot_repo(repo_path):
@@ -96,9 +129,10 @@ def git_state(repo_path):
 
 def is_superseded(run, marker):
     start = parse_time(run.get("start_timestamp"))
-    if start is None or marker is None:
+    marker_dt = parse_time(marker) if not isinstance(marker, datetime) else marker
+    if start is None or marker_dt is None:
         return False
-    return start < marker
+    return start < marker_dt
 
 
 def build_ledger(*, report_id, repo_path, checks_spec, judgments, runs,

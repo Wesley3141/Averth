@@ -39,7 +39,7 @@ an inconvenient FAILED.
 import json
 from pathlib import Path
 
-CHECK_TYPES = ("recorded_run", "artifact_presence", "external")
+CHECK_TYPES = ("recorded_run", "artifact_presence", "external", "inferred")
 
 
 def load_checks(path):
@@ -55,8 +55,8 @@ def load_checks(path):
             raise ValueError(f"check {cid}: unknown check_type {c.get('check_type')!r}")
         if c.get("applicability", "applies") not in ("applies", "not_applicable"):
             raise ValueError(f"check {cid}: bad applicability")
-        if c.get("check_type") == "recorded_run" and not c.get("required_command"):
-            raise ValueError(f"check {cid}: recorded_run needs required_command")
+        if c.get("check_type") in ("recorded_run", "inferred") and not c.get("required_command"):
+            raise ValueError(f"check {cid}: recorded_run or inferred needs required_command")
         if c.get("check_type") == "artifact_presence" and not c.get("artifact_path"):
             raise ValueError(f"check {cid}: artifact_presence needs artifact_path")
     return {

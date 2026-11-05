@@ -105,3 +105,41 @@ and a real workflow is run.
 No subscription, price, or saving is claimed. Any conversation
 that follows is discovery (does this report save review time?),
 not an invitation to test an unproven repair.
+
+**Wave 3, 2026-11-05, branch checkout, uncommitted, not merged,
+not pushed, not deployed, not published to PyPI:** universal
+ingestion for any supported input shape, in universal_ingest.py:
+JSON, JSON array, JSONL, pretty printed JSON, plain text
+logs, OpenTelemetry style spans, and meter style events,
+detected from content, with original IDs, verbatim commands,
+and unknown fields preserved. Runner detection across
+pytest, npm, yarn, pnpm, cargo, go, make, gradle, maven,
+dotnet, phpunit, rspec, jest, vitest, shell, docker, and a
+generic path for anything else. A check is judged only from
+its own exact command run. Generic executed mode with an
+operator written allowlist runs any exactly listed command,
+any runner (one runner per allowlist file); without an
+allowlist, execute stays pytest only.
+Observe only mode and inferred rows mean a workflow with no
+human checks never passes: inferred rows are always NOT
+OBSERVED and labelled not human acceptance. Timestamps in
+ISO, common date forms, and epoch seconds through nanos;
+unparseable timestamps are never invented. Malformed input,
+unknown runners, missing exit codes, and mixed language runs
+produce a ledger, not a crash. Tests are now 53 passed, 0
+failed, 32 before wave 3 plus 21 new, covering Python, Node,
+Rust, Go, shell, multi language, frontend build and lint,
+no tests, no exit code, malformed JSONL, and OpenTelemetry
+spans. After wave 3, the limits above are still true, in
+plain language: unknown inputs are reported as unknown, not
+judged, and a ledger is not proof of correctness, acceptance,
+value, time saved, or willingness to pay. No real workflow
+validation, zero live benchmarks, zero paying customers, no
+validated repair, no measured improvement or saving, and the
+live PR fetch is still mocked only, not live verified. Wave 3
+does not prove the tool on a completely different workflow:
+it proves the tool can ingest that workflow without crashing
+and can report honestly what is unknown, provided human
+checks, a snapshot, timestamps, and permission are supplied.
+No customer install is promised on the basis of this brief
+until reviewers verify wave 3 and a real workflow is run.

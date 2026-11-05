@@ -12,8 +12,16 @@ Safety:
   --out directory may live under it if the operator explicitly puts
   it there. No .claude/settings.json, git hook, CI, PR, or production
   service is ever touched.
-- Only explicitly allowlisted pytest commands are ever executed, and
-  only with --execute. Without --execute, no command runs at all.
+- Only explicitly allowlisted commands are ever executed, and
+  only with --execute. Without --allowlist, that means pytest
+  only. With an operator-written --allowlist file, any command
+  listed exactly, token for token, may run, any runner, with
+  the destructive-command review warning in verifier.py.
+  Without --execute, no command runs at all.
+- Universal ingest (--ingest) never executes anything. It
+  converts any supported input shape to ledger runs, counts
+  unparseable records, and never invents a timestamp, an
+  exit code, or a verdict.
 - No network, no model calls, no credentials, no uploads. The default
   upload set is empty; this tool has no upload path.
 - The repo path must be a real directory, and must not be the user's
@@ -29,17 +37,23 @@ from evidence_ledger import build_ledger, git_state, is_superseded, parse_time, 
 from reporter import write_outputs
 from requirement_spec import load_checks
 from trace_adapter import load_recorded_runs, load_trace_events
-from verifier import judge_all, run_allowlisted
+from universal_ingest import infer_checks_from_runs, ingest_file
+from verifier import judge_all, run_allowlisted, run_via_allowlist
 
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description="V0 local evidence verifier")
     ap.add_argument("--repo", required=True, help="Target repo / fixture directory")
-    ap.add_argument("--checks", required=True, help="Human-written acceptance-check JSON file")
+    ap.add_argument("--checks", help="Human-written acceptance-check JSON file; omit for observe-only mode, which never passes")
     ap.add_argument("--out", required=True, help="Output directory for ledger JSON + Markdown report")
     ap.add_argument("--runs", help="Recorded-run ledger JSON to import (Tier 1)")
+    ap.add_argument("--ingest", action="append", default=[],
+                    help="Universal ingest input file, any supported shape (repeatable); never executed, never a verdict by itself")
+    ap.add_argument("--allowlist", help="Operator-written allowlist JSON for --execute; any listed command, any runner, exact match only")
+    ap.add_argument("--infer-checks", action="store_true",
+                    help="Generate INFERRED rows from observed runs; inferred rows are always NOT OBSERVED, never human acceptance")
     ap.add_argument("--execute", action="store_true",
-                    help="Also execute allowlisted pytest checks in the repo and record them (Tier 2)")
+                    help="Also execute checks in the repo and record them (Tier 2): pytest only without --allowlist, any exactly listed command with --allowlist")
     ap.add_argument("--trace", help="Optional JSONL trace file, summarised only, never judged")
     ap.add_argument("--final-edit-marker", help="ISO-8601 marker; runs before it are superseded")
     ap.add_argument("--report-id", default="v0-evidence-report")
@@ -52,13 +66,25 @@ def main(argv=None):
     home = Path.home().resolve()
     if not repo.is_dir() or repo == home or repo == Path("/"):
         ap.error("--repo must be a real directory, not home or filesystem root")
-    spec = load_checks(args.checks)
-
     runs = []
     ledger_marker = None
+    ingest_summaries = []
     if args.runs:
         imported, ledger_marker = load_recorded_runs(args.runs)
         runs.extend(imported)
+    for ingest_path in args.ingest:
+        ingested, summary = ingest_file(ingest_path)
+        runs.extend(ingested)
+        ingest_summaries.append(summary)
+    if args.checks:
+        spec = load_checks(args.checks)
+    else:
+        spec = {"task_intent": "observe only, no human checks supplied",
+                "task_intent_source": "cli observe mode",
+                "checks": []}
+    if args.infer_checks:
+        spec = dict(spec)
+        spec["checks"] = list(spec["checks"]) + infer_checks_from_runs(runs)
     snapshot, latest_mtime = snapshot_repo(repo)
     commit, dirty, commit_note = git_state(repo)
 
@@ -69,12 +95,19 @@ def main(argv=None):
     else:
         marker = latest_mtime
 
+    allowlist = None
+    if args.allowlist:
+        from runner_allowlist import load_allowlist
+        allowlist = load_allowlist(args.allowlist)
     if args.execute:
         for check in spec["checks"]:
             if check.get("check_type") == "recorded_run" and check.get("applicability", "applies") == "applies":
                 try:
-                    runs.append(run_allowlisted(check["required_command"], repo,
-                                                interpreter=args.python))
+                    if allowlist is not None:
+                        runs.append(run_via_allowlist(check["required_command"], repo, allowlist))
+                    else:
+                        runs.append(run_allowlisted(check["required_command"], repo,
+                                                    interpreter=args.python))
                 except ValueError as exc:
                     # Refusal is a feature, not a crash: a command that
                     # is not allowlisted is simply not run, and its
@@ -92,6 +125,8 @@ def main(argv=None):
         workspace_dirty=dirty, commit_note=commit_note,
         final_edit_marker=marker, trace_summary=trace_summary,
     )
+    if ingest_summaries:
+        ledger["ingest_summary"] = ingest_summaries
     json_path, md_path = write_outputs(ledger, Path(args.out).resolve())
     cov = ledger["coverage"]
     print(f"ledger: {json_path}")

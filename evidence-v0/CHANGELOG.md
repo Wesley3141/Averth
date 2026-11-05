@@ -7,6 +7,44 @@ branch checkout carries that code, not that a release was
 shipped, installed by a customer, or validated on a real
 workflow.
 
+## 0.3.0, wave 3, branch checkout only, not published
+
+- Universal ingestion: universal_ingest.py accepts JSON,
+  JSON array, JSONL, pretty printed JSON, plain text logs,
+  OpenTelemetry style spans, and meter style events,
+  detected from content, preserving original IDs, verbatim
+  commands, and unknown fields. A new format is a new
+  adapter, not a verifier rewrite.
+- Runner detection across languages, plus a generic path
+  for any other command. A check is judged only from its
+  own exact command run, never from another runner's run.
+  Missing exit codes are NOT OBSERVED, never FAILED.
+- Generic executed mode: cli.py --execute with an
+  operator written --allowlist runs any exactly listed
+  command, any runner (one runner per allowlist file).
+  Without an allowlist, execute
+  stays pytest only. Destructive command review warning
+  and quoting limit are kept.
+- No test workflows: observe only mode with no --checks,
+  and INFERRED rows with --infer-checks, always NOT
+  OBSERVED, never human acceptance, never a pass.
+- Timestamps: ISO, common date forms, and epoch seconds,
+  milliseconds, microseconds, and nanoseconds. Unparseable
+  timestamps are never invented.
+- Failure tolerance: malformed lines, unknown fields,
+  unknown runners, missing exit codes, and mixed language
+  runs produce a ledger, not a crash, with counts reported.
+- Tests: 53 passed, 0 failed, 32 before wave 3 plus 21 new,
+  covering Python, Node, Rust, Go, shell, multi language,
+  frontend build and lint, no tests, no exit code,
+  malformed JSONL, and OpenTelemetry spans.
+- Remaining honest limits, unchanged in kind: unknown
+  inputs are reported as unknown, not judged. A ledger is
+  not proof of correctness, acceptance, value, time saved,
+  or willingness to pay. No real workflow validation, no
+  live benchmarks, no paying customers, no validated
+  repair, no measured saving, live PR fetch mocked only.
+
 ## 0.2.0, wave 2, branch checkout only, not published
 
 - Install packaging: evidence-v0/pyproject.toml installs the

@@ -31,6 +31,10 @@ quoted argument loses its quotes. Prefer script files over
 -c code in an allowlist, or the code will change on split.
 
 Validation rules, all required for a command to pass:
+  - One allowlist file has one runner field, so one file
+    cannot list both sh and npm commands. Use a separate
+    allowlist file per runner. A command whose first token
+    is not that file's runner is refused, which fails closed.
   - The command, split on whitespace, must equal one listed
     command, token for token. No extra flags, no extra paths.
     Exact match is the gate: there is no pattern, no wildcard,

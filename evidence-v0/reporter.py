@@ -54,6 +54,13 @@ def build_markdown(ledger):
                      f"model events: {ts['model_events']}, retry events: {ts['retry_events']}, "
                      f"input tokens: {ts['input_tokens_total']}, output tokens: {ts['output_tokens_total']}")
         lines.append(ts["note"])
+    if ledger.get("ingest_summary"):
+        lines.append("")
+        lines.append("## Ingest summary (ingested, never judged by itself)")
+        lines.append("")
+        for s in ledger["ingest_summary"]:
+            lines.append(f"- File: {s.get('ingest_file', 'unknown')}, formats: {s.get('formats')}, runs: {s.get('runs')}, unparseable: {s.get('unparseable')}, missing exit code: {s.get('missing_exit_code')}, generic runner: {s.get('generic_runner')}.")
+        lines.append("Ingested runs are records only. A check is judged only from its own exact command run, never from another runner, and never from an ingested record alone without a human check.")
     lines.append("")
     lines.append("## Judgments")
     lines.append("")
