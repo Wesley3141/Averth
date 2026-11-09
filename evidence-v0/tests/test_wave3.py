@@ -80,6 +80,16 @@ def test_runner_detection_all_listed():
     assert detect_runner("") == "unknown"
 
 
+def test_runner_detection_list_elements_are_never_repr():
+    # Only string elements are tokens: a dict, list, or int element
+    # must never be str()'d into a runner name, since its Python
+    # repr would become a label the judge could cite.
+    assert detect_runner(["pytest", {"evil": 1}]) == "pytest"
+    assert detect_runner([{"a": 1}]) == "unknown"
+    assert detect_runner(["pytest", 3, "-q"]) == "pytest"
+    assert detect_runner(["", "pytest"]) == "pytest"
+
+
 def test_check_judged_only_from_own_runner():
     runs = [_run("npm test", 0, "npm-run"), _run("cargo test", 1, "cargo-run")]
     row = judge(_check("C1", "cargo test"), runs, {}, "2026-11-04T00:00:00Z")
@@ -281,3 +291,18 @@ def test_record_preserves_id_and_verbatim_command():
     run = record_to_run(rec)
     assert run["label"] == "abc-123"
     assert run["command_raw"] == "  npm   test  "
+
+
+def test_record_to_run_coerces_non_string_output():
+    # A list stdout or an int stderr used to crash record_to_run
+    # with TypeError on stdout + stderr. Non-string output is
+    # coerced to str before concatenation, so the record still
+    # becomes a run with a digest over the string form.
+    rec = {"command": "pytest", "exit_code": 0,
+           "start_timestamp": "2026-11-04T01:00:00Z",
+           "stdout": ["line1"], "stderr": 123}
+    run = record_to_run(rec)
+    assert run is not None
+    assert run["output_digest"] == (
+        "sha256:" + hashlib.sha256("['line1']123".encode()).hexdigest()
+    )

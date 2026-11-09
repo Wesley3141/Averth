@@ -4,6 +4,7 @@ __pycache__/
 *.egg-info/
 .pytest_cache/
 .fetch_cache/
+build/
 
 # generated reports
 *.html

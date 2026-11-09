@@ -104,6 +104,11 @@ def run_via_allowlist(command_str, repo_path, allowlist):
     except subprocess.TimeoutExpired as exc:
         output = (exc.stdout or "") + (exc.stderr or "")
         exit_code, stdout, stderr = 124, exc.stdout or "", exc.stderr or ""
+    except OSError as exc:
+        # A missing runner binary is not a run: it propagates to
+        # the CLI, which refuses with exit 2 and stale removal
+        # instead of a traceback.
+        raise OSError(f"cannot execute allowlisted command {command_str!r}: {exc}") from exc
     end = datetime.now(timezone.utc)
     return {
         "label": entry.get("label", command_str),
@@ -134,8 +139,33 @@ def run_allowlisted(command_str, repo_path, interpreter=None):
     if argv is None:
         raise ValueError(f"command is not allowlisted and will not run: {command_str!r}")
     start = datetime.now(timezone.utc)
-    proc = subprocess.run(argv, cwd=str(repo_path), capture_output=True,
-                          text=True, timeout=300)
+    try:
+        proc = subprocess.run(argv, cwd=str(repo_path), capture_output=True,
+                              text=True, timeout=300)
+    except subprocess.TimeoutExpired as exc:
+        # A timed-out run is recorded honestly, exit 124,
+        # mirroring run_via_allowlist, not a crash.
+        end = datetime.now(timezone.utc)
+        output = (exc.stdout or "") + (exc.stderr or "")
+        return {
+            "label": f"v0 run: {command_str}",
+            "command_raw": " ".join(argv),
+            "command_normalized": normalize_command(" ".join(argv)),
+            "working_directory": str(repo_path),
+            "start_timestamp": start.isoformat(),
+            "end_timestamp": end.isoformat(),
+            "exit_code": 124,
+            "output_digest": sha256_text(output),
+            "stdout": exc.stdout or "",
+            "stderr": exc.stderr or "",
+            "source": "v0_recorder",
+            "trust_tier": 2,
+        }
+    except OSError as exc:
+        # A missing interpreter is not a run: it propagates to
+        # the CLI, which refuses with exit 2 and stale removal
+        # instead of a traceback.
+        raise OSError(f"cannot execute {command_str!r}: {exc}") from exc
     end = datetime.now(timezone.utc)
     output = proc.stdout + proc.stderr
     return {
@@ -154,7 +184,154 @@ def run_allowlisted(command_str, repo_path, interpreter=None):
     }
 
 
+_DEFAULT_SCOPE_LIMITATION = (
+    "A successful command is not proof of complete correctness; "
+    "this row proves only what its cited observation shows."
+)
+
+
+def _validate_check(check):
+    """Refuse a malformed check with ValueError, mirroring load_checks.
+
+    judge() is a directly unit-tested entry point, so it must not
+    crash (KeyError/AttributeError/TypeError) or silently VERIFIED
+    garbage when called outside load_checks. Only the fields
+    judge() actually reads are validated here: the id, the
+    check_type, the applicability, the required_command of a
+    recorded_run check, artifact_path and expected_digest
+    whenever present, test_target whenever present (a string,
+    or null, which the fixture checks files use for "no test
+    target"), the human_confirmation shape, and the string
+    fields judge() copies into the row (text, source,
+    expected_evidence, recommended_next_action,
+    not_applicable_reason). A whitespace-only string is not a
+    name: the non-empty checks strip, as in load_checks.
+    """
+    if not isinstance(check, dict):
+        raise ValueError("each check must be a JSON object")
+    cid = check.get("id")
+    if not isinstance(cid, str) or not cid.strip():
+        raise ValueError(f"check id missing or not a string: {cid!r}")
+    ctype = check.get("check_type")
+    if ctype not in ("recorded_run", "artifact_presence", "external", "inferred"):
+        raise ValueError(f"check {cid}: unknown check_type {ctype!r}")
+    if ("applicability" in check
+            and check["applicability"] not in ("applies", "not_applicable")):
+        raise ValueError(f"check {cid}: bad applicability")
+    if ctype == "recorded_run":
+        rc = check.get("required_command")
+        if not isinstance(rc, str) or not rc.strip():
+            raise ValueError(f"check {cid}: recorded_run needs a non-empty string required_command")
+    for field in ("artifact_path", "expected_digest"):
+        if field in check and (not isinstance(check[field], str) or not check[field].strip()):
+            raise ValueError(f"check {cid}: {field} must be a non-empty string")
+    if ctype == "artifact_presence" and "artifact_path" not in check:
+        raise ValueError(f"check {cid}: artifact_presence needs a non-empty string artifact_path")
+    if "test_target" in check and check["test_target"] is not None \
+            and not isinstance(check["test_target"], str):
+        raise ValueError(f"check {cid}: test_target must be a string or null")
+    for field in ("text", "source", "expected_evidence",
+                  "recommended_next_action", "not_applicable_reason"):
+        if field in check and not isinstance(check[field], str):
+            raise ValueError(f"check {cid}: {field} must be a string")
+    if "human_confirmation" in check:
+        rec = check["human_confirmation"]
+        if not isinstance(rec, dict):
+            raise ValueError(f"check {cid}: human_confirmation must be a JSON object")
+        for field in ("tester", "procedure"):
+            if field in rec and (not isinstance(rec[field], str) or not rec[field].strip()):
+                raise ValueError(f"check {cid}: human_confirmation {field} must be a non-empty string")
+
+
+def _validate_judging_inputs(runs, snapshot):
+    """Refuse malformed judging inputs with ValueError, never a crash.
+
+    judge() is a directly unit-tested entry point: a caller may hand
+    it runs that never passed load_recorded_runs, so the shape of
+    the runs list and the snapshot must be checked here. A run entry
+    that is not a dict, or a snapshot that is not a dict, is a caller
+    error, refused with ValueError. The fields of a cited run are
+    checked separately in judge(), after citation: a cited run
+    whose evidence identity is missing or wrong-typed (label,
+    command_raw, trust_tier, source, output_digest, exit_code)
+    returns NOT OBSERVED with a missing_* or invalid_* flag, never a
+    VERIFIED on malformed evidence. working_directory must be a
+    string (the loaders record an absent one as ""); end_timestamp
+    may be absent (the loaders record it as None), but a
+    wrong-typed value is refused the same way. A run missing an
+    exit code stays NOT OBSERVED with missing_exit_code.
+    """
+    if not isinstance(runs, list):
+        raise ValueError("runs must be a list of recorded-run dicts")
+    for r in runs:
+        if not isinstance(r, dict):
+            raise ValueError("each recorded run must be a JSON object")
+    if not isinstance(snapshot, dict):
+        raise ValueError("snapshot must be a dict of artifact path to digest")
+
+
+def _cited_run_field_flags(run):
+    """Return every flag for a cited run with malformed evidence, or [].
+
+    The verdict's evidence identity must be real: the evidence id
+    comes from a non-empty string label or command_raw, the source
+    must name where the run was observed, the output digest must
+    be a non-empty string, the trust tier must be an integer in
+    1 to 4 (not a bool), and the exit code must be an integer
+    (not a bool). A string "0" compares equal to 0 and a float
+    0.0 compares equal to 0, so either would produce a false
+    verdict if it reached the exit-code comparison. working_directory
+    must be a string (an absent one is recorded as "" by the
+    loaders); end_timestamp may be absent (None), but a wrong-typed
+    value is malformed evidence, not metadata. Each field is
+    validated on its own, so a wrong-typed label cannot hide
+    behind a usable command_raw (or the reverse): a list label is
+    invalid_label even when command_raw names the run, and a
+    wrong-typed trust tier is invalid_trust_tier even when the
+    run otherwise verifies. A label or command_raw that is simply
+    absent is not invalid on its own: the joint missing_evidence_id
+    covers the case where neither names the run. A trust tier that
+    is simply absent is not invalid either: the loaders always
+    record one, and a direct judge() caller that omits it gets
+    tier None, the honest default, not a flag. Every applicable
+    flag is collected, not just the first: a run missing its exit
+    code and another field must name both, not hide the second
+    behind the first.
+    """
+    flags = []
+    exit_code = run.get("exit_code")
+    if not isinstance(exit_code, int) or isinstance(exit_code, bool):
+        flags.append("invalid_exit_code")
+    label = run.get("label")
+    command_raw = run.get("command_raw")
+    if "label" in run and not (isinstance(label, str) and label.strip()):
+        flags.append("invalid_label")
+    if "command_raw" in run and not (isinstance(command_raw, str) and command_raw.strip()):
+        flags.append("invalid_command_raw")
+    if not ((isinstance(label, str) and label.strip())
+            or (isinstance(command_raw, str) and command_raw.strip())):
+        flags.append("missing_evidence_id")
+    tier = run.get("trust_tier")
+    if ("trust_tier" in run and (not isinstance(tier, int)
+                                 or isinstance(tier, bool)
+                                 or tier < 1 or tier > 4)):
+        flags.append("invalid_trust_tier")
+    source = run.get("source")
+    if not (isinstance(source, str) and source.strip()):
+        flags.append("missing_source")
+    if not isinstance(run.get("working_directory"), str):
+        flags.append("missing_working_directory")
+    digest = run.get("output_digest")
+    if not (isinstance(digest, str) and digest.strip()):
+        flags.append("missing_output_digest")
+    end = run.get("end_timestamp")
+    if end is not None and not isinstance(end, str):
+        flags.append("missing_end_timestamp")
+    return flags
+
+
 def _base(check):
+    lim = check.get("scope_limitation", _DEFAULT_SCOPE_LIMITATION)
     return {
         "criterion_id": check["id"],
         "criterion_text": check.get("text", ""),
@@ -165,16 +342,14 @@ def _base(check):
         "evidence_source": "none",
         "trust_tier": None,
         "flags": [],
-        "scope_limitation": check.get(
-            "scope_limitation",
-            "A successful command is not proof of complete correctness; "
-            "this row proves only what its cited observation shows.",
-        ),
+        "scope_limitation": lim if isinstance(lim, str) else _DEFAULT_SCOPE_LIMITATION,
         "recommended_next_action": check.get("recommended_next_action", ""),
     }
 
 
 def judge(check, runs, snapshot, final_edit_marker):
+    _validate_check(check)
+    _validate_judging_inputs(runs, snapshot)
     row = _base(check)
     if check.get("applicability") == "not_applicable":
         row["status"] = "NOT APPLICABLE"
@@ -207,42 +382,117 @@ def judge(check, runs, snapshot, final_edit_marker):
 
     if ctype == "recorded_run":
         wanted = normalize_command(check["required_command"])
-        candidates = [r for r in runs if r["command_normalized"] == wanted]
+        candidates = [r for r in runs if r.get("command_normalized") == wanted]
         cited = [r for r in candidates if not is_superseded(r, final_edit_marker)]
         # A run with no parseable timestamp cannot be trusted as
         # after-final-edit evidence; treat it as not citable.
         cited = [r for r in cited if parse_time(r.get("start_timestamp")) is not None]
         if cited:
-            run = max(cited, key=lambda r: parse_time(r["start_timestamp"]))
-            row["evidence_id"] = run["label"] or run["command_raw"]
-            row["evidence_source"] = run["source"]
-            row["trust_tier"] = run["trust_tier"]
-            row["command"] = run["command_raw"]
-            row["working_directory"] = run["working_directory"]
-            row["start_timestamp"] = run["start_timestamp"]
-            row["end_timestamp"] = run["end_timestamp"]
-            row["exit_code"] = run["exit_code"]
-            row["output_digest"] = run["output_digest"]
+            run = max(cited, key=lambda r: parse_time(r.get("start_timestamp")))
+            # Identity is selected type- and whitespace-aware: a
+            # wrong-typed or blank label, command_raw, or trust tier
+            # never lands verbatim in the row. A list label does
+            # not become the evidence id, a dict command_raw does
+            # not become the command, and a tier of 99 does not
+            # become the trust tier; each falls back to None, and
+            # the field flags below decide the verdict.
+            label = run.get("label")
+            command_raw = run.get("command_raw")
+            row["evidence_id"] = (
+                label if isinstance(label, str) and label.strip()
+                else command_raw if isinstance(command_raw, str) and command_raw.strip()
+                else None)
+            row["evidence_source"] = run.get("source")
+            tier = run.get("trust_tier")
+            row["trust_tier"] = (
+                tier if isinstance(tier, int) and not isinstance(tier, bool)
+                and 1 <= tier <= 4 else None)
+            row["command"] = (
+                command_raw if isinstance(command_raw, str) and command_raw.strip()
+                else None)
+            row["working_directory"] = run.get("working_directory")
+            # An int or float epoch start_timestamp is a
+            # legitimate timestamp representation under the
+            # tool's own contract (parse_time documents epoch
+            # seconds, millis, micros, and nanos), so it is
+            # accepted, but it is normalised to ISO in the row
+            # rather than recorded verbatim as a bare number:
+            # a bare epoch in a ledger row reads as an
+            # unlabelled integer, while end_timestamp must be a
+            # string or null. A string timestamp is recorded
+            # verbatim, as before.
+            _start = run.get("start_timestamp")
+            if isinstance(_start, (int, float)) and not isinstance(_start, bool):
+                _parsed = parse_time(_start)
+                row["start_timestamp"] = (
+                    _parsed.isoformat() if _parsed is not None else _start)
+            else:
+                row["start_timestamp"] = _start
+            row["end_timestamp"] = run.get("end_timestamp")
+            row["exit_code"] = run.get("exit_code")
+            row["output_digest"] = run.get("output_digest")
             row["test_target"] = check.get("test_target")
             row["after_final_edit"] = True
-            if run["exit_code"] is None:
-                # Wave 3: a missing exit code is unknown, never
-                # a pass and never a failure. It cannot decide
-                # a check, so the check stays NOT OBSERVED.
+            field_flags = _cited_run_field_flags(run)
+            if run.get("exit_code") is None:
+                # A missing exit code is reported as missing, not
+                # invalid: the run is real, it simply has no exit
+                # code to decide the check. Any other malformed
+                # field is reported alongside it, never hidden
+                # behind the missing exit code.
+                field_flags = ["missing_exit_code"] + [
+                    f for f in field_flags if f != "invalid_exit_code"]
+            if field_flags:
                 row["status"] = "NOT OBSERVED"
-                row["flags"].append("missing_exit_code")
+                row["flags"].extend(field_flags)
+                if field_flags == ["missing_exit_code"]:
+                    # Missing exit code alone: the cited run is
+                    # real and its identity is intact; only the
+                    # verdict is unknown, never a pass and never
+                    # a failure. It cannot decide a check, so the
+                    # check stays NOT OBSERVED.
+                    row["recommended_next_action"] = (
+                        "Re-record the run with an exit code; a run "
+                        "without an exit code cannot decide a check."
+                    )
+                    return row
+                # A cited run whose evidence is missing or
+                # wrong-typed cannot decide a check: its verdict
+                # would rest on an evidence id, source, digest, or
+                # exit code that is not what it claims to be. The
+                # evidence identity is reset so the row does not
+                # present malformed evidence as its identity, and
+                # every wrong-typed value is neutralised rather
+                # than recorded as if it were real.
+                row["evidence_id"] = None
+                row["evidence_source"] = "none"
+                row["trust_tier"] = None
+                if "invalid_exit_code" in field_flags:
+                    row["exit_code"] = None
+                if ("missing_evidence_id" in field_flags
+                        or "invalid_command_raw" in field_flags):
+                    row["command"] = None
+                if not isinstance(run.get("working_directory"), str):
+                    row["working_directory"] = None
+                if not (isinstance(run.get("output_digest"), str)
+                        and run.get("output_digest").strip()):
+                    row["output_digest"] = None
+                end = run.get("end_timestamp")
+                if end is not None and not isinstance(end, str):
+                    row["end_timestamp"] = None
                 row["recommended_next_action"] = (
-                    "Re-record the run with an exit code; a run "
-                    "without an exit code cannot decide a check."
+                    "Re-record the run with complete evidence fields; "
+                    "a run missing a field cannot decide a check."
                 )
                 return row
-            if run["exit_code"] == 0:
+            if run.get("exit_code") == 0:
                 row["status"] = "VERIFIED"
                 # Digest check: observed state must match the expected
                 # revision, or the VERIFIED cannot stand.
                 art = check.get("artifact_path")
                 exp = check.get("expected_digest")
-                if art and exp and snapshot.get(art) != exp:
+                if (art and exp and isinstance(art, str)
+                        and isinstance(exp, str) and snapshot.get(art) != exp):
                     row["status"] = "NOT OBSERVED"
                     row["flags"].append("digest_mismatch")
                     row["scope_limitation"] += (
@@ -284,7 +534,10 @@ def judge(check, runs, snapshot, final_edit_marker):
         return row
 
     if ctype == "artifact_presence":
-        art = check["artifact_path"]
+        # _validate_check already refused a missing or non-string
+        # artifact_path, and a non-string expected_digest, so the
+        # lookup below cannot crash on an unhashable value.
+        art = check.get("artifact_path")
         row["evidence_source"] = "v0_recorder"
         row["trust_tier"] = 2
         row["artifact_path"] = art
@@ -304,7 +557,15 @@ def judge(check, runs, snapshot, final_edit_marker):
 
     if ctype == "external":
         rec = check.get("human_confirmation")
-        if rec and rec.get("tester") and rec.get("procedure") and rec.get("result") in ("pass", "fail"):
+        # _validate_check already refused a non-dict confirmation
+        # and a non-string tester/procedure, but the VERIFIED
+        # condition re-checks the shape so this branch is safe on
+        # its own: a dict tester must never produce VERIFIED with
+        # a dict repr in the evidence id.
+        if (isinstance(rec, dict)
+                and isinstance(rec.get("tester"), str) and rec["tester"].strip()
+                and isinstance(rec.get("procedure"), str) and rec["procedure"].strip()
+                and rec.get("result") in ("pass", "fail")):
             row["status"] = "VERIFIED" if rec["result"] == "pass" else "FAILED"
             row["trust_tier"] = 4
             row["evidence_source"] = "human"

@@ -16,6 +16,131 @@
   v7 changelog note saying the entry was "untouched pending a
   decision" is superseded by this correction.
 
+### Fixed
+
+- V0 evidence verifier, frozen checks (rehearsal criterion (c), branch
+  criterion-c-checks-digest, unmerged): the checks file is now hashed
+  on its raw bytes at load, re-hashed before the ledger is built and
+  written, and a net change between load and re-hash refuses to write
+  output with exit code 2. The timing is a single net-change check: an
+  edit reverted byte-for-byte before the re-hash escapes detection, as
+  does any edit made after the re-hash, in the window where the ledger
+  and report are written. A checks file deleted, unreadable,
+  replaced by a directory, or replaced by a non-regular file
+  between load and the re-hash refuses the same way, except the
+  message states the file was unreadable rather than changed, and
+  names only the load-time digest, and a refused
+  run attempts to remove any stale ledger and
+  report from a reused output directory (best-effort; a removal
+  failure is warned about on stderr but does not change the exit
+  code) instead of leaving a pass-looking report behind. If
+  --checks names one of the output files, directly, or through a
+  hardlink or symlink, the run refuses with
+  exit 2 and attempts to remove the other stale output (if both
+  outputs are the same file, both are left in place), leaving
+  the colliding file byte-identical. For --checks runs, the digest
+  is printed in the Markdown report and on success (observe-only runs
+  print none and record null), and the re-hash refusal message states
+  how to redo the run: restore the frozen file matching the load-time
+  digest and re-run. A checks file that cannot be loaded at all
+  refuses with exit code 2 and an `error: cannot load checks file ...`
+  line (no digest exists yet; a stale-removal warning may also
+  appear on stderr). The stale `evidence-v0/build/`
+  copy of the tool, which had none of this fix, is deleted and `build/`
+  is now ignored.
+
+- V0 evidence verifier, loader and judge hardening (same branch):
+  a --runs file whose exit_code is a string, float, bool, or list
+  refuses at load with exit 2 and stale removal, instead of
+  judging a false verdict; a trace model event with bool,
+  non-integral float (such as 12.5), negative, or non-numeric
+  string token counts, or a bool case_id, refuses
+  at load with exit 2, while an integral float such as 12.0 or a
+  numeric string such as "10" counts as its integer value;
+  deeply nested allowlist, runs, and ingest files refuse with
+  exit 2 instead of escaping with an uncaught RecursionError
+  (the suite pins a 20000-deep file for each); ingest input nested deeper than 100, measured from the parsed
+  file root, refuses with exit 2 at load (so a list-wrapped
+  record's own limit is one level lower); below that bound a
+  nested record is ingested as a run, so a record the loader
+  accepts can always be written; while a deeply
+  nested trace line is counted unparseable and tolerated
+  (rc 0); a cited run missing its exit code and another
+  evidence field now reports every applicable flag and resets its
+  evidence identity, and each wrong-typed evidence value in the
+  row is neutralised instead of being recorded as if it were real
+  (to None, except evidence_source, which takes its "none"
+  sentinel); a cited run with a wrong-typed label, command_raw,
+  or trust_tier reports an invalid_* flag and never verifies on
+  the malformed value; an int or float epoch start_timestamp is
+  accepted by design (parse_time documents epoch seconds, millis,
+  micros, and nanos) and is normalised to ISO in the row rather
+  than recorded verbatim as a bare number, while
+  end_timestamp must be a string or null, a deliberate asymmetry,
+  since an epoch number is a legitimate timestamp representation
+  under the tool's own contract, not a wrong-typed evidence
+  value; a missing or unreadable --ingest file
+  refuses with exit 2 and stale removal instead of silently
+  completing with a clean-looking empty report; an output path
+  hardlinked to another file refuses with exit 2 instead of
+  overwriting the victim; a --execute run whose interpreter or
+  runner binary is missing refuses with exit 2 and stale removal
+  instead of a traceback; a non-string task_intent or
+  task_intent_source refuses at load with exit 2; fresh output
+  files are created without execute permission; an ingested
+  record with a wrong-typed label, command, or working directory
+  no longer stringifies the value into a run: the label falls
+  back to the command, a non-string working directory becomes
+  the empty string, and a non-string command means no run at all
+  (non-string stdout and stderr are still coerced to str, since
+  they feed only the digest), and a list or argv command with a
+  non-string element means no run at all instead of joining its
+  Python repr into a command; an unreadable file in the target
+  repo refuses with exit 2 and stale removal instead of a
+  traceback; any input file (--runs, --trace, --ingest, or
+  --allowlist, as well as --checks) naming an output file refuses
+  with exit 2 instead of being overwritten with ledger or report
+  content; outputs are now written to a temp file in the same
+  directory and renamed into place, with the mode applied to the
+  temp inode before the rename and the output path verified
+  after the rename to still name the temp inode, be regular,
+  and not be hardlinked, with the written file's mode and bytes
+  verified through its open file descriptor, so a hardlink or
+  symlink flipped in between the check and each file's own
+  write is refused with exit 2 by that file's identity check,
+  which holds up to that file's own verification (after both
+  files are written the tool re-checks both output paths still
+  name the files it wrote, twice in a row, so a swap of the first
+  file during the second file's check is caught by the next pass,
+  and the ledger is re-checked once more after the two passes,
+  so the residual window for each output opens only after that output's last check (the report's last check is in the second pass, the ledger's is that final check)),
+  the tool never truncates or
+  overwrites a victim and never touches a victim's mode, and a
+  rewrite changes the output inode while keeping a pre-existing
+  file's mode, masked to the permission bits, so a pre-planted
+  setuid stale output cannot make the ledger setuid; the collision check
+  runs again after the re-hash, and again after the ledger is built and
+  once more after the ledger and report are written, so a checks path
+  swapped to an output file with byte-identical content refuses instead
+  of being destroyed, and a post-write refusal removes both outputs
+  instead of leaving the colliding file in place; a non-string, non-null test_target refuses at
+  load with exit 2, and direct judge() calls now validate the
+  check_type, the applicability, and the string fields the judge
+  copies into a row, as load_checks does; a timed-out --execute
+  run is recorded with exit code 124 in both runners; a trace
+  event with case_id 0 counts as one case; ingest input nested deeper than 100, measured from the parsed
+  file root, refuses with exit 2 at load (so a list-wrapped
+  record's own limit is one level lower); below that bound a
+  nested record is ingested as a run, so a record the loader
+  accepts can always be written; the written file's
+  mode and bytes are verified through its open file descriptor,
+  including setuid, setgid, and sticky bits, so a temp inode
+  whose mode or content is tampered with after
+  the write refuses with exit 2 and the poisoned output-path
+  entry is unlinked; an int or float epoch start_timestamp is
+  normalised to ISO in the judged row rather than recorded
+  verbatim as a bare number.
+
 ### Added
 
 - Codex CLI rollout importer (`averth trace <file> --format codex`,

@@ -67,7 +67,7 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 
-from trace_adapter import normalize_command, sha256_text
+from trace_adapter import normalize_command, read_regular_file_bytes, sha256_text
 
 KNOWN_RUNNERS = {
     "pytest", "python", "python3", "npm", "yarn", "pnpm", "node",
@@ -82,6 +82,34 @@ _SHELL_LINE_RE = re.compile(
     r"^(?:\S+\s+)?\$\s+(?P<cmd>.+?)(?:\s+exit\s+(?P<exit>-?\d+))?\s*$"
 )
 _BLOCK_KEY_RE = re.compile(r"^(?P<key>[A-Za-z_][A-Za-z0-9_ ]*):\s*(?P<val>.*)$")
+
+
+MAX_INGEST_DEPTH = 100
+
+
+def _check_ingest_depth(value, max_depth=MAX_INGEST_DEPTH):
+    """Iteratively refuse ingest input nested deeper than max_depth.
+
+    Mirrors requirement_spec._check_depth. The C JSON scanner
+    tolerates nesting the pure-Python encoder in json.dumps
+    does not, so a deeply nested value in a field the ledger
+    copies verbatim (the retained raw_record) parses fine and
+    then crashes uncaught when the ledger is written. Walk the
+    parsed structure with an explicit stack (never recursion)
+    and refuse anything deeper than max_depth, well under the
+    encoder's limit. Covers the record's nested fields, not
+    just the top-level parse, so a record the loader accepts
+    can always be written.
+    """
+    stack = [(value, 1)]
+    while stack:
+        current, depth = stack.pop()
+        if depth > max_depth:
+            raise ValueError("ingest input is nested too deeply to parse")
+        if isinstance(current, dict):
+            stack.extend((v, depth + 1) for v in current.values())
+        elif isinstance(current, list):
+            stack.extend((v, depth + 1) for v in current)
 
 
 def parse_any_time(value):
@@ -147,7 +175,10 @@ def _epoch_to_dt(seconds):
 def detect_runner(command):
     """Return a runner label for a command string or argv list."""
     if isinstance(command, (list, tuple)):
-        parts = [str(p) for p in command if str(p).strip()]
+        # Only string elements are tokens: a dict or list element
+        # must never be str()'d into a runner name, since its
+        # Python repr would become a label the judge could cite.
+        parts = [p for p in command if isinstance(p, str) and p.strip()]
     elif isinstance(command, str) and command.strip():
         import shlex
         try:
@@ -212,6 +243,18 @@ def _times(record):
     return start_raw, end_raw, (start.isoformat() if start else None), (end.isoformat() if end else None)
 
 
+def _join_command_parts(parts):
+    """Join argv/command list elements, or None if any is not a string.
+
+    A dict or list element must never be str()'d into a command:
+    its Python repr would become a command the judge could verify
+    on. Only string elements join; anything else means no command.
+    """
+    if not all(isinstance(p, str) for p in parts):
+        return None
+    return " ".join(parts)
+
+
 def record_to_run(record):
     """Convert one dict record to a ledger shaped run, or None.
 
@@ -223,9 +266,17 @@ def record_to_run(record):
     """
     if not isinstance(record, dict):
         return None
+    # Depth bound at the retention point: the raw_record is kept
+    # verbatim in the run and written into the ledger, so a record
+    # deeper than the bound must never become a run, however it
+    # reached this function. The parse layer checks the same bound
+    # first; this is the backstop for direct callers.
+    _check_ingest_depth(record)
     command = _first_present(record, ("command", "command_raw", "cmd"))
     if command is None and isinstance(record.get("argv"), (list, tuple)):
-        command = " ".join(str(p) for p in record["argv"])
+        command = _join_command_parts(record["argv"])
+        if command is None:
+            return None
     if command is None:
         attrs = record.get("attributes") or {}
         if isinstance(attrs, dict):
@@ -237,24 +288,58 @@ def record_to_run(record):
     if command is None or (isinstance(command, str) and not command.strip()):
         return None
     if isinstance(command, (list, tuple)):
-        command = " ".join(str(p) for p in command)
-    command = str(command)
-    label = _first_present(record, ("label", "id", "record_id", "run_id",
-                                    "spanId", "traceId", "case_id")) or command
+        command = _join_command_parts(command)
+        if command is None:
+            return None
+    if not isinstance(command, str) or not command.strip():
+        # A dict (or other non-string) command is malformed
+        # evidence, not a command: stringifying it would invent a
+        # command from its repr, and the judge would then verify
+        # on the invented identity. No command means no run.
+        return None
+    # The label is identity, so it is never stringified from a
+    # container: a dict or list label would become its Python
+    # repr and verify as that repr. A string label is used as
+    # written, a scalar int/float id (a numeric span or record
+    # id) in its string form, and anything else falls back to
+    # the command, the documented last-resort label, exactly as
+    # judge() does for an absent label.
+    raw_label = _first_present(record, ("label", "id", "record_id", "run_id",
+                                        "spanId", "traceId", "case_id"))
+    if isinstance(raw_label, str) and raw_label.strip():
+        label = raw_label
+    elif isinstance(raw_label, (int, float)) and not isinstance(raw_label, bool):
+        label = str(raw_label)
+    else:
+        label = command
+    # The working directory is metadata, not identity, but the
+    # same rule applies: a container value is not stringified
+    # into a fake path. Only a string is kept; anything else is
+    # the loaders' absent value, "".
+    wd = _first_present(record, ("working_directory", "cwd", "workdir"))
+    working_directory = wd if isinstance(wd, str) else ""
     start_raw, end_raw, start_iso, end_iso = _times(record)
     exit_code = _exit_code(record)
-    stdout = record.get("stdout", "") or ""
-    stderr = record.get("stderr", "") or ""
+    stdout = record.get("stdout", "")
+    stderr = record.get("stderr", "")
+    if stdout is None:
+        stdout = ""
+    if stderr is None:
+        stderr = ""
+    if not isinstance(stdout, str):
+        stdout = str(stdout)
+    if not isinstance(stderr, str):
+        stderr = str(stderr)
     output = record.get("output")
     if output is not None and not stdout and not stderr:
         stdout = str(output)
     digest = record.get("output_digest") or sha256_text(stdout + stderr)
     return {
-        "label": str(label),
+        "label": label,
         "command_raw": command,
         "command_normalized": normalize_command(command),
         "runner": detect_runner(command),
-        "working_directory": str(_first_present(record, ("working_directory", "cwd", "workdir")) or ""),
+        "working_directory": working_directory,
         "start_timestamp": start_iso,
         "end_timestamp": end_iso,
         "start_timestamp_raw": start_raw,
@@ -275,6 +360,7 @@ def _parse_json_objects(text):
         return events, bad
     try:
         data = json.loads(stripped)
+        _check_ingest_depth(data)
         if isinstance(data, list):
             for item in data:
                 if isinstance(item, dict):
@@ -293,6 +379,8 @@ def _parse_json_objects(text):
             return [data], bad
     except json.JSONDecodeError:
         pass
+    except RecursionError as exc:
+        raise ValueError("ingest input is nested too deeply to parse") from exc
     decoder = json.JSONDecoder()
     idx, length = 0, len(text)
     while idx < length:
@@ -310,6 +398,9 @@ def _parse_json_objects(text):
             bad += 1
             idx = nxt + 1
             continue
+        except RecursionError as exc:
+            raise ValueError("ingest input is nested too deeply to parse") from exc
+        _check_ingest_depth(obj)
         if isinstance(obj, dict):
             events.append(obj)
         elif isinstance(obj, list):
@@ -368,7 +459,10 @@ def _parse_plain_log(text):
 
 
 def ingest_text(text):
-    """Ingest any supported text shape. Never raises on bad input.
+    """Ingest any supported text shape. Never raises on bad input,
+    except for input nested too deeply to parse or to write back:
+    that raises ValueError, so the caller can refuse it at load
+    instead of crashing when the ledger is written.
 
     Returns (runs, summary). Runs are ledger shaped. Summary
     counts records, runs, events without a command, unparseable
@@ -419,10 +513,18 @@ def ingest_text(text):
 
 
 def ingest_file(path):
-    """Ingest a file by content, not by extension. Never crashes."""
+    """Ingest a file by content, not by extension. Never crashes.
+
+    The read goes through the single-open helper, so a FIFO (or
+    other non-regular file) is reported unreadable instead of
+    hanging the read. Input nested deeper than MAX_INGEST_DEPTH
+    raises ValueError, which the CLI turns into an exit-2
+    refusal at load; anything else malformed is counted
+    unparseable, never a crash.
+    """
     try:
-        text = Path(path).read_text()
-    except (OSError, UnicodeDecodeError) as exc:
+        text = read_regular_file_bytes(path).decode("utf-8")
+    except (OSError, UnicodeDecodeError, ValueError) as exc:
         return [], {"records": 0, "runs": 0, "events_without_command": 0,
                     "unparseable": 1, "unknown_runner": 0, "generic_runner": 0,
                     "missing_exit_code": 0, "formats": ["unreadable"],

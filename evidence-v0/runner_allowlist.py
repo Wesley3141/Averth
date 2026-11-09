@@ -64,15 +64,37 @@ never approve a list copied from an untrusted source.
 """
 import json
 import shlex
-from pathlib import Path
+
+from trace_adapter import read_regular_file_bytes
+
 
 def load_allowlist(path):
-    data = json.loads(Path(path).read_text())
+    """Load and validate an operator-written allowlist file.
+
+    Every malformed shape refuses with ValueError, never a
+    traceback: the file must be valid JSON holding an object
+    with the required keys, commands must be a non-empty list
+    of entries each naming a string command, and timeout_seconds
+    must be a positive integer when present. A FIFO (or other
+    non-regular file) refuses instead of hanging, because the
+    read goes through the single-open helper.
+    """
+    try:
+        data = json.loads(read_regular_file_bytes(path))
+    except RecursionError as exc:
+        raise ValueError("allowlist is nested too deeply to parse") from exc
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"allowlist is not valid JSON: {exc}") from exc
+    if not isinstance(data, dict):
+        raise ValueError("allowlist must be a JSON object")
     for key in ("workflow", "approved_by", "runner", "commands"):
         if key not in data:
             raise ValueError(f"allowlist is missing required key: {key}")
     if not isinstance(data["commands"], list) or not data["commands"]:
         raise ValueError("allowlist commands must be a non-empty list")
+    for entry in data["commands"]:
+        if not isinstance(entry, dict) or not isinstance(entry.get("command"), str):
+            raise ValueError("allowlist commands must be objects with a string command")
     timeout = data.get("timeout_seconds", 300)
     if not isinstance(timeout, int) or isinstance(timeout, bool) or timeout <= 0:
         raise ValueError("timeout_seconds must be a positive integer")
