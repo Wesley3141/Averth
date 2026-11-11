@@ -48,7 +48,14 @@ Supported formats: `langfuse`, `langsmith`, `otel`, `jsonl`, `claude` (Claude Co
 a mini-SWE-agent trajectory, a JSONL events file, or a Langfuse
 export and writes one self-contained HTML report you can share, with
 an optional recorded-cost comparison (`--recorded`) and V0 verdict
-summary (`--ledger` + `--checks`). See `try-it/README.md`.
+summary (`--ledger` + `--checks`), plus a "Verified Agent PR Receipt"
+(Markdown for pasting into a PR description). With no trace at all,
+plain `averth try` scans your last 10 local Claude Code / Codex
+sessions instead — zero-config, no flags. The receipt also carries
+five default checks judged only on what the transcript shows
+(tests executed, build passed, files touched vs files tested, retry
+overhead as observed duplicate invocations, billed vs estimated
+cost), needing no human-written checks. See `try-it/README.md`.
 
 **Want the AI read on it?** Bring your own key, get the recommendation:
 

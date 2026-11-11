@@ -47,6 +47,17 @@ and one JSON object per line is Averth JSONL. Use
 if detection fails the command exits 2 naming the shapes it tried.
 See "Trace formats" below for one example of each.
 
+No trace at all is the zero-config scan: plain `averth try` finds
+your last 10 local Claude Code sessions
+(`~/.claude/projects/**/**/*.jsonl`) and Codex rollouts
+(`~/.codex/sessions/**/*.jsonl`), newest first, meters them, and
+writes `averth-scan.html` plus the PR receipt (see "Zero-config scan
+and the PR receipt" below). No flags required. Codex subagent
+rollouts are excluded by default (they can carry a replayed
+parent-history prefix and would double count); a session file that
+fails to parse is skipped with a warning, never silently dropped. No
+sessions found exits 2 naming the directories checked.
+
 Options:
 
 - `--model NAME` — model name for trajectory input, for example
@@ -84,7 +95,14 @@ Options:
   trace filename without `.traj.json` (or `.json`):
   `django-15930.traj.json` becomes `django-15930-try.html`. Pass
   `--out` to put it elsewhere. The command refuses to overwrite an
-  existing file; pass `--force` to overwrite it.
+  existing file; pass `--force` to overwrite it. In scan mode the
+  default is `averth-scan.html`.
+- `--receipt PATH` — where to write the PR receipt (Markdown).
+  Default: the HTML report path with `.html` replaced by
+  `-receipt.md` (`django-15930-try-receipt.md`; in scan mode
+  `averth-scan-receipt.md`). The receipt is written in both scan
+  mode and explicit-trace mode; in scan mode it is also printed to
+  stdout. Same overwrite rule as `--out`.
 - `--force` — overwrite an existing HTML report at the specified
   output path. The reproduction script also accepts `--force` to
   remove an existing work directory before rerunning.
@@ -132,6 +150,70 @@ that ships in the repo:
 `--ledger` alone still includes the summary but the digest is shown
 unverified. `--checks` without `--ledger` is refused (exit 2). A
 digest mismatch refuses the whole report and writes no HTML.
+
+## Zero-config scan and the PR receipt
+
+```bash
+../averth-venv/bin/python -m averth.cli try
+```
+
+With no trace argument, `averth try` scans your last 10 local
+agent runs (Claude Code sessions under `~/.claude/projects`, Codex
+rollouts under `~/.codex/sessions`), meters them, and writes
+`averth-scan.html` plus `averth-scan-receipt.md`, printing the
+receipt to stdout as well. The receipt is a "Verified Agent PR
+Receipt": compact Markdown designed to be pasted into a GitHub PR
+description, with a billed-vs-estimated cost table, the
+default-checks table, the unknown rate, and an honesty footer. The
+same receipt is written for an explicit trace
+(`<stem>-try-receipt.md` next to `<stem>-try.html`); `--receipt PATH`
+overrides the path in either mode.
+
+The receipt's default checks need no human-written checks. They are
+judged only on what the transcript shows ("default checks
+(trace-observed)"), by a judge separate from V0 that never
+re-executes a command and never invents. Same five-verdict vocabulary
+as V0, every verdict citing its observation:
+
+- **D1 tests executed**: a test command observed (pytest, unittest,
+  npm/yarn/pnpm test, go test, cargo test, ...) with a successful
+  outcome -> VERIFIED; failed outcome -> FAILED; none observed, or
+  observed with no outcome signal -> NOT OBSERVED. Judged on the
+  last observed test command.
+- **D2 build passed**: same shape for a build command (go build,
+  cargo build, npm run build, make, tsc, ...).
+- **D3 files touched vs files tested**: edited files from Edit/Write
+  tool calls vs test files named in observed test commands, matched
+  by file stem. A bare test command runs the whole suite, so with a
+  successful outcome it VERIFIES the touched files. A named test run
+  that matches no test file for an edited source file -> FAILED.
+  When coverage cannot be established from the trace -> NOT OBSERVED
+  with the reason stated. Name matching is the criterion; actual
+  coverage is never inferred.
+- **D4 retry overhead**: repeated identical tool invocations counted
+  as OBSERVED duplicate-invocation overhead, never as meter retries
+  (the importers emit no retry events, by design). 3 or more
+  duplicate invocations -> FAILED; fewer -> VERIFIED. The count is
+  always shown.
+- **D5 billed vs estimated cost**: the trace's own recorded cost
+  (Claude `result.total_cost_usd`, mini-SWE-agent
+  `info.model_stats.instance_cost`) vs the metered estimate: agree
+  within 5% -> VERIFIED; differ -> FAILED (both figures and the
+  ratio stated); no recorded figure -> NOT OBSERVED. A scan
+  containing a Codex session -> EXTERNAL-UNVERIFIABLE, because Codex
+  subscription billing is not API list-price metering.
+
+Two limits to know. First, neither transcript shape carries a
+numeric exit code on every command record: Claude `tool_result`
+blocks carry an `is_error` boolean, which the judge treats as the
+transcript's observed outcome for that command (Claude Code sets it
+from the command's exit status); a command with no matching
+tool_result and no exit code anywhere is NOT OBSERVED, never
+guessed. Codex `function_call_output` records carry no exit code in
+the documented rollout format, so Codex test/build commands are
+NOT OBSERVED unless a record happens to carry an `exit_code` field.
+Second, the receipt never claims a cost per accepted outcome: no
+human accepted these runs.
 
 ## What the report does and does not claim
 

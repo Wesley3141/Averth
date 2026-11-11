@@ -4,6 +4,51 @@
 
 ### Added
 
+- Zero-config local scan (`averth try` with no trace argument):
+  scans the last 10 local Claude Code sessions
+  (`~/.claude/projects/**/**/*.jsonl`) and Codex rollouts
+  (`~/.codex/sessions/**/*.jsonl`) by mtime, meters them with the
+  existing importers, and writes `averth-scan.html`. Codex subagent
+  rollouts are excluded by default (counted as skipped, with the
+  reason); a session file that fails to parse is skipped with a
+  warning counted in the report, never silently dropped, and if all
+  fail the command exits 2. No sessions found exits 2 naming the
+  directories checked. New `averth/local_scan.py` (discovery only);
+  CLI changes confined to `averth/cli.py`.
+- "Verified Agent PR Receipt": compact Markdown for pasting into a
+  GitHub PR description, written as `<stem>-receipt.md` next to the
+  HTML report (same stem rule; `--receipt PATH` overrides) in both
+  scan mode and explicit-trace mode, and printed to stdout in scan
+  mode. Contents: billed vs estimated cost table, the default-checks
+  table, unknown rate, and an honesty footer (no cost per accepted
+  outcome; estimates are not bills; default checks are
+  trace-observed, not human-written). New `averth/receipt.py`;
+  hostile session ids / filenames are escaped so they cannot form
+  Markdown links or break tables.
+- Default checks (trace-observed): five checks that need no
+  human-written checks, judged only on what the transcript shows by
+  a judge separate from V0 (evidence-v0 is not installed in the
+  meter venv; nothing shells out to it or depends on it). New
+  `averth/default_checks.py`: D1 tests executed, D2 build passed,
+  D3 files touched vs files tested (stem matching only; actual
+  coverage never inferred), D4 retry overhead as OBSERVED
+  duplicate-invocation overhead (never meter retries; 3+ duplicate
+  invocations fail), D5 billed vs estimated cost (agree within 5%;
+  Codex subscription billing is EXTERNAL-UNVERIFIABLE). Evidence
+  comes from a new read-only extraction pass over the raw transcript
+  (Claude `tool_use`/`tool_result`, Codex `response_item`
+  function_call/output, mini-SWE-agent bash fences). Outcome
+  signals: Claude `tool_result` `is_error` counts as the
+  transcript's observed outcome (no numeric exit code exists in the
+  transcript); a command with no outcome signal is NOT OBSERVED,
+  never guessed. Codex `function_call_output` carries no exit code
+  in the documented format, so Codex test/build commands are
+  NOT OBSERVED unless a record carries an `exit_code` field.
+  58 tests in `tests/test_self_serve_scan.py` (discovery with a fake
+  home, extraction, every verdict including the NOT OBSERVED paths,
+  receipt escaping, CLI scan and explicit-trace behavior).
+  `try-it/README.md` documents the scan, the receipt, and the D1-D5
+  semantics.
 - One-command try-it (`averth try`): meter
   a trace file and write a self-contained shareable HTML report. It
   accepts a mini-SWE-agent trajectory (new `averth/importers/miniswe.py`,

@@ -3,9 +3,9 @@
 Usage:
     averth trace <file> --format otel|langsmith|jsonl|langfuse|claude|codex [--html PATH]
                  [--policy-cap FLOAT] [--policy-yield FLOAT] [--agent NAME]
-    averth try <file> [--format auto|traj|jsonl|langfuse] [--model NAME]
+    averth try [<file>] [--format auto|traj|jsonl|langfuse] [--model NAME]
                  [--recorded DOLLARS] [--ledger PATH] [--checks PATH]
-                 [--out PATH] [--agent NAME]
+                 [--out PATH] [--receipt PATH] [--agent NAME]
     averth simulate --attempts N --seed S [--jsonl PATH] [--html PATH]
                  [--agent NAME]
     averth pricing
@@ -13,11 +13,17 @@ Usage:
 ``try`` is the one-command free run: it meters a trace file (a
 mini-SWE-agent trajectory, JSONL events, or a Langfuse export),
 prints the text report, and writes a self-contained HTML report you
-can share. ``--recorded`` is an operator-supplied figure claimed to
-be the run's recorded cost, shown next to the metered estimate;
-Averth does not verify it. ``--ledger`` adds a V0 verdict summary
-from a V0 evidence ledger (``--checks`` verifies the ledger's checks
-digest and refuses on mismatch). No network, no account, no upload.
+can share, plus a "Verified Agent PR Receipt" (compact Markdown for
+pasting into a GitHub PR description). With no trace argument it
+scans your last 10 local Claude Code / Codex sessions instead
+(zero-config: no flags required). ``--recorded`` is an
+operator-supplied figure claimed to be the run's recorded cost, shown
+next to the metered estimate; Averth does not verify it. ``--ledger``
+adds a V0 verdict summary from a V0 evidence ledger (``--checks``
+verifies the ledger's checks digest and refuses on mismatch). The
+receipt also carries the default checks (trace-observed): five
+checks judged only on what the transcript shows, needing no
+human-written checks. No network, no account, no upload.
 
 Parses an agent trace into a cost ledger, prints the text P&L report to
 stdout, and writes a shareable one-page HTML report. `simulate` generates
@@ -82,7 +88,8 @@ def build_parser():
                         "don't accuse.")
 
     y = sub.add_parser("try", help="One-command meter run with a shareable HTML report.")
-    y.add_argument("file", help="Trace file to meter (mini-SWE-agent .traj.json, JSONL events, or a Langfuse export).")
+    y.add_argument("file", nargs="?",
+                   help="Trace file to meter (mini-SWE-agent .traj.json, JSONL events, or a Langfuse export). Omit it to scan your last 10 local Claude Code / Codex sessions instead (zero-config scan).")
     y.add_argument("--format", default="auto",
                    choices=["auto", "traj", "jsonl", "langfuse"],
                    help="Trace format (default: auto-detect).")
@@ -100,6 +107,12 @@ def build_parser():
                    help="Agent name shown in the report (default for trajectory input: miniswe-import; for JSONL input: jsonl-import; for Langfuse input: langfuse-import).")
     y.add_argument("--force", action="store_true",
                    help="Overwrite an existing --out file instead of refusing.")
+    y.add_argument("--receipt", default=None, metavar="PATH",
+                   help="Markdown receipt output path (default: the HTML "
+                        "report path with .html replaced by -receipt.md; "
+                        "in scan mode the default is "
+                        "averth-scan-receipt.md). The receipt is written "
+                        "in both scan mode and explicit-trace mode.")
 
     s = sub.add_parser("simulate",
                        help="Generate adversarial synthetic production traffic "
@@ -254,7 +267,221 @@ def _detect_try_format(path):
     )
 
 
+def _check_output_parent(abs_path):
+    """Validate the parent directory of an output path.
+
+    Returns an error string when the parent does not exist, is not a
+    directory, or is not writable; None when the path can be written.
+    """
+    parent = os.path.dirname(abs_path)
+    if not os.path.isdir(parent):
+        if os.path.exists(parent):
+            reason = "the path %s is not a directory" % parent
+        else:
+            reason = "the directory %s does not exist" % parent
+        return reason
+    if not os.access(parent, os.W_OK):
+        return "the directory %s is not writable" % parent
+    return None
+
+
+def _refuse_existing(abs_path, force, what):
+    """Refuse (or warn) when an output file already exists.
+
+    Returns an exit code (2 on refusal, None to proceed).
+    """
+    if os.path.exists(abs_path) and not force:
+        print("averth: error: %s already exists; pass --force to "
+              "overwrite it" % abs_path, file=sys.stderr)
+        return 2
+    if os.path.exists(abs_path) and force:
+        print("averth: warning: overwriting existing %s at %s"
+              % (what, abs_path), file=sys.stderr)
+    return None
+
+
+def _write_receipt_file(receipt_abs, receipt_text):
+    """Write the receipt Markdown file. Returns 0 or 2."""
+    try:
+        with open(receipt_abs, "w", encoding="utf-8") as f:
+            f.write(receipt_text)
+    except Exception as e:
+        print("averth: error: cannot write receipt to %s: %s"
+              % (receipt_abs, e), file=sys.stderr)
+        return 2
+    print("Receipt written to %s" % receipt_abs)
+    return 0
+
+
+def _cmd_try_scan(args):
+    """Zero-config scan: meter the last 10 local sessions.
+
+    Discovers Claude Code sessions and Codex rollouts under the home
+    directory, meters them with the existing importers, judges the
+    default checks (trace-observed) over the raw transcripts, and
+    writes the HTML report plus the PR receipt (printed to stdout
+    too). A session file that fails to parse is skipped with a
+    warning counted in the report, never silently dropped; if ALL
+    fail, exit 2. No sessions at all is exit 2 naming the
+    directories checked.
+    """
+    if args.format != "auto" or args.model:
+        print("averth: error: scan mode takes no trace file; --format "
+              "and --model apply to explicit traces only (run "
+              "'averth try <file>' for a single trace)", file=sys.stderr)
+        return 2
+    if args.checks and not args.ledger:
+        print("averth: error: --checks needs --ledger", file=sys.stderr)
+        return 2
+    if args.recorded is not None and (
+            not math.isfinite(args.recorded) or args.recorded <= 0):
+        print("averth: error: --recorded must be a positive dollar figure",
+              file=sys.stderr)
+        return 2
+    from averth import default_checks, local_scan
+    from averth import receipt as receipt_mod
+    selected, skipped, checked = local_scan.discover_sessions()
+    if not selected:
+        extra = ""
+        if skipped:
+            extra = (" (%d subagent rollout(s) found but excluded by "
+                     "default)" % len(skipped))
+        print("averth: error: no local Claude Code or Codex sessions "
+              "found%s; checked %s and %s"
+              % (extra, checked[0], checked[1]), file=sys.stderr)
+        return 2
+    html_path = args.out or "averth-scan.html"
+    html_abs = os.path.abspath(html_path)
+    err = _check_output_parent(html_abs)
+    if err is not None:
+        print("averth: error: cannot write HTML report to %s: %s"
+              % (html_abs, err), file=sys.stderr)
+        return 2
+    receipt_path = (args.receipt
+                    or receipt_mod.receipt_path_for_html(html_abs))
+    receipt_abs = os.path.abspath(receipt_path)
+    err = _check_output_parent(receipt_abs)
+    if err is not None:
+        print("averth: error: cannot write receipt to %s: %s"
+              % (receipt_abs, err), file=sys.stderr)
+        return 2
+    from averth.importers import claude as claude_mod
+    from averth.importers import codex as codex_mod
+    from averth.importers import common
+    events = []
+    evidences = []
+    scanned = []
+    parse_failures = []
+    for cand in selected:
+        path = cand["path"]
+        try:
+            if cand["source"] == "claude":
+                file_events, _stats = claude_mod.parse_claude_session(path)
+            else:
+                file_events, _stats = codex_mod.parse_codex_rollout(path)
+        except Exception as e:
+            parse_failures.append(path)
+            print("averth: warning: skipping %s: failed to parse (%s)"
+                  % (path, e), file=sys.stderr)
+            continue
+        events.extend(file_events)
+        if cand["source"] == "claude":
+            evidences.append(default_checks.extract_claude(path))
+        else:
+            evidences.append(default_checks.extract_codex(path))
+        scanned.append(cand)
+    if not scanned:
+        print("averth: error: all %d session file(s) failed to parse; "
+              "nothing to meter" % len(selected), file=sys.stderr)
+        return 2
+    try:
+        tracker = common.events_to_tracker("local-scan", events)
+    except Exception as e:
+        print("averth: error: cannot build tracker from sessions: %s" % e,
+              file=sys.stderr)
+        return 2
+    if args.agent:
+        tracker.agent_name = args.agent
+    pnl = tracker.pnl()
+    if pnl["attempts"] == 0:
+        print("averth: error: the scanned sessions contain no model "
+              "calls; nothing to meter", file=sys.stderr)
+        return 2
+    # The V0 ledger is verified BEFORE anything is written, as in
+    # explicit mode.
+    v0 = None
+    digest_verified = None
+    if args.ledger:
+        try:
+            from averth import try_report
+            v0, digest_verified = try_report.load_v0_ledger(
+                args.ledger, args.checks)
+        except Exception as e:
+            if ("digest mismatch" in str(e)
+                    and os.path.exists(html_abs)):
+                print("averth: warning: a previous report remains at "
+                      "%s; it is NOT this run's output (this run was "
+                      "refused)" % html_abs, file=sys.stderr)
+            print("averth: error: %s" % e, file=sys.stderr)
+            return 2
+    rc = _refuse_existing(html_abs, args.force, "report")
+    if rc is not None:
+        return rc
+    rc = _refuse_existing(receipt_abs, args.force, "receipt")
+    if rc is not None:
+        return rc
+    evidence = default_checks.merge_evidence(evidences)
+    checks = default_checks.judge_default_checks(
+        evidence, pnl["cost_total"])
+    n_claude = sum(1 for c in scanned if c["source"] == "claude")
+    n_codex = len(scanned) - n_claude
+    scan_note = (
+        "Local scan: %d session(s) scanned (%d Claude Code, %d Codex); "
+        "%d skipped (subagent rollouts); %d failed to parse. Token "
+        "counts are trace-supplied; Averth does not verify them as "
+        "recorded usage."
+        % (len(scanned), n_claude, n_codex, len(skipped),
+           len(parse_failures)))
+    source_note = (
+        "Trace: local scan of %d session(s) (%s). Token counts are "
+        "trace-supplied; Averth does not verify them as recorded "
+        "usage."
+        % (len(scanned),
+           ", ".join(local_scan.display_name(c) for c in scanned)))
+    from averth import try_report
+    try:
+        extras = try_report.build_try_extras(
+            pnl, recorded=args.recorded, v0=v0,
+            digest_verified=digest_verified, source_note=source_note)
+        summary = try_report.try_summary_lines(
+            pnl, recorded=args.recorded, v0=v0,
+            digest_verified=digest_verified, source_note=source_note)
+    except Exception as e:
+        print("averth: error: %s" % e, file=sys.stderr)
+        return 2
+    receipt_text = receipt_mod.render_receipt(
+        sources=[local_scan.display_name(c) for c in scanned],
+        estimated_cost=pnl["cost_total"],
+        recorded_cost=evidence["recorded_cost"],
+        recorded_note=receipt_mod.recorded_note_for(checks),
+        checks=checks,
+        unknown_rate=default_checks.unknown_rate(checks),
+        scan_note=scan_note)
+    rc = _report_and_html(tracker, html_path, try_extras=extras,
+                          try_summary=summary, try_mode=True)
+    if rc != 0:
+        return rc
+    rc = _write_receipt_file(receipt_abs, receipt_text)
+    if rc != 0:
+        return rc
+    print()
+    print(receipt_text)
+    return 0
+
+
 def _cmd_try(args):
+    if args.file is None:
+        return _cmd_try_scan(args)
     path = args.file
     if os.path.isdir(path):
         print("averth: error: %s is a directory; pass a trace file, not "
@@ -306,6 +533,18 @@ def _cmd_try(args):
         print("averth: error: cannot write HTML report to %s: the "
               "directory %s is not writable" % (html_abs, parent),
               file=sys.stderr)
+        return 2
+    # Receipt path: default derives from the HTML report path (same
+    # stem rule); --receipt overrides it. Validated up front like
+    # --out, so a bad --receipt fails fast too.
+    from averth import receipt as receipt_mod
+    receipt_path = (args.receipt
+                    or receipt_mod.receipt_path_for_html(html_abs))
+    receipt_abs = os.path.abspath(receipt_path)
+    err = _check_output_parent(receipt_abs)
+    if err is not None:
+        print("averth: error: cannot write receipt to %s: %s"
+              % (receipt_abs, err), file=sys.stderr)
         return 2
     # An unknown model is refused, never silently fallback-priced: a
     # typo'd --model must not produce a confident wrong report.
@@ -375,7 +614,8 @@ def _cmd_try(args):
             print("averth: error: %s" % e, file=sys.stderr)
             return 2
     # A previous report is never silently overwritten: re-running the
-    # command after a typo must not destroy a good report.
+    # command after a typo must not destroy a good report. The same
+    # rule covers the receipt.
     if os.path.exists(html_abs) and not args.force:
         print("averth: error: %s already exists; pass --force to "
               "overwrite it" % html_abs, file=sys.stderr)
@@ -383,6 +623,9 @@ def _cmd_try(args):
     if os.path.exists(html_abs) and args.force:
         print("averth: warning: overwriting existing report at %s"
               % html_abs, file=sys.stderr)
+    rc = _refuse_existing(receipt_abs, args.force, "receipt")
+    if rc is not None:
+        return rc
     from averth import try_report
     traj_recorded = None
     model_cost_basis = None
@@ -424,9 +667,31 @@ def _cmd_try(args):
     except Exception as e:
         print("averth: error: %s" % e, file=sys.stderr)
         return 2
-    return _report_and_html(tracker, html_path, try_extras=extras,
-                            try_summary=summary, try_mode=True,
-                            model_cost_basis=model_cost_basis)
+    # The receipt is written in both scan mode and explicit-trace
+    # mode (one behavior). Its default checks are judged on the raw
+    # trace file, not on the metered ledger: the importers emit no
+    # tool events, so the evidence comes from the transcript itself.
+    # The operator-supplied --recorded figure is NOT used for D5:
+    # D5 compares the trace's own recorded cost (traj instance_cost
+    # / Claude result.total_cost_usd) with the metered estimate.
+    from averth import default_checks
+    evidence = default_checks.merge_evidence(
+        [default_checks.extract_from_file(path)])
+    checks = default_checks.judge_default_checks(
+        evidence, pnl["cost_total"])
+    receipt_text = receipt_mod.render_receipt(
+        sources=evidence["sessions"],
+        estimated_cost=pnl["cost_total"],
+        recorded_cost=evidence["recorded_cost"],
+        recorded_note=receipt_mod.recorded_note_for(checks),
+        checks=checks,
+        unknown_rate=default_checks.unknown_rate(checks))
+    rc = _report_and_html(tracker, html_path, try_extras=extras,
+                          try_summary=summary, try_mode=True,
+                          model_cost_basis=model_cost_basis)
+    if rc != 0:
+        return rc
+    return _write_receipt_file(receipt_abs, receipt_text)
 
 
 def _cmd_simulate(args):
