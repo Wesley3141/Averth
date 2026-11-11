@@ -198,11 +198,29 @@ def test_v0_ledger_rejects_malformed_shapes(tmp_path):
         try_report.load_v0_ledger(_write({
             "judgments": [],
             "coverage": {"counts": {}, "unknown": "two"}}))
+    with pytest.raises(ValueError, match="unknown"):
+        try_report.load_v0_ledger(_write({
+            "judgments": [],
+            "coverage": {"counts": {}, "unknown": True}}))
+    with pytest.raises(ValueError, match="unknown"):
+        try_report.load_v0_ledger(_write({
+            "judgments": [],
+            "coverage": {"counts": {}, "unknown": 1.5}}))
     with pytest.raises(ValueError, match="superseded"):
         try_report.load_v0_ledger(_write({
             "judgments": [],
             "coverage": {"counts": {},
                          "superseded_runs_retained": "two"}}))
+    with pytest.raises(ValueError, match="superseded"):
+        try_report.load_v0_ledger(_write({
+            "judgments": [],
+            "coverage": {"counts": {},
+                         "superseded_runs_retained": True}}))
+    with pytest.raises(ValueError, match="superseded"):
+        try_report.load_v0_ledger(_write({
+            "judgments": [],
+            "coverage": {"counts": {},
+                         "superseded_runs_retained": 1.5}}))
     with pytest.raises(ValueError, match="runs_total"):
         try_report.load_v0_ledger(_write({
             "judgments": [],
