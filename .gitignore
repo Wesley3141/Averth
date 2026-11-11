@@ -9,3 +9,8 @@ build/
 # generated reports
 *.html
 !docs/*.html
+
+# reproduce-script work dirs (regenerable Django checkouts)
+try-it/repro-work/
+try-it/reviews/*/repro-work/
+try-it/.test-out/

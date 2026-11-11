@@ -3,9 +3,21 @@
 Usage:
     averth trace <file> --format otel|langsmith|jsonl|langfuse|claude|codex [--html PATH]
                  [--policy-cap FLOAT] [--policy-yield FLOAT] [--agent NAME]
+    averth try <file> [--format auto|traj|jsonl|langfuse] [--model NAME]
+                 [--recorded DOLLARS] [--ledger PATH] [--checks PATH]
+                 [--out PATH] [--agent NAME]
     averth simulate --attempts N --seed S [--jsonl PATH] [--html PATH]
                  [--agent NAME]
     averth pricing
+
+``try`` is the one-command free run: it meters a trace file (a
+mini-SWE-agent trajectory, JSONL events, or a Langfuse export),
+prints the text report, and writes a self-contained HTML report you
+can share. ``--recorded`` is an operator-supplied figure claimed to
+be the run's recorded cost, shown next to the metered estimate;
+Averth does not verify it. ``--ledger`` adds a V0 verdict summary
+from a V0 evidence ledger (``--checks`` verifies the ledger's checks
+digest and refuses on mismatch). No network, no account, no upload.
 
 Parses an agent trace into a cost ledger, prints the text P&L report to
 stdout, and writes a shareable one-page HTML report. `simulate` generates
@@ -19,6 +31,7 @@ module always imports cleanly.
 """
 
 import argparse
+import math
 import os
 import sys
 
@@ -68,6 +81,26 @@ def build_parser():
                         "detection, not attack attribution — inspect, "
                         "don't accuse.")
 
+    y = sub.add_parser("try", help="One-command meter run with a shareable HTML report.")
+    y.add_argument("file", help="Trace file to meter (mini-SWE-agent .traj.json, JSONL events, or a Langfuse export).")
+    y.add_argument("--format", default="auto",
+                   choices=["auto", "traj", "jsonl", "langfuse"],
+                   help="Trace format (default: auto-detect).")
+    y.add_argument("--model", default=None, metavar="NAME",
+                   help="Model name for mini-SWE-agent trajectories (e.g. claude-sonnet-4-20250514). Required unless the file name contains a priced model name. An explicit --model overrides the name inferred from the file name. Ignored for JSONL and Langfuse input, whose models come from the file itself. List priced models with 'averth pricing'.")
+    y.add_argument("--recorded", type=float, default=None, metavar="DOLLARS",
+                   help="Operator-supplied figure claimed to be the recorded cost for the same run (must be positive; e.g. the 'cost' field of a leaderboard per_instance_details.json entry). Averth does not verify it; shown next to the metered estimate. No comparison is shown when the run completed zero runs.")
+    y.add_argument("--ledger", default=None, metavar="PATH",
+                   help="V0 evidence ledger JSON to summarize in the report. Without --checks the ledger's checks digest is shown but not verified.")
+    y.add_argument("--checks", default=None, metavar="PATH",
+                   help="Checks file the V0 ledger was judged under; verifies the ledger's checks digest (refuses on mismatch). Needs --ledger.")
+    y.add_argument("--out", default=None, metavar="PATH",
+                   help="HTML report output path (default: <stem>-try.html in the current directory, where <stem> is the trace filename without .traj.json or .json). Refuses to overwrite an existing file unless --force is passed.")
+    y.add_argument("--agent", default=None, metavar="NAME",
+                   help="Agent name shown in the report (default for trajectory input: miniswe-import; for JSONL input: jsonl-import; for Langfuse input: langfuse-import).")
+    y.add_argument("--force", action="store_true",
+                   help="Overwrite an existing --out file instead of refusing.")
+
     s = sub.add_parser("simulate",
                        help="Generate adversarial synthetic production traffic "
                             "and report its P&L.")
@@ -115,12 +148,15 @@ def build_parser():
     return p
 
 
-def _report_and_html(tracker, html_path, policy_sim=None, anomaly=False):
+def _report_and_html(tracker, html_path, policy_sim=None, anomaly=False,
+                     try_extras=None, try_summary=(), try_mode=False,
+                     model_cost_basis=None):
     from averth.report import report_text, write_html
     from averth.insights import findings_text, anomalies_text
 
     p = tracker.pnl()
-    print(report_text(p))
+    print(report_text(p, try_mode=try_mode,
+                      model_cost_basis=model_cost_basis))
     print()
     print("=" * 60)
     print(findings_text(p))
@@ -134,7 +170,9 @@ def _report_and_html(tracker, html_path, policy_sim=None, anomaly=False):
         print(policy.policy_text(policy_sim))
     html_path = os.path.abspath(html_path)
     try:
-        write_html(html_path, tracker, policy_sim=policy_sim)
+        write_html(html_path, tracker, policy_sim=policy_sim,
+                   try_extras=try_extras, try_mode=try_mode,
+                   model_cost_basis=model_cost_basis)
     except Exception as e:
         # A bad --html path must honor the CLI's error contract (clean
         # "averth: error:" on stderr, exit 2), not dump a traceback after
@@ -143,7 +181,252 @@ def _report_and_html(tracker, html_path, policy_sim=None, anomaly=False):
               % (html_path, e), file=sys.stderr)
         return 2
     print("\nHTML report written to %s" % html_path)
+    for line in try_summary:
+        print(line)
     return 0
+
+
+def _detect_try_format(path):
+    """Auto-detect a try-it trace format from the file's shape.
+
+    A JSON object with a ``messages`` key is a mini-SWE-agent
+    trajectory; a JSON object with ``data`` (or a bare JSON list) is a
+    Langfuse export; one JSON object per line is Averth JSONL (a
+    single-line JSONL file counts: the line scan runs whenever the
+    whole-file parse does not match a shape, and it looks at the
+    first 10 non-blank lines, so a header event without a ``type``
+    key does not hide valid events below it). Anything else raises
+    ValueError naming the supported shapes. The file is read once.
+    """
+    import json
+
+    try:
+        with open(path, encoding="utf-8") as f:
+            text = f.read()
+    except UnicodeDecodeError:
+        raise ValueError(
+            "%s is not readable text (binary or non-UTF-8); supply a "
+            ".traj.json, JSONL, or Langfuse JSON export" % path
+        )
+    if not text.strip():
+        raise ValueError("%s is empty" % path)
+    data = None
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError:
+        data = None
+    if isinstance(data, dict):
+        if "messages" in data:
+            return "traj"
+        if "data" in data:
+            return "langfuse"
+        # A dict with neither key may still be a one-event JSONL file,
+        # so fall through to the line scan before rejecting it.
+    elif isinstance(data, list):
+        return "langfuse"
+    scanned = 0
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        scanned += 1
+        if scanned > 10:
+            break
+        try:
+            obj = json.loads(line)
+        except json.JSONDecodeError:
+            break
+        if isinstance(obj, dict) and "type" in obj:
+            return "jsonl"
+    if isinstance(data, dict):
+        raise ValueError(
+            "%s is JSON but none of the supported shapes: a "
+            "mini-SWE-agent trajectory is a JSON object with a "
+            "'messages' key; a Langfuse export is a JSON object with a "
+            "'data' key or a bare JSON list; JSONL is one event object "
+            "with a 'type' key per line" % path
+        )
+    raise ValueError(
+        "%s is not a mini-SWE-agent trajectory (a JSON object with a "
+        "'messages' key), a Langfuse export (a JSON object with a "
+        "'data' key or a bare JSON list), or a JSONL events file (one "
+        "event object with a 'type' key per line)" % path
+    )
+
+
+def _cmd_try(args):
+    path = args.file
+    if os.path.isdir(path):
+        print("averth: error: %s is a directory; pass a trace file, not "
+              "a directory" % path, file=sys.stderr)
+        return 2
+    if not os.path.isfile(path):
+        print("averth: error: file not found: %s" % path, file=sys.stderr)
+        return 2
+    if args.checks and not args.ledger:
+        print("averth: error: --checks needs --ledger", file=sys.stderr)
+        return 2
+    if args.recorded is not None and (
+            not math.isfinite(args.recorded) or args.recorded <= 0):
+        print("averth: error: --recorded must be a positive dollar figure",
+              file=sys.stderr)
+        return 2
+    fmt = args.format
+    if fmt == "auto":
+        try:
+            fmt = _detect_try_format(path)
+        except ValueError as e:
+            print("averth: error: cannot detect trace format: %s" % e,
+                  file=sys.stderr)
+            return 2
+    # Resolve the default --out path now, and validate its parent
+    # directory before any metering or printing, so a bad --out fails
+    # fast instead of printing a success-looking report first.
+    base = os.path.basename(path)
+    if args.out:
+        html_path = args.out
+    else:
+        # "django-15930.traj.json" -> "django-15930-try.html", not
+        # "django-15930.traj-try.html".
+        stem = os.path.splitext(base)[0]
+        if stem.endswith(".traj"):
+            stem = stem[:-5]
+        html_path = stem + "-try.html"
+    html_abs = os.path.abspath(html_path)
+    parent = os.path.dirname(html_abs)
+    if not os.path.isdir(parent):
+        if os.path.exists(parent):
+            reason = "the path %s is not a directory" % parent
+        else:
+            reason = "the directory %s does not exist" % parent
+        print("averth: error: cannot write HTML report to %s: %s"
+              % (html_abs, reason), file=sys.stderr)
+        return 2
+    if not os.access(parent, os.W_OK):
+        print("averth: error: cannot write HTML report to %s: the "
+              "directory %s is not writable" % (html_abs, parent),
+              file=sys.stderr)
+        return 2
+    # An unknown model is refused, never silently fallback-priced: a
+    # typo'd --model must not produce a confident wrong report.
+    if fmt == "traj":
+        from averth.importers import miniswe as miniswe_mod
+        model = args.model or miniswe_mod._infer_model(path)
+        if model is not None and not miniswe_mod.is_priced_model(model):
+            print("averth: error: unknown model '%s': not in the Averth "
+                  "price table; run 'averth pricing' to list priced "
+                  "models" % model, file=sys.stderr)
+            return 2
+    try:
+        if fmt == "traj":
+            from averth.importers import miniswe as mod
+            ledger = mod.load_miniswe(path, model=args.model)
+        else:
+            load, _mod_name = _importer_for(fmt)
+            ledger = load(path)
+    except Exception as e:
+        if args.format != "auto":
+            # An explicitly forced format that fails to parse is most
+            # often the wrong format, not a corrupt file: say so, and
+            # name what auto-detection sees.
+            try:
+                detected = _detect_try_format(path)
+            except ValueError:
+                detected = None
+            hint = ("; auto-detection says this looks like %s" % detected
+                    if detected and detected != fmt else "")
+            print("averth: error: %s does not parse as %s (%s); it may "
+                  "be another format -- try --format auto or one of "
+                  "traj|jsonl|langfuse%s" % (path, fmt, e, hint),
+                  file=sys.stderr)
+            return 2
+        print("averth: error: failed to parse %s (%s): %s" % (path, fmt, e),
+              file=sys.stderr)
+        return 2
+    try:
+        from averth.importers import common
+        tracker = common.tracker_from_ledger(ledger)
+    except Exception as e:
+        print("averth: error: cannot build tracker from ledger: %s" % e,
+              file=sys.stderr)
+        return 2
+    if args.agent:
+        tracker.agent_name = args.agent
+    if tracker.pnl()["attempts"] == 0:
+        print("averth: error: %s contains no traces (empty export); "
+              "nothing to meter" % path, file=sys.stderr)
+        return 2
+    # The V0 ledger is verified BEFORE anything is written: a digest
+    # mismatch refuses the whole report instead of writing a report
+    # that presents verdicts judged under different checks.
+    v0 = None
+    digest_verified = None
+    if args.ledger:
+        try:
+            from averth import try_report
+            v0, digest_verified = try_report.load_v0_ledger(
+                args.ledger, args.checks)
+        except Exception as e:
+            if ("digest mismatch" in str(e)
+                    and os.path.exists(html_abs)):
+                print("averth: warning: a previous report remains at "
+                      "%s; it is NOT this run's output (this run was "
+                      "refused)" % html_abs, file=sys.stderr)
+            print("averth: error: %s" % e, file=sys.stderr)
+            return 2
+    # A previous report is never silently overwritten: re-running the
+    # command after a typo must not destroy a good report.
+    if os.path.exists(html_abs) and not args.force:
+        print("averth: error: %s already exists; pass --force to "
+              "overwrite it" % html_abs, file=sys.stderr)
+        return 2
+    if os.path.exists(html_abs) and args.force:
+        print("averth: warning: overwriting existing report at %s"
+              % html_abs, file=sys.stderr)
+    from averth import try_report
+    traj_recorded = None
+    model_cost_basis = None
+    if fmt == "traj":
+        traj_recorded = miniswe_mod.traj_instance_cost(path)
+        source_note = (
+            "Trace: %s (mini-SWE-agent trajectory). Token counts are "
+            "characters/4 estimates from the trajectory text, not "
+            "provider-recorded usage; the dollars apply vendor list "
+            "prices to those estimates." % base
+        )
+        model_cost_basis = (
+            "versioned list prices and converter-estimated token "
+            "counts (characters/4 from the trajectory text, not "
+            "provider-reported usage); reconcile against the customer "
+            "invoice before calling this actual spend.")
+    elif fmt == "jsonl":
+        source_note = (
+            "Trace: %s (Averth JSONL events). Token counts are "
+            "trace-supplied; Averth does not verify them as recorded "
+            "usage." % base
+        )
+    else:
+        source_note = (
+            "Trace: %s (Langfuse export). Token counts and costs are "
+            "trace-supplied; Averth does not verify them as recorded "
+            "usage." % base
+        )
+    pnl = tracker.pnl()
+    try:
+        extras = try_report.build_try_extras(
+            pnl, recorded=args.recorded, v0=v0,
+            digest_verified=digest_verified, source_note=source_note,
+            traj_recorded=traj_recorded)
+        summary = try_report.try_summary_lines(
+            pnl, recorded=args.recorded, v0=v0,
+            digest_verified=digest_verified, source_note=source_note,
+            traj_recorded=traj_recorded)
+    except Exception as e:
+        print("averth: error: %s" % e, file=sys.stderr)
+        return 2
+    return _report_and_html(tracker, html_path, try_extras=extras,
+                            try_summary=summary, try_mode=True,
+                            model_cost_basis=model_cost_basis)
 
 
 def _cmd_simulate(args):
@@ -180,6 +463,20 @@ def _cmd_pricing(args):
     print("  source        : %s" % pricing.PRICE_TABLE_SOURCE)
     print("  models priced : %d" % len(pricing.MODEL_PRICES))
     print("  tools priced  : %d" % len(pricing.TOOL_PRICES))
+    print("  priced models :")
+    by_name = {}
+    for key in sorted(pricing.MODEL_PRICES):
+        # Bare names are what --model takes; the provider prefix
+        # (openai:/anthropic:/...) is guessed from the name. A model
+        # priced under two provider keys is listed once.
+        by_name.setdefault(key.split(":", 1)[-1], set()).add(
+            key.split(":", 1)[0])
+    for name in sorted(by_name):
+        print("    %s" % name)
+    multi = sorted(n for n, ps in by_name.items() if len(ps) > 1)
+    if multi:
+        print("    (%s priced under more than one provider key.)"
+              % ", ".join(multi))
     print("  human default : $%.2f/min (~$%.0f/hr loaded, assumption)"
           % (pricing.HUMAN_COST_PER_MIN, pricing.HUMAN_COST_PER_MIN * 60))
     print("  status        : %s" % ("STALE — " + w if w else
@@ -259,6 +556,8 @@ def main(argv=None):
         return _cmd_pricing(args)
     if args.cmd == "advise":
         return _cmd_advise(args)
+    if args.cmd == "try":
+        return _cmd_try(args)
 
     path = args.file
     if not os.path.isfile(path):

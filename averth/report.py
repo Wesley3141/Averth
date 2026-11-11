@@ -10,7 +10,17 @@ from .insights import findings
 from ._money import dollars
 
 
-def report_text(p, token_dashboard_per_success=None):
+def report_text(p, token_dashboard_per_success=None, try_mode=False,
+                model_cost_basis=None):
+    """Render the text P&L report.
+
+    ``try_mode`` is for ``averth try`` only: the run never joins human
+    acceptance labels, so the per-success block is headed "Cost per
+    completed run" (never "per accepted outcome") and the Reopened
+    line drops the "accepted outcomes" wording. ``model_cost_basis``
+    replaces the MODEL COST BASIS sentence (used by ``try`` for
+    trajectory input, whose token counts are converter-estimated).
+    """
     ps = p["per_success"]
     t = p["tail"]
     L = []
@@ -78,8 +88,13 @@ def report_text(p, token_dashboard_per_success=None):
                  "tutorial estimates, or converted estimates). Only "
                  "vendor-supplied (billed) dollars are billed spend. Do "
                  "not quote priced dollars as measured spend or as a bill.")
-    L.append("MODEL COST BASIS: versioned list prices and reported token/cache usage; "
-             "reconcile against the customer's invoice before calling this actual spend.")
+    if model_cost_basis is None:
+        model_cost_basis = (
+            "versioned list prices and trace-supplied token counts "
+            "(not verified as provider-recorded usage); reconcile "
+            "against the customer's invoice before calling this "
+            "actual spend.")
+    L.append("MODEL COST BASIS: %s" % model_cost_basis)
     if p.get("inferred_outcomes", 0):
         L.append("WARNING: %d of %d outcomes were inferred from trace completion/error status. "
                  "Join customer acceptance labels before treating cost per success "
@@ -129,8 +144,12 @@ def report_text(p, token_dashboard_per_success=None):
     L.append("Attempts:              %s" % "{:,}".format(p["attempts"]))
     L.append("Autonomous completions:%s (%s)" % (
         "{:,}".format(p["successes"]), "%.1f%%" % (p["success_rate"] * 100)))
-    L.append("Reopened:              %s accepted outcomes reopened"
-             % "{:,}".format(p.get("reopened_successful", p["reopened"])))
+    if try_mode:
+        L.append("Reopened:              %s"
+                 % "{:,}".format(p.get("reopened_successful", p["reopened"])))
+    else:
+        L.append("Reopened:              %s accepted outcomes reopened"
+                 % "{:,}".format(p.get("reopened_successful", p["reopened"])))
     L.append("Human escalations:     %s" % "{:,}".format(p["escalations"]))
     L.append("Retries:               %s" % "{:,}".format(p["retries"]))
     L.append("")
@@ -138,7 +157,12 @@ def report_text(p, token_dashboard_per_success=None):
     # accepted-outcome metric. When every outcome was inferred from trace
     # completion status, label the block accordingly — the dollars are real,
     # but "per success" here is per inferred success, not per accepted outcome.
-    if p["attempts"] and p.get("inferred_outcomes", 0) >= p["attempts"]:
+    # In try mode the run never joins acceptance labels at all, so the block
+    # is headed per completed run and says so.
+    if try_mode:
+        L.append("Cost per completed run (not per accepted outcome — no "
+                 "human acceptance labels were joined):")
+    elif p["attempts"] and p.get("inferred_outcomes", 0) >= p["attempts"]:
         L.append("Cost per successful outcome: UNKNOWN as an accepted-outcome "
                  "metric — no outcome labels were joined. "
                  "Per inferred success (trace completion only):")
@@ -177,8 +201,11 @@ def report_text(p, token_dashboard_per_success=None):
     # the Priced bucket now holds only vendor prices on token counts
     # NOT flagged estimated; spend on estimated tokens is in
     # Estimated and is broken out on its own line when present.
-    L.append("  Priced (vendor prices on recorded tokens; legacy traces "
-             "without a provenance flag still land here): %s"
+    # The parenthetical no longer says "recorded tokens": the counts
+    # may be converter estimates (characters/4), and the report
+    # cannot verify they were provider-recorded.
+    L.append("  Priced (vendor list prices on trace-supplied token "
+             "counts, not verified as provider-recorded usage): %s"
              % dollars(dq.get("measured", 0.0)))
     L.append("  Vendor-supplied (billed):          %s"
              % dollars(dq.get("billed", 0.0)))
@@ -385,8 +412,18 @@ def _histogram_svg(costs, p50, p95):
     return "\n".join(parts)
 
 
-def write_html(path, tracker, policy_sim=None, token_dashboard_per_success=None):
-    """Write a single-file shareable P&L report. Returns the path written."""
+def write_html(path, tracker, policy_sim=None, token_dashboard_per_success=None,
+               try_extras=None, try_mode=False, model_cost_basis=None):
+    """Write a single-file shareable P&L report. Returns the path written.
+
+    ``try_extras`` is pre-rendered HTML from ``averth.try_report``
+    (recorded-cost comparison, V0 verdicts, provenance note), inserted
+    before ``</main>`` by ``averth try`` only. ``None`` (or ``""``)
+    adds nothing: the block is omitted, not rendered as a blank line.
+    ``try_mode`` relabels the per-success block as per completed run
+    (see ``report_text``); ``model_cost_basis`` replaces the Model
+    cost basis sentence.
+    """
     p = tracker.pnl()
     ps = p["per_success"]
     t = p["tail"]
@@ -435,9 +472,13 @@ def write_html(path, tracker, policy_sim=None, token_dashboard_per_success=None)
     all_inferred = (p["attempts"] > 0
                     and p.get("inferred_outcomes", 0) >= p["attempts"])
     # When no outcome labels were joined, "per accepted outcome" is unknown:
-    # the card shows per inferred success and says so.
-    per_success_label = ("per inferred success (no outcome labels joined)"
-                         if all_inferred else "per accepted outcome")
+    # the card shows per inferred success and says so. In try mode the
+    # run never joins acceptance labels, so the card reads per
+    # completed run.
+    per_success_label = (
+        "per completed run" if try_mode else
+        ("per inferred success (no outcome labels joined)"
+         if all_inferred else "per accepted outcome"))
     if p.get("inferred_outcomes", 0):
         inferred_outcome_banner = (
             '<div class="warn"><b>Outcome labels needed:</b> %d of %d '
@@ -507,10 +548,15 @@ def write_html(path, tracker, policy_sim=None, token_dashboard_per_success=None)
             'estimated (characters/4, tutorial estimates, or converted '
             'estimates). Only vendor-supplied (billed) dollars are billed '
             'spend.</div>')
+    if model_cost_basis is None:
+        model_cost_basis = (
+            "versioned list prices and trace-supplied token counts "
+            "(not verified as provider-recorded usage). Reconcile "
+            "against the customer's invoice before calling this "
+            "actual spend.")
     model_basis_banner = (
-        '<div class="warn"><b>Model cost basis:</b> versioned list prices '
-        'and reported token/cache usage. Reconcile against the customer&#x27;s '
-        'invoice before calling this actual spend.</div>')
+        '<div class="warn"><b>Model cost basis:</b> %s</div>'
+        % _html.escape(model_cost_basis))
 
     # C2: stamp the price vintage on every report; stale tables warn loudly.
     vint = p.get("price_vintage")
@@ -570,8 +616,8 @@ def write_html(path, tracker, policy_sim=None, token_dashboard_per_success=None)
         ) if p.get("estimated_token_spend", 0.0) > 0 else ""
     data_quality_block = (
         '<h2>Data quality</h2><ul class="layers">'
-        '<li><b>Priced</b> (vendor prices on recorded tokens; legacy '
-        'traces without a provenance flag still land here): %s</li>'
+        '<li><b>Priced</b> (vendor list prices on trace-supplied token '
+        'counts, not verified as provider-recorded usage): %s</li>'
         '<li><b>Vendor-supplied</b> (billed): %s</li>'
         '<li><b>Estimated</b> (fallback prices, estimated tokens, tool '
         'estimates): %s</li>'
@@ -714,7 +760,7 @@ footer { margin-top: 24px; font-size: 12px; color: #8a94a1; text-align: center; 
 <div class="s">%(failed_share)s</div></div>
 </div>
 %(insight_cards)s
-<h2>Cost per successful outcome</h2>
+<h2>%(per_success_heading)s</h2>
 %(breakdown)s
 %(human_note)s
 %(data_quality_block)s
@@ -737,7 +783,7 @@ footer { margin-top: 24px; font-size: 12px; color: #8a94a1; text-align: center; 
 <h2>Costliest attempts</h2>
 <table><tr><th>Run</th><th class="r">Cost</th><th>Outcome</th><th class="r">Retries</th><th class="r">Human</th></tr>%(costliest_rows)s</table>
 %(retry_section)s
-%(policy_section)s
+%(policy_section)s%(try_extras_block)s
 </main>
 <footer>Generated locally by averth. No data leaves your environment.</footer>
 </body>
@@ -761,7 +807,10 @@ footer { margin-top: 24px; font-size: 12px; color: #8a94a1; text-align: center; 
         "vintage_line": vintage_line,
         "human_note": human_note,
         "fully_loaded": dollars(ps["fully_loaded"]),
-        "per_success_label": per_success_label,        "mult_card": mult_card,
+        "per_success_label": per_success_label,
+        "per_success_heading": ("Cost per completed run" if try_mode
+                                else "Cost per successful outcome"),
+        "mult_card": mult_card,
         "yield_ratio": ("n/a" if (_zero_tokens_html or _unknown_only_html)
                          else "%.0f%%" % (p["yield_ratio"] * 100)),
         "tail_share": "%.0f%%" % (t["top5pct_share"] * 100),
@@ -840,6 +889,10 @@ footer { margin-top: 24px; font-size: 12px; color: #8a94a1; text-align: center; 
             '<th>Reason</th></tr>%s</table>' % retry_rows
         ) if retry_rows else "",
         "policy_section": policy_section,
+        # The extras block is conditional: with no extras the template
+        # is byte-identical to the pre-try-it report (no stray blank
+        # line before </main>).
+        "try_extras_block": ("\n" + try_extras) if try_extras else "",
     }
     with open(path, "w", encoding="utf-8") as f:
         f.write(html_doc)

@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+### Added
+
+- One-command try-it (`averth try`, branch `try-it`, unmerged): meter
+  a trace file and write a self-contained shareable HTML report. It
+  accepts a mini-SWE-agent trajectory (new `averth/importers/miniswe.py`,
+  which reproduces the published case-study events, as parsed event
+  records),
+  Averth JSONL, or a Langfuse export, with `--recorded` for the
+  recorded-cost comparison and `--ledger`/`--checks` for a V0 verdict
+  summary (the checks digest is verified and refuses on mismatch).
+  `try-it/reproduce-case-study.py` replays the full published
+  case-study reproduction from public sources and checks the
+  published numbers listed in its PUBLISHED table, plus a gold-patch
+  cross-check and consistency checks that are not published numbers.
+  It does not recheck the 3.84x 12-run leaderboard gap, the
+  0-tool-failures claim, or the $0.9832 unrounded total. See
+  `try-it/README.md`.
+
 ### Corrected
 
 - Price table v8 (verified 2026-10-23 from Anthropic's own pricing
@@ -187,8 +205,8 @@
   ledger round-trip (`LEDGER_ATTEMPT_KEYS` carries
   `estimated_token_cost`). Converters and the JSONL importer accept
   and validate a `tokens_estimated` flag. Reports label the Priced
-  bucket "vendor prices on recorded tokens" (legacy traces without
-  a provenance flag still land there), name fallback-price, vendor-
+  bucket "vendor list prices on trace-supplied token counts, not
+  verified as provider-recorded usage"), name fallback-price, vendor-
   price-on-estimated-token, and tool-estimate contributions in the
   COST BASIS banner, and print an "of which vendor prices on
   estimated tokens" line when that spend is nonzero.

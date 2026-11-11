@@ -27,7 +27,7 @@ Teams discover this when the invoice arrives, not when the workflow ships.
 Averth reads the traces you already have (Langfuse, LangSmith, OpenTelemetry, or JSONL) and produces a trustworthy cost receipt:
 
 - **Fully-loaded cost per attempt** — model spend, retry paths, tool calls, and human review time, shown as separate lines
-- **Data quality, stated honestly** — every dollar labeled by provenance: vendor-billed, priced on recorded tokens, estimated (fallback prices, tokens estimated from text, or tool estimates), or unknown. Spend from estimated tokens lands in Estimated, never Priced. Missing usage data is flagged loudly, never rendered as free; context tax on fallback-priced runs prints n/a, not $0.00.
+- **Data quality, stated honestly** — every dollar labeled by provenance: vendor-billed, priced (vendor list prices on trace-supplied token counts, not verified as provider-recorded usage), estimated (fallback prices, tokens estimated from text, or tool estimates), or unknown. Spend from estimated tokens lands in Estimated, never Priced. Missing usage data is flagged loudly, never rendered as free; context tax on fallback-priced runs prints n/a, not $0.00.
 - **The five cost layers** — context compounding, tool spend, yield ratio, heavy-tail outliers, and per-model attribution, explaining *why* the number is what it is
 - **One change worth testing** — top retry reasons, costliest attempts, and failed-run waste, pointing at the single highest-leverage fix
 
@@ -43,6 +43,14 @@ averth trace run-2026-09.json --format langfuse --html report.html
 ```
 
 Supported formats: `langfuse`, `langsmith`, `otel`, `jsonl`, `claude` (Claude Code session JSONL, one session file at a time; see the importer docstring for its cache and sidechain limits), `codex` (Codex CLI rollout JSONL, one rollout file at a time; token_count snapshots are cumulative, so the importer counts deltas, and the model comes from turn_context; see the importer docstring for its compaction, subagent, and pricing limits). The text receipt prints to stdout; `--html` writes a shareable report.
+
+**Just want to try it on one trace?** On the unmerged `try-it`
+branch only: `git checkout try-it`, then `averth try <trace>` meters
+a mini-SWE-agent trajectory, a JSONL events file, or a Langfuse
+export and writes one self-contained HTML report you can share, with
+an optional recorded-cost comparison (`--recorded`) and V0 verdict
+summary (`--ledger` + `--checks`). See `try-it/README.md`. (On
+`master` the `try` subcommand does not exist yet.)
 
 **Want the AI read on it?** Bring your own key, get the recommendation:
 
