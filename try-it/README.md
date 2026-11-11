@@ -7,29 +7,32 @@ a public trace (the `curl` below) is the only network step.
 
 ## Install
 
-Run every command below from the repository root (the directory
-containing `pyproject.toml`) unless told otherwise.
+Run all commands in this guide from the repository root (the directory
+containing `pyproject.toml`), unless a command explicitly specifies a
+different working directory.
+
+The `try-it` branch is not yet published. This feature cannot
+currently be installed from a fresh public clone.
+
+For internal testing, start from an existing checkout that already
+contains the `try-it` branch.
+
+Run the following from the repository root:
 
 ```
-git clone https://github.com/Wesley3141/Averth.git
-cd Averth
-git checkout try-it
 python3 -m venv ../averth-venv
 ../averth-venv/bin/pip install -e .
 ```
 
-Note: `try-it` is an unmerged branch and is not published yet. Until
-it is pushed, `git checkout try-it` fails on a fresh clone; run the
-commands from a checkout that already has the branch instead. Once
-the branch is published, the commands above work literally.
+Once the branch is published, this section will include the public
+clone and installation commands.
 
 Prerequisites: Python 3.9 or newer, `curl` (for the download below),
-and git (to obtain the checkout, and for the reproduction script
-below). Averth itself has zero required dependencies. After `pip install -e .`, plain `averth try …`
+and git (for the reproduction script below). Averth itself has zero required dependencies. After `pip install -e .`, plain `averth try …`
 also works; the `../averth-venv/bin/python -m averth.cli` form below
-is the same thing spelled out. If `averth try` reports an invalid
-choice, your checkout does not have the `try-it` branch checked out
-(`git branch --show-current`).
+is the same thing spelled out. If averth reports invalid choice: 'try'
+for the subcommand, your checkout does not have the `try-it` branch
+checked out (`git branch --show-current`).
 
 ## The one command
 
@@ -90,6 +93,9 @@ Options:
   `django-15930.traj.json` becomes `django-15930-try.html`. Pass
   `--out` to put it elsewhere. The command refuses to overwrite an
   existing file; pass `--force` to overwrite it.
+- `--force` — overwrite an existing HTML report at the specified
+  output path. The reproduction script also accepts `--force` to
+  remove an existing work directory before rerunning.
 - `--agent NAME` — agent name shown in the report (default for
   trajectory input: `miniswe-import`; for JSONL input:
   `jsonl-import`; for Langfuse input: `langfuse-import`).
@@ -109,7 +115,7 @@ in the output, in this order:
 ```
 Retries:               0
   Fully loaded:         $0.98
-Recorded cost (operator-supplied): $0.3205; metered estimate per completed run: $0.98 ESTIMATED (3.07x)
+Recorded cost (operator-supplied): $0.3205; metered estimate per completed run: $0.98 ESTIMATED (3.07x, calculated using the unrounded estimate)
 ```
 
 The HTML report (`django-15930-try.html`) shows cost per completed
@@ -185,14 +191,18 @@ digest mismatch refuses the whole report and writes no HTML.
 
 ## Reproduce the case study
 
-`reproduce-case-study.py` runs the full published reproduction from
-public sources: it fetches the trajectory, the leaderboard record,
-and the SWE-bench task definition; checks out Django at the base
-commit; runs the target test before and after the agent patch (plus
-a gold-patch cross-check against the fix Django actually merged);
-runs the meter and V0; and checks the published numbers in
-`PUBLISHED`, plus a few consistency checks that are not published
-numbers (leaderboard `api_calls`, baseline failure mode).
+`reproduce-case-study.py` reproduces the published case-study numbers
+listed in `PUBLISHED` from public sources: it fetches the trajectory,
+the leaderboard record, and the SWE-bench task definition; checks out
+Django at the base commit; runs the target test before and after the
+agent patch (plus a gold-patch cross-check against the fix Django
+actually merged); runs the meter and V0; and checks the published
+numbers in `PUBLISHED`, plus a few consistency checks that are not
+published numbers (leaderboard `api_calls`, baseline failure mode).
+It does not independently check the 3.84x 12-run leaderboard gap, the
+zero-tool-failures claim, or the exact $0.9832 unrounded total. The
+latter is checked through its rounded components and the recorded-cost
+ratio.
 
 ```
 python3 try-it/reproduce-case-study.py
@@ -201,12 +211,16 @@ python3 try-it/reproduce-case-study.py
 Run this from the repository root. It needs internet access (public S3, GitHub, Hugging Face, and PyPI
 URLs), git, curl, and about a minute for the Django install (47 to 86
 seconds measured; allow more on a slow connection). It
-writes everything under `./repro-work` relative to the directory you
-run it from (pass `--work-dir` to change it) and prints a PASS/FAIL
-line per check at the end. Exit code 0 means every check passed;
-anything else is a defect to fix, not a rounding note. If the work
-directory already exists the script refuses; pass `--force` to wipe
-it and redo the run.
+writes its reproduction artifacts under `./repro-work` relative to the
+directory you run it from (pass `--work-dir` to change it). The
+editable Averth install also creates a git-ignored averth.egg-info/
+directory in the source checkout; no tracked file is modified. It
+prints a PASS/FAIL line per check at the end. Exit code 0 means every
+check passed; anything else is a defect to fix, not a rounding note.
+If the work directory already exists the script refuses; pass `--force`
+to wipe it and redo the run. The script refuses to wipe the filesystem
+root, home directory, current directory, repository root, or an
+ancestor of the checkout, even with `--force`.
 
 ## How the trajectory conversion works
 
