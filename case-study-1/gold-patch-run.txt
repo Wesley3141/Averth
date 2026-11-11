@@ -1,0 +1,24 @@
+COMMAND: /home/hatch/workspace/averth/case-study-1/django-venv/bin/python tests/runtests.py expressions_case -v 0
+WORKING DIRECTORY: /home/hatch/workspace/averth/case-study-1/django-base
+STATE: test patch applied, GOLD patch applied (not the agent patch)
+TIMESTAMP (UTC): 2026-11-11T04:57:17Z
+--- OUTPUT ---
+EXIT CODE: 0
+System check identified no issues (0 silenced).
+----------------------------------------------------------------------
+Ran 89 tests in 0.171s
+
+OK (skipped=1)
+
+--- TARGET TEST (appended 2026-11-11) ---
+COMMAND: /home/hatch/workspace/averth/case-study-1/django-venv/bin/python tests/runtests.py expressions_case.tests.CaseExpressionTests.test_annotate_with_full_when -v 0
+WORKING DIRECTORY: /home/hatch/workspace/averth/case-study-1/django-base
+STATE: test patch applied, GOLD patch applied (not the agent patch)
+TIMESTAMP (UTC): 2026-11-11T05:22:09Z
+--- OUTPUT ---
+EXIT CODE: 0
+System check identified no issues (0 silenced).
+----------------------------------------------------------------------
+Ran 1 test in 0.007s
+
+OK

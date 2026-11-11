@@ -1,0 +1,6 @@
+VERIFIER CHECKOUT (evidence-v0)
+branch: criterion-c-checks-digest
+commit: 8ec848b Freeze checks at load and refuse mid-run edits (criterion c)
+commit hash: 8ec848b7d3085c752f340ffe2754d90ada432edd
+status:
+recorded: 2026-11-11T04:58:01Z

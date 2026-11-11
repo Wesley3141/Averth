@@ -1,0 +1,152 @@
+diff --git a/requests/sessions.py b/requests/sessions.py
+index a023e4ec..da22dd3b 100644
+--- a/requests/sessions.py
++++ b/requests/sessions.py
+@@ -55,8 +55,16 @@ def merge_setting(request_setting, session_setting, dict_class=OrderedDict):
+     merged_setting.update(to_key_val_list(request_setting))
+ 
+     # Remove keys that are set to None.
++
++    none_keys = []
+     for (k, v) in request_setting.items():
+         if v is None:
++            none_keys.append(k)
++    for (k, v) in session_setting.items():
++        if v is None:
++            none_keys.append(k)
++    for k in none_keys:
++        if k in merged_setting:
+             del merged_setting[k]
+ 
+     return merged_setting
+diff --git a/test_comprehensive.py b/test_comprehensive.py
+new file mode 100644
+index 00000000..20536dcf
+--- /dev/null
++++ b/test_comprehensive.py
+@@ -0,0 +1,70 @@
++#!/usr/bin/env python
++import requests
++
++def test_session_header_none_removal():
++    print("=== Test 1: Setting session header to None ===")
++    session = requests.Session()
++    print("Original headers:", dict(session.headers))
++    
++    # Set a header to None
++    session.headers['Accept-Encoding'] = None
++    print("Session headers after setting to None:", dict(session.headers))
++    
++    # Prepare a request
++    req = requests.Request('GET', 'http://httpbin.org/get')
++    prepared = session.prepare_request(req)
++    print("Prepared request headers:", dict(prepared.headers))
++    print("Accept-Encoding removed:", 'Accept-Encoding' not in prepared.headers)
++    print()
++
++def test_request_header_none_removal():
++    print("=== Test 2: Setting request header to None (should still work) ===")
++    session = requests.Session()
++    
++    # Prepare a request with None header
++    req = requests.Request('GET', 'http://httpbin.org/get', headers={'Accept-Encoding': None})
++    prepared = session.prepare_request(req)
++    print("Prepared request headers:", dict(prepared.headers))
++    print("Accept-Encoding removed:", 'Accept-Encoding' not in prepared.headers)
++    print()
++
++def test_both_none():
++    print("=== Test 3: Both session and request headers set to None ===")
++    session = requests.Session()
++    session.headers['Accept-Encoding'] = None
++    
++    req = requests.Request('GET', 'http://httpbin.org/get', headers={'Accept-Encoding': None})
++    prepared = session.prepare_request(req)
++    print("Prepared request headers:", dict(prepared.headers))
++    print("Accept-Encoding removed:", 'Accept-Encoding' not in prepared.headers)
++    print()
++
++def test_request_overrides_session():
++    print("=== Test 4: Request header overrides session header ===")
++    session = requests.Session()
++    session.headers['Accept-Encoding'] = 'gzip'
++    
++    req = requests.Request('GET', 'http://httpbin.org/get', headers={'Accept-Encoding': None})
++    prepared = session.prepare_request(req)
++    print("Prepared request headers:", dict(prepared.headers))
++    print("Accept-Encoding removed:", 'Accept-Encoding' not in prepared.headers)
++    print()
++
++def test_session_overrides_with_none():
++    print("=== Test 5: Session None removes default header ===")
++    session = requests.Session()
++    # Accept-Encoding has a default value, setting to None should remove it
++    session.headers['Accept-Encoding'] = None
++    
++    req = requests.Request('GET', 'http://httpbin.org/get')
++    prepared = session.prepare_request(req)
++    print("Prepared request headers:", dict(prepared.headers))
++    print("Accept-Encoding removed:", 'Accept-Encoding' not in prepared.headers)
++    print()
++
++if __name__ == '__main__':
++    test_session_header_none_removal()
++    test_request_header_none_removal()
++    test_both_none()
++    test_request_overrides_session()
++    test_session_overrides_with_none()
+diff --git a/test_issue.py b/test_issue.py
+new file mode 100644
+index 00000000..8cceb535
+--- /dev/null
++++ b/test_issue.py
+@@ -0,0 +1,18 @@
++#!/usr/bin/env python
++import requests
++
++# Test the current behavior
++session = requests.Session()
++print("Original session headers:")
++print(dict(session.headers))
++
++# Set a header to None (this should remove it, but currently doesn't work)
++session.headers['Accept-Encoding'] = None
++print("\nAfter setting Accept-Encoding to None:")
++print(dict(session.headers))
++
++# Create a request to see what headers would be sent
++req = requests.Request('GET', 'http://httpbin.org/get')
++prepared = session.prepare_request(req)
++print("\nPrepared request headers:")
++print(dict(prepared.headers))
+diff --git a/test_normal_headers.py b/test_normal_headers.py
+new file mode 100644
+index 00000000..2daf0246
+--- /dev/null
++++ b/test_normal_headers.py
+@@ -0,0 +1,25 @@
++#!/usr/bin/env python
++import requests
++
++def test_normal_header_functionality():
++    print("=== Test: Normal header functionality still works ===")
++    session = requests.Session()
++    
++    # Set a normal header value
++    session.headers['Custom-Header'] = 'session-value'
++    
++    # Request with different value for same header
++    req = requests.Request('GET', 'http://httpbin.org/get', headers={'Custom-Header': 'request-value'})
++    prepared = session.prepare_request(req)
++    
++    print("Prepared request headers:", dict(prepared.headers))
++    print("Custom-Header value:", prepared.headers.get('Custom-Header'))
++    print("Request header overrides session header:", prepared.headers.get('Custom-Header') == 'request-value')
++    
++    # Test session header without request override
++    req2 = requests.Request('GET', 'http://httpbin.org/get')
++    prepared2 = session.prepare_request(req2)
++    print("Session header used when no request override:", prepared2.headers.get('Custom-Header') == 'session-value')
++
++if __name__ == '__main__':
++    test_normal_header_functionality()

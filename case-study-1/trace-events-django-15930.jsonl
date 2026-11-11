@@ -1,0 +1,71 @@
+{"type": "model", "case_id": "django__django-15930", "model": "claude-sonnet-4-20250514", "input_tokens": 1460, "output_tokens": 58}
+{"type": "tool", "case_id": "django__django-15930", "name": "bash"}
+{"type": "model", "case_id": "django__django-15930", "model": "claude-sonnet-4-20250514", "input_tokens": 1984, "output_tokens": 71}
+{"type": "tool", "case_id": "django__django-15930", "name": "bash"}
+{"type": "model", "case_id": "django__django-15930", "model": "claude-sonnet-4-20250514", "input_tokens": 2328, "output_tokens": 55}
+{"type": "tool", "case_id": "django__django-15930", "name": "bash"}
+{"type": "model", "case_id": "django__django-15930", "model": "claude-sonnet-4-20250514", "input_tokens": 2500, "output_tokens": 42}
+{"type": "tool", "case_id": "django__django-15930", "name": "bash"}
+{"type": "model", "case_id": "django__django-15930", "model": "claude-sonnet-4-20250514", "input_tokens": 2835, "output_tokens": 74}
+{"type": "tool", "case_id": "django__django-15930", "name": "bash"}
+{"type": "model", "case_id": "django__django-15930", "model": "claude-sonnet-4-20250514", "input_tokens": 2932, "output_tokens": 57}
+{"type": "tool", "case_id": "django__django-15930", "name": "bash"}
+{"type": "model", "case_id": "django__django-15930", "model": "claude-sonnet-4-20250514", "input_tokens": 3826, "output_tokens": 140}
+{"type": "tool", "case_id": "django__django-15930", "name": "bash"}
+{"type": "model", "case_id": "django__django-15930", "model": "claude-sonnet-4-20250514", "input_tokens": 3985, "output_tokens": 47}
+{"type": "tool", "case_id": "django__django-15930", "name": "bash"}
+{"type": "model", "case_id": "django__django-15930", "model": "claude-sonnet-4-20250514", "input_tokens": 4907, "output_tokens": 57}
+{"type": "tool", "case_id": "django__django-15930", "name": "bash"}
+{"type": "model", "case_id": "django__django-15930", "model": "claude-sonnet-4-20250514", "input_tokens": 4981, "output_tokens": 45}
+{"type": "tool", "case_id": "django__django-15930", "name": "bash"}
+{"type": "model", "case_id": "django__django-15930", "model": "claude-sonnet-4-20250514", "input_tokens": 5608, "output_tokens": 414}
+{"type": "tool", "case_id": "django__django-15930", "name": "bash"}
+{"type": "model", "case_id": "django__django-15930", "model": "claude-sonnet-4-20250514", "input_tokens": 6034, "output_tokens": 35}
+{"type": "tool", "case_id": "django__django-15930", "name": "bash"}
+{"type": "model", "case_id": "django__django-15930", "model": "claude-sonnet-4-20250514", "input_tokens": 6379, "output_tokens": 130}
+{"type": "tool", "case_id": "django__django-15930", "name": "bash"}
+{"type": "model", "case_id": "django__django-15930", "model": "claude-sonnet-4-20250514", "input_tokens": 6604, "output_tokens": 56}
+{"type": "tool", "case_id": "django__django-15930", "name": "bash"}
+{"type": "model", "case_id": "django__django-15930", "model": "claude-sonnet-4-20250514", "input_tokens": 6808, "output_tokens": 51}
+{"type": "tool", "case_id": "django__django-15930", "name": "bash"}
+{"type": "model", "case_id": "django__django-15930", "model": "claude-sonnet-4-20250514", "input_tokens": 7023, "output_tokens": 50}
+{"type": "tool", "case_id": "django__django-15930", "name": "bash"}
+{"type": "model", "case_id": "django__django-15930", "model": "claude-sonnet-4-20250514", "input_tokens": 7767, "output_tokens": 128}
+{"type": "tool", "case_id": "django__django-15930", "name": "bash"}
+{"type": "model", "case_id": "django__django-15930", "model": "claude-sonnet-4-20250514", "input_tokens": 7992, "output_tokens": 38}
+{"type": "tool", "case_id": "django__django-15930", "name": "bash"}
+{"type": "model", "case_id": "django__django-15930", "model": "claude-sonnet-4-20250514", "input_tokens": 8575, "output_tokens": 234}
+{"type": "tool", "case_id": "django__django-15930", "name": "bash"}
+{"type": "model", "case_id": "django__django-15930", "model": "claude-sonnet-4-20250514", "input_tokens": 8820, "output_tokens": 271}
+{"type": "tool", "case_id": "django__django-15930", "name": "bash"}
+{"type": "model", "case_id": "django__django-15930", "model": "claude-sonnet-4-20250514", "input_tokens": 9103, "output_tokens": 44}
+{"type": "tool", "case_id": "django__django-15930", "name": "bash"}
+{"type": "model", "case_id": "django__django-15930", "model": "claude-sonnet-4-20250514", "input_tokens": 9421, "output_tokens": 44}
+{"type": "tool", "case_id": "django__django-15930", "name": "bash"}
+{"type": "model", "case_id": "django__django-15930", "model": "claude-sonnet-4-20250514", "input_tokens": 9772, "output_tokens": 121}
+{"type": "tool", "case_id": "django__django-15930", "name": "bash"}
+{"type": "model", "case_id": "django__django-15930", "model": "claude-sonnet-4-20250514", "input_tokens": 10247, "output_tokens": 142}
+{"type": "tool", "case_id": "django__django-15930", "name": "bash"}
+{"type": "model", "case_id": "django__django-15930", "model": "claude-sonnet-4-20250514", "input_tokens": 10401, "output_tokens": 323}
+{"type": "tool", "case_id": "django__django-15930", "name": "bash"}
+{"type": "model", "case_id": "django__django-15930", "model": "claude-sonnet-4-20250514", "input_tokens": 10736, "output_tokens": 32}
+{"type": "tool", "case_id": "django__django-15930", "name": "bash"}
+{"type": "model", "case_id": "django__django-15930", "model": "claude-sonnet-4-20250514", "input_tokens": 11047, "output_tokens": 29}
+{"type": "tool", "case_id": "django__django-15930", "name": "bash"}
+{"type": "model", "case_id": "django__django-15930", "model": "claude-sonnet-4-20250514", "input_tokens": 11368, "output_tokens": 672}
+{"type": "tool", "case_id": "django__django-15930", "name": "bash"}
+{"type": "model", "case_id": "django__django-15930", "model": "claude-sonnet-4-20250514", "input_tokens": 12052, "output_tokens": 36}
+{"type": "tool", "case_id": "django__django-15930", "name": "bash"}
+{"type": "model", "case_id": "django__django-15930", "model": "claude-sonnet-4-20250514", "input_tokens": 12408, "output_tokens": 639}
+{"type": "tool", "case_id": "django__django-15930", "name": "bash"}
+{"type": "model", "case_id": "django__django-15930", "model": "claude-sonnet-4-20250514", "input_tokens": 13058, "output_tokens": 37}
+{"type": "tool", "case_id": "django__django-15930", "name": "bash"}
+{"type": "model", "case_id": "django__django-15930", "model": "claude-sonnet-4-20250514", "input_tokens": 13399, "output_tokens": 539}
+{"type": "tool", "case_id": "django__django-15930", "name": "bash"}
+{"type": "model", "case_id": "django__django-15930", "model": "claude-sonnet-4-20250514", "input_tokens": 13950, "output_tokens": 32}
+{"type": "tool", "case_id": "django__django-15930", "name": "bash"}
+{"type": "model", "case_id": "django__django-15930", "model": "claude-sonnet-4-20250514", "input_tokens": 14242, "output_tokens": 211}
+{"type": "tool", "case_id": "django__django-15930", "name": "bash"}
+{"type": "model", "case_id": "django__django-15930", "model": "claude-sonnet-4-20250514", "input_tokens": 14465, "output_tokens": 123}
+{"type": "tool", "case_id": "django__django-15930", "name": "bash"}
+{"type": "end", "case_id": "django__django-15930", "success": true}
