@@ -44,13 +44,11 @@ averth trace run-2026-09.json --format langfuse --html report.html
 
 Supported formats: `langfuse`, `langsmith`, `otel`, `jsonl`, `claude` (Claude Code session JSONL, one session file at a time; see the importer docstring for its cache and sidechain limits), `codex` (Codex CLI rollout JSONL, one rollout file at a time; token_count snapshots are cumulative, so the importer counts deltas, and the model comes from turn_context; see the importer docstring for its compaction, subagent, and pricing limits). The text receipt prints to stdout; `--html` writes a shareable report.
 
-**Just want to try it on one trace?** On the unmerged `try-it`
-branch only: `git checkout try-it`, then `averth try <trace>` meters
+**Just want to try it on one trace?** `averth try <trace>` meters
 a mini-SWE-agent trajectory, a JSONL events file, or a Langfuse
 export and writes one self-contained HTML report you can share, with
 an optional recorded-cost comparison (`--recorded`) and V0 verdict
-summary (`--ledger` + `--checks`). See `try-it/README.md`. (On
-`master` the `try` subcommand does not exist yet.)
+summary (`--ledger` + `--checks`). See `try-it/README.md`.
 
 **Want the AI read on it?** Bring your own key, get the recommendation:
 

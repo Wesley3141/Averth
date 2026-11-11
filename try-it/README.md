@@ -11,28 +11,20 @@ Run all commands in this guide from the repository root (the directory
 containing `pyproject.toml`), unless a command explicitly specifies a
 different working directory.
 
-The `try-it` branch is not yet published. This feature cannot
-currently be installed from a fresh public clone.
-
-For internal testing, start from an existing checkout that already
-contains the `try-it` branch.
-
-Run the following from the repository root:
-
 ```
+git clone https://github.com/Wesley3141/Averth.git
+cd Averth
 python3 -m venv ../averth-venv
 ../averth-venv/bin/pip install -e .
 ```
 
-Once the branch is published, this section will include the public
-clone and installation commands.
-
 Prerequisites: Python 3.9 or newer, `curl` (for the download below),
-and git (for the reproduction script below). Averth itself has zero required dependencies. After `pip install -e .`, plain `averth try …`
+and git (to obtain the checkout, and for the reproduction script
+below). Averth itself has zero required dependencies. After `pip install -e .`, plain `averth try …`
 also works; the `../averth-venv/bin/python -m averth.cli` form below
 is the same thing spelled out. If averth reports invalid choice: 'try'
-for the subcommand, your checkout does not have the `try-it` branch
-checked out (`git branch --show-current`).
+for the subcommand, your checkout is older than the merge; update it
+(`git pull`).
 
 ## The one command
 

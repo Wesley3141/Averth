@@ -4,7 +4,7 @@
 
 ### Added
 
-- One-command try-it (`averth try`, branch `try-it`, unmerged): meter
+- One-command try-it (`averth try`): meter
   a trace file and write a self-contained shareable HTML report. It
   accepts a mini-SWE-agent trajectory (new `averth/importers/miniswe.py`,
   which reproduces the published case-study events, as parsed event
@@ -36,8 +36,7 @@
 
 ### Fixed
 
-- V0 evidence verifier, frozen checks (rehearsal criterion (c), branch
-  criterion-c-checks-digest, unmerged): the checks file is now hashed
+- V0 evidence verifier, frozen checks (rehearsal criterion (c)): the checks file is now hashed
   on its raw bytes at load, re-hashed before the ledger is built and
   written, and a net change between load and re-hash refuses to write
   output with exit code 2. The timing is a single net-change check: an
@@ -67,7 +66,7 @@
   copy of the tool, which had none of this fix, is deleted and `build/`
   is now ignored.
 
-- V0 evidence verifier, loader and judge hardening (same branch):
+- V0 evidence verifier, loader and judge hardening (same change as above):
   a --runs file whose exit_code is a string, float, bool, or list
   refuses at load with exit 2 and stale removal, instead of
   judging a false verdict; a trace model event with bool,
