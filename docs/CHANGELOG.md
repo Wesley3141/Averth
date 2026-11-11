@@ -206,7 +206,7 @@
   `estimated_token_cost`). Converters and the JSONL importer accept
   and validate a `tokens_estimated` flag. Reports label the Priced
   bucket "vendor list prices on trace-supplied token counts, not
-  verified as provider-recorded usage"), name fallback-price, vendor-
+  verified as provider-recorded usage", name fallback-price, vendor-
   price-on-estimated-token, and tool-estimate contributions in the
   COST BASIS banner, and print an "of which vendor prices on
   estimated tokens" line when that spend is nonzero.
