@@ -170,7 +170,7 @@ def miniswe_events(path, model=None):
         raise ValueError(
             "no model named for %s: pass --model (e.g. "
             "--model claude-sonnet-4-20250514) or put the model name in "
-            "the file path" % path
+            "the file name" % path
         )
     events = []
     prior_chars = 0
