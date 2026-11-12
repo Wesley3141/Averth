@@ -901,6 +901,46 @@ def test_d5_recorded_zero_is_a_recorded_cost_not_an_absence(tmp_path):
     assert "no ratio" in checks[4]["observation"]
 
 
+def test_d5_metered_zero_with_recorded_nonzero_is_not_observed():
+    # D-1: a $0.00 metered estimate means no priced usage was
+    # observed, so there is nothing to compare against the recorded
+    # figure — NOT OBSERVED, never FAILED.
+    ev = _evidence(recorded=0.32, claude_sessions=1, claude_with_cost=1)
+    checks = default_checks.judge_default_checks(ev, 0.0)
+    assert _verdicts(checks)["D5"] == "NOT OBSERVED"
+    assert "no priced usage" in checks[4]["observation"]
+    assert "recorded $0.3200" in checks[4]["observation"]
+    # A missing estimate is the same absence, defensively.
+    checks = default_checks.judge_default_checks(ev, None)
+    assert _verdicts(checks)["D5"] == "NOT OBSERVED"
+    assert "no priced usage" in checks[4]["observation"]
+    assert "recorded $0.3200" in checks[4]["observation"]
+
+
+def test_d5_recorded_zero_with_nonzero_estimate_still_fails():
+    # The asymmetry is intentional (D-1): recorded $0.00 is a value
+    # the trace asserts, so recorded-0 / estimate-nonzero stays FAILED.
+    ev = _evidence(recorded=0.0, claude_sessions=1, claude_with_cost=1)
+    checks = default_checks.judge_default_checks(ev, 1.0)
+    assert _verdicts(checks)["D5"] == "FAILED"
+    assert "recorded $0.0000" in checks[4]["observation"]
+
+
+def test_d5_both_zero_still_verifies():
+    ev = _evidence(recorded=0.0, claude_sessions=1, claude_with_cost=1)
+    checks = default_checks.judge_default_checks(ev, 0.0)
+    assert _verdicts(checks)["D5"] == "VERIFIED"
+    assert "agree" in checks[4]["observation"]
+
+
+def test_d5_disagreeing_figures_still_fail_with_ratio():
+    ev = _evidence(recorded=0.32, claude_sessions=1, claude_with_cost=1)
+    checks = default_checks.judge_default_checks(ev, 1.0)
+    assert _verdicts(checks)["D5"] == "FAILED"
+    assert "ratio" in checks[4]["observation"]
+    assert "recorded $0.3200" in checks[4]["observation"]
+
+
 def test_d5_not_observed_and_partial_and_codex():
     ev = _evidence(recorded=None)
     assert _verdicts(
@@ -1197,6 +1237,36 @@ def test_cli_scan_no_usage_is_exit_2_with_next_step(tmp_path, monkeypatch,
     assert rc == 2
     assert "no usage records found" in err
     assert "averth try <trace-file>" in err
+
+
+def test_cli_scan_zero_token_usage_session_d5_not_observed(
+        tmp_path, monkeypatch, capsys):
+    # D-1 live regression: one model call whose usage record carries
+    # all-zero tokens, plus a result record with total_cost_usd
+    # 0.32. The meter prices nothing, so D5 must be NOT OBSERVED —
+    # the $0.00 estimate is no priced usage to compare, not a
+    # disagreement with the recorded $0.32.
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    path = tmp_path / ".claude" / "projects" / "proj" / "s.jsonl"
+    records = [
+        _claude_assistant("msg_01",
+                          usage={"input_tokens": 0, "output_tokens": 0},
+                          content=[_bash_use("call_1", "pytest")]),
+        _claude_tool_result("call_1", False),
+        {"type": "result", "sessionId": "sess-1", "is_error": False,
+         "total_cost_usd": 0.32},
+    ]
+    _write_jsonl(path, records)
+    rc = main(["try"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    receipt = (tmp_path / "averth-scan-receipt.md").read_text(
+        encoding="utf-8")
+    assert "D5 trace-recorded vs estimated cost" in receipt
+    assert "NOT OBSERVED" in receipt
+    assert "no priced usage" in receipt
+    assert "recorded $0.3200" in receipt
 
 
 def test_cli_scan_subagent_only_is_exit_2(tmp_path, monkeypatch, capsys):

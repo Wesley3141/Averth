@@ -239,8 +239,11 @@ as V0, every verdict citing its observation:
   `info.model_stats.instance_cost`) vs the metered estimate: agree
   within 5% (metered estimate within 5% of the recorded cost,
   inclusive) -> VERIFIED; differ -> FAILED (both figures and the
-  ratio stated, at 4dp in the observation, except when the metered
-  estimate is $0.00, or the recorded cost is $0.00, where no ratio is stated); no recorded figure
+  ratio stated, at 4dp in the observation, except when the recorded
+  cost is $0.00, where no ratio is stated); a metered estimate of
+  $0.00 with a nonzero recorded cost -> NOT OBSERVED (no priced
+  usage was observed in the trace, so there is nothing to compare
+  against the recorded figure); no recorded figure
   -> NOT OBSERVED. If only some scanned Claude sessions carry a
   recorded cost, the comparison would be partial and D5 is
   NOT OBSERVED. Any Codex session in the run — scan mode or an

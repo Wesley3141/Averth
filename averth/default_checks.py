@@ -1093,10 +1093,16 @@ def _judge_d5(evidence, estimated_cost):
                     "verdict": "VERIFIED",
                     "observation": "recorded $0.00 and metered estimate "
                                    "$0.00 agree"}
+        # A $0.00 (or missing) metered estimate means no priced usage
+        # was observed in the trace, so there is nothing to compare
+        # against the recorded figure: absence of a measurement, not
+        # a measurement of zero cost. NOT OBSERVED, never FAILED.
         return {"id": "D5", "name": "trace-recorded vs estimated cost",
-                "verdict": "FAILED",
-                "observation": "recorded $%.4f but metered estimate "
-                               "$0.00" % recorded}
+                "verdict": "NOT OBSERVED",
+                "observation": "metered estimate is $0.00 — no priced "
+                               "usage was observed in the trace, so "
+                               "there is nothing to compare against "
+                               "the recorded $%.4f" % recorded}
     if recorded == 0:
         # A recorded $0.00 with a nonzero estimate: FAILED, with no
         # ratio (a ratio against zero is meaningless, never "infx").

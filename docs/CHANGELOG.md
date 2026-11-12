@@ -127,6 +127,19 @@
 
 ### Fixed
 
+- D5 (trace-recorded vs estimated cost) no longer judges FAILED when
+  the metered estimate is $0.00 and the recorded cost is nonzero:
+  a $0.00 estimate means no priced usage was observed in the trace,
+  so there is nothing to compare against the recorded figure — the
+  verdict is now NOT OBSERVED, with an observation stating that no
+  priced usage was observed ("metered estimate is $0.00 — no priced
+  usage was observed in the trace, so there is nothing to compare
+  against the recorded $0.3200"). A missing estimate is treated the
+  same way. Unchanged: recorded $0.00 with a nonzero estimate still
+  FAILED (the recorded figure is a value the trace asserts), both
+  figures $0.00 still VERIFIED, and disagreeing nonzero figures
+  still FAILED with the ratio. On the 50-trace public audit no
+  number moves (every audit trace has a metered estimate above $0).
 - D1 (tests executed) no longer counts a heredoc file-creation write
   as a test run: `cat <<'EOF' > test_x.py` is `cat` writing a file,
   not a test execution, so its rc 0 no longer makes D1 VERIFIED
