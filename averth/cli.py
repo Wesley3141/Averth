@@ -665,7 +665,7 @@ def _cmd_try(args):
         print("averth: error: %s is a directory; pass a trace file, not "
               "a directory" % path, file=sys.stderr)
         return 2
-    if not os.path.isfile(path):
+    if not os.path.exists(path):
         print("averth: error: file not found: %s" % path, file=sys.stderr)
         return 2
     if not stat.S_ISREG(os.lstat(path).st_mode):

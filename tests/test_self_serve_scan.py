@@ -142,17 +142,21 @@ def test_discovery_finds_both_sources_newest_first(tmp_path):
     codex = _codex_rollout(tmp_path)
     _touch(claude, 1000)
     _touch(codex, 2000)
-    selected, skipped, checked = local_scan.discover_sessions(tmp_path)
+    selected, skipped, checked, total_found = \
+        local_scan.discover_sessions(tmp_path)
     assert [s["source"] for s in selected] == ["codex", "claude"]
     assert skipped == []
+    assert total_found == 2
     assert checked[0].endswith(os.path.join(".claude", "projects"))
     assert checked[1].endswith(os.path.join(".codex", "sessions"))
 
 
 def test_discovery_empty_home_selects_nothing(tmp_path):
-    selected, skipped, checked = local_scan.discover_sessions(tmp_path)
+    selected, skipped, checked, total_found = \
+        local_scan.discover_sessions(tmp_path)
     assert selected == []
     assert skipped == []
+    assert total_found == 0
 
 
 def test_discovery_caps_at_ten_newest(tmp_path):
@@ -161,8 +165,10 @@ def test_discovery_caps_at_ten_newest(tmp_path):
         p = _claude_session(tmp_path, name="s%02d.jsonl" % i)
         _touch(p, 1000 + i)
         paths.append(p)
-    selected, _skipped, _checked = local_scan.discover_sessions(tmp_path)
+    selected, _skipped, _checked, total_found = \
+        local_scan.discover_sessions(tmp_path)
     assert len(selected) == 10
+    assert total_found == 12
     assert selected[0]["path"] == str(paths[11])
     assert selected[-1]["path"] == str(paths[2])
 
@@ -170,19 +176,87 @@ def test_discovery_caps_at_ten_newest(tmp_path):
 def test_discovery_excludes_codex_subagent_rollouts(tmp_path):
     _codex_rollout(tmp_path, name="main.jsonl")
     _codex_rollout(tmp_path, name="sub.jsonl", subagent=True)
-    selected, skipped, _checked = local_scan.discover_sessions(tmp_path)
+    selected, skipped, _checked, total_found = \
+        local_scan.discover_sessions(tmp_path)
     assert [os.path.basename(s["path"]) for s in selected] == ["main.jsonl"]
     assert len(skipped) == 1
     assert skipped[0]["source"] == "codex"
     assert "subagent" in skipped[0]["reason"]
+    assert total_found == 2
+
+
+def test_discovery_skipped_subagent_past_the_cap(tmp_path):
+    for i in range(10):
+        p = _codex_rollout(tmp_path, name="main%02d.jsonl" % i)
+        _touch(p, 2000 + i)
+    old = _codex_rollout(tmp_path, name="sub.jsonl", subagent=True)
+    _touch(old, 1000)
+    selected, skipped, _checked, total_found = \
+        local_scan.discover_sessions(tmp_path)
+    assert len(selected) == 10
+    assert len(skipped) == 1
+    assert skipped[0]["path"] == str(old)
+    assert total_found == 11
+
+
+def test_discovery_skips_fifo_without_hanging(tmp_path):
+    main = _codex_rollout(tmp_path, name="main.jsonl")
+    fifo_dir = tmp_path / ".codex" / "sessions" / "2026" / "11" / "11"
+    fifo = fifo_dir / "pipe.jsonl"
+    os.mkfifo(fifo)
+    selected, skipped, _checked, total_found = \
+        local_scan.discover_sessions(tmp_path)
+    assert [s["path"] for s in selected] == [str(main)]
+    assert total_found == 1
+    assert any(s["path"] == str(fifo)
+               and "not a regular file" in s["reason"]
+               for s in skipped)
+    # The guard itself must not block on the FIFO either.
+    assert local_scan._is_codex_subagent(str(fifo)) is False
+
+
+def test_is_codex_subagent_past_line_50(tmp_path):
+    path = tmp_path / "r.jsonl"
+    records = [{"type": "event_msg", "payload": {}}] * 60
+    records.append({"type": "session_meta",
+                    "payload": {"id": "c1",
+                                "source": {"subagent": {}}}})
+    _write_jsonl(path, records)
+    assert local_scan._is_codex_subagent(str(path)) is True
+
+
+def test_is_codex_subagent_nickname_role_and_payload_shapes(tmp_path):
+    def _meta(payload, extra=None):
+        rec = {"type": "session_meta", "payload": payload}
+        if extra:
+            rec.update(extra)
+        return rec
+
+    path = tmp_path / "nick.jsonl"
+    _write_jsonl(path, [_meta({"id": "c1", "source": "cli",
+                               "agent_nickname": "helper"})])
+    assert local_scan._is_codex_subagent(str(path)) is True
+    path = tmp_path / "role.jsonl"
+    _write_jsonl(path, [_meta({"id": "c1", "source": "cli",
+                               "agent_role": "subagent"})])
+    assert local_scan._is_codex_subagent(str(path)) is True
+    path = tmp_path / "flat.jsonl"
+    _write_jsonl(path, [{"type": "session_meta",
+                         "source": {"subagent": {}}}])
+    assert local_scan._is_codex_subagent(str(path)) is True
+    path = tmp_path / "main.jsonl"
+    _write_jsonl(path, [_meta({"id": "c1", "source": "cli"})])
+    assert local_scan._is_codex_subagent(str(path)) is False
 
 
 def test_discovery_ignores_non_jsonl(tmp_path):
     p = tmp_path / ".claude" / "projects" / "proj" / "notes.txt"
     p.parent.mkdir(parents=True)
     p.write_text("not a session", encoding="utf-8")
-    selected, _skipped, _c = local_scan.discover_sessions(tmp_path)
+    selected, _skipped, _c, total_found = \
+        local_scan.discover_sessions(tmp_path)
     assert selected == []
+    assert total_found == 0
 
 
 # --- extraction ------------------------------------------------------
@@ -283,6 +357,143 @@ def test_extract_traj_reads_fences_and_instance_cost(tmp_path):
         "pytest tests/test_a.py"]
     assert ev["commands"][0]["outcome"] is None
     assert ev["recorded_cost"] == 0.3205
+
+
+def test_extract_traj_parses_returncodes(tmp_path):
+    traj = tmp_path / "run.traj.json"
+    traj.write_text(json.dumps({
+        "info": {"model_stats": {"instance_cost": 0.5}},
+        "messages": [
+            {"role": "assistant",
+             "content": "```bash\npytest tests/test_a.py\n```"},
+            {"role": "user", "content": [
+                {"type": "text",
+                 "text": "<returncode>1</returncode>\nFAILED"}]},
+            {"role": "assistant",
+             "content": "```bash\nmake\n```"},
+            {"role": "user", "content": [
+                {"type": "text", "text": "<returncode>0</returncode>"}]},
+            {"role": "assistant",
+             "content": "```bash\nls\n```"},
+            # No following user message: outcome stays unknown.
+        ]}), encoding="utf-8")
+    ev = default_checks.extract_traj(str(traj))
+    assert [c["outcome"] for c in ev["commands"]] == [False, True, None]
+    assert "returncode" in ev["commands"][0]["outcome_note"]
+    assert "returncode" in ev["commands"][2]["outcome_note"]
+    checks = default_checks.judge_default_checks(
+        default_checks.merge_evidence([ev]), 0.5)
+    assert _verdicts(checks)["D1"] == "FAILED"
+    assert _verdicts(checks)["D2"] == "VERIFIED"
+
+
+def test_extract_traj_case_study_fixture_has_no_false_sentence(tmp_path):
+    traj = os.path.join(REPO, "try-it", "fixtures",
+                        "django-15930.traj.json")
+    ev = default_checks.extract_traj(traj)
+    assert len(ev["commands"]) > 0
+    assert any(c["outcome"] is not None for c in ev["commands"])
+    assert all("carries no per-command exit status" not in c["outcome_note"]
+               and "trajectory text carries no" not in c["outcome_note"]
+               for c in ev["commands"])
+
+
+def test_extract_claude_non_utf8_line_is_counted_not_fatal(tmp_path):
+    path = tmp_path / "s.jsonl"
+    with open(path, "wb") as f:
+        f.write((json.dumps(_claude_assistant(
+            "msg_01", usage=USAGE, content=[
+                _bash_use("call_1", "pytest")])) + "\n").encode("utf-8"))
+        f.write(b"\xff\xfe not utf8\n")
+        f.write((json.dumps({"type": "result", "sessionId": "sess-1",
+                             "total_cost_usd": 0.05}) + "\n")
+                .encode("utf-8"))
+    ev = default_checks.extract_claude(str(path))
+    assert [c["command"] for c in ev["commands"]] == ["pytest"]
+    assert ev["unparseable_lines"] == 1
+    assert ev["recorded_cost"] == 0.05
+
+
+def test_extract_codex_non_utf8_line_late_is_counted(tmp_path):
+    path = tmp_path / "r.jsonl"
+    records = [{"type": "event_msg", "payload": {}}] * 59
+    records.append({"type": "response_item",
+                    "payload": {"type": "function_call",
+                                "name": "exec_command", "call_id": "c1",
+                                "arguments": json.dumps(
+                                    {"command": "pytest"})}})
+    with open(path, "wb") as f:
+        for record in records:
+            f.write((json.dumps(record) + "\n").encode("utf-8"))
+        f.write(b"\xff bad bytes\n")
+    ev = default_checks.extract_codex(str(path))
+    assert [c["command"] for c in ev["commands"]] == ["pytest"]
+    assert ev["unparseable_lines"] == 1
+
+
+def test_extract_claude_tool_use_without_id_never_claims_outcome(tmp_path):
+    path = tmp_path / "s.jsonl"
+    records = [
+        _claude_assistant("msg_01", usage=USAGE, content=[
+            {"type": "tool_use", "name": "Bash",
+             "input": {"command": "pytest"}},
+            {"type": "tool_use", "name": "Bash",
+             "input": {"command": "make"}}]),
+        # A stray tool_result with no tool_use_id must not resolve
+        # either command.
+        {"type": "user", "sessionId": "sess-1",
+         "message": {"role": "user", "content": [
+             {"type": "tool_result", "content": "ok",
+              "is_error": False}]}},
+    ]
+    _write_jsonl(path, records)
+    ev = default_checks.extract_claude(str(path))
+    assert [c["command"] for c in ev["commands"]] == ["pytest", "make"]
+    assert all(c["outcome"] is None for c in ev["commands"])
+
+
+def test_codex_command_dict_and_list_argument_shapes():
+    assert default_checks._codex_command(
+        {"command": "pytest -q"}) == "pytest -q"
+    assert default_checks._codex_command(
+        {"cmd": ["pytest", "-q"]}) == "pytest -q"
+    assert default_checks._codex_command(
+        json.dumps({"cmd": ["go", "build", "./..."]})) == "go build ./..."
+    assert default_checks._codex_command(
+        json.dumps({"command": "make"})) == "make"
+    assert default_checks._codex_command("not json") is None
+    assert default_checks._codex_command({"other": 1}) is None
+    assert default_checks._codex_command(["pytest"]) is None
+
+
+def test_extract_from_file_never_loads_whole_file(tmp_path, monkeypatch):
+    claude = _claude_session(tmp_path)
+    orig_load = json.load
+
+    def _boom(*args, **kwargs):
+        raise AssertionError("json.load must not be called to sniff")
+
+    monkeypatch.setattr(json, "load", _boom)
+    try:
+        ev = default_checks.extract_from_file(str(claude))
+    finally:
+        monkeypatch.setattr(json, "load", orig_load)
+    assert ev["source"] == "claude"
+    assert ev["commands"]
+
+
+def test_extract_from_file_large_jsonl_streams(tmp_path):
+    plain = tmp_path / "big.jsonl"
+    with open(plain, "w", encoding="utf-8") as f:
+        for i in range(20000):
+            f.write(json.dumps({"type": "model", "case_id": "x%d" % i,
+                                "model": "claude-sonnet-4-20250514",
+                                "input_tokens": 10,
+                                "output_tokens": 5}) + "\n")
+    assert plain.stat().st_size > 1024 * 1024
+    ev = default_checks.extract_from_file(str(plain))
+    assert ev["source"] == "unknown"
+    assert ev["commands"] == []
 
 
 # --- classification --------------------------------------------------
@@ -387,13 +598,47 @@ def test_d3_full_suite_pass_verifies_touched_files():
 def test_d3_named_tests_match_by_stem():
     ev = _evidence(commands=[_cmd("pytest tests/test_cli.py", True)],
                    edited=["averth/cli.py"])
-    assert _verdicts(
-        default_checks.judge_default_checks(ev, 0.0))["D3"] == "VERIFIED"
+    checks = default_checks.judge_default_checks(ev, 0.0)
+    assert _verdicts(checks)["D3"] == "VERIFIED"
+    assert "name matching only" in checks[2]["observation"]
+    assert "named tests passed" in checks[2]["observation"]
     ev = _evidence(commands=[_cmd("pytest tests/test_other.py", True)],
                    edited=["averth/cli.py"])
     checks = default_checks.judge_default_checks(ev, 0.0)
     assert _verdicts(checks)["D3"] == "FAILED"
     assert "averth/cli.py" in checks[2]["observation"]
+
+
+def test_d3_named_run_outcome_gates_the_verdict():
+    # A named run that FAILED cannot VERIFY the touched files, even
+    # when every stem matches — D3's own citation says it failed.
+    ev = _evidence(commands=[_cmd("pytest tests/test_cli.py", False)],
+                   edited=["averth/cli.py"])
+    checks = default_checks.judge_default_checks(ev, 0.0)
+    assert _verdicts(checks)["D3"] == "FAILED"
+    assert "named tests failed" in checks[2]["observation"]
+    # A named run with an unknown outcome is NOT OBSERVED, not
+    # VERIFIED on name matching alone.
+    ev = _evidence(commands=[_cmd("pytest tests/test_cli.py", None)],
+                   edited=["averth/cli.py"])
+    checks = default_checks.judge_default_checks(ev, 0.0)
+    assert _verdicts(checks)["D3"] == "NOT OBSERVED"
+    assert "outcome is unknown" in checks[2]["observation"]
+    # A failing named run with unmatched files is still FAILED.
+    ev = _evidence(commands=[_cmd("pytest tests/test_other.py", False)],
+                   edited=["averth/cli.py"])
+    assert _verdicts(
+        default_checks.judge_default_checks(ev, 0.0))["D3"] == "FAILED"
+
+
+def test_d3_uses_only_the_last_test_command():
+    ev = _evidence(
+        commands=[_cmd("pytest tests/test_cli.py", True),
+                  _cmd("pytest tests/test_other.py", True)],
+        edited=["averth/cli.py"])
+    # The earlier matching run does not save the later one.
+    assert _verdicts(
+        default_checks.judge_default_checks(ev, 0.0))["D3"] == "FAILED"
 
 
 def test_d3_not_observed_paths():
@@ -420,18 +665,73 @@ def test_d3_test_files_themselves_need_no_match():
         default_checks.judge_default_checks(ev, 0.0))["D3"] == "NOT OBSERVED"
 
 
-def test_d4_threshold_three_duplicates_fail():
+def test_d1_mixed_source_note_names_earlier_passing_runs():
+    ev = _evidence(commands=[_cmd("pytest", True), _cmd("pytest", None)])
+    checks = default_checks.judge_default_checks(ev, 0.0)
+    assert _verdicts(checks)["D1"] == "NOT OBSERVED"
+    assert "1 earlier test run(s) passed" in checks[0]["observation"]
+    assert "latest run's outcome is unknown" in checks[0]["observation"]
+
+
+def test_d3_mixed_source_note_names_earlier_passing_runs():
+    ev = _evidence(commands=[_cmd("pytest", True), _cmd("pytest", None)],
+                   edited=["averth/cli.py"])
+    checks = default_checks.judge_default_checks(ev, 0.0)
+    assert _verdicts(checks)["D3"] == "NOT OBSERVED"
+    assert "1 earlier test run(s) passed" in checks[2]["observation"]
+
+
+def test_d3_traj_format_limitation_is_stated(tmp_path):
+    traj = tmp_path / "run.traj.json"
+    traj.write_text(json.dumps({
+        "info": {"model_stats": {"instance_cost": 0.1}},
+        "messages": [
+            {"role": "assistant",
+             "content": "```bash\nls\n```"},
+            {"role": "user", "content": [
+                {"type": "text", "text": "<returncode>0</returncode>"}]},
+        ]}), encoding="utf-8")
+    ev = default_checks.merge_evidence(
+        [default_checks.extract_traj(str(traj))])
+    checks = default_checks.judge_default_checks(ev, 0.1)
+    assert _verdicts(checks)["D3"] == "NOT OBSERVED"
+    assert "mini-SWE-agent edits files via bash" in \
+        checks[2]["observation"]
+
+
+def test_jsonl_trace_not_observed_states_format_limitation(tmp_path):
+    plain = tmp_path / "events.jsonl"
+    plain.write_text(json.dumps({"type": "model", "case_id": "x"}) + "\n",
+                     encoding="utf-8")
+    ev = default_checks.merge_evidence(
+        [default_checks.extract_from_file(str(plain))])
+    checks = default_checks.judge_default_checks(ev, 0.01)
+    assert all(c["verdict"] == "NOT OBSERVED" for c in checks)
+    assert "carry no tool-use records" in checks[0]["observation"]
+    assert "carry no tool-use records" in checks[2]["observation"]
+    assert "carry no tool-use records" in checks[3]["observation"]
+
+
+def test_d4_threshold_five_duplicates_fail():
     ev = _evidence(commands=[_cmd("pytest", True),
                              _cmd("pytest", True)])
     checks = default_checks.judge_default_checks(ev, 0.0)
     assert _verdicts(checks)["D4"] == "VERIFIED"
     assert "1 duplicate invocation" in checks[3]["observation"]
-    ev = _evidence(commands=[_cmd("pytest", True)] * 4)
+    ev = _evidence(commands=[_cmd("pytest", True)] * 5)
+    checks = default_checks.judge_default_checks(ev, 0.0)
+    assert _verdicts(checks)["D4"] == "VERIFIED"
+    assert "4 duplicate invocation" in checks[3]["observation"]
+    ev = _evidence(commands=[_cmd("pytest", True)] * 6)
     checks = default_checks.judge_default_checks(ev, 0.0)
     assert _verdicts(checks)["D4"] == "FAILED"
-    assert "3 duplicate invocation" in checks[3]["observation"]
+    assert "5 duplicate invocation" in checks[3]["observation"]
+    assert "retry" not in checks[3]["name"].lower()
+    assert checks[3]["name"] == "duplicate-invocation overhead"
     assert "retries" not in checks[3]["observation"].lower()
     assert "duplicate-invocation overhead" in checks[3]["observation"]
+    assert "pinned judgment call" in checks[3]["observation"]
+    assert "threshold: 5+ fails" in checks[3]["observation"]
     ev = _evidence(commands=[])
     assert _verdicts(
         default_checks.judge_default_checks(ev, 0.0))["D4"] == "NOT OBSERVED"
@@ -443,6 +743,20 @@ def test_d5_within_five_percent_verifies():
         ev, 1.04))["D5"] == "VERIFIED"
     assert _verdicts(default_checks.judge_default_checks(
         ev, 1.06))["D5"] == "FAILED"
+
+
+def test_d5_recorded_zero_is_a_recorded_cost_not_an_absence(tmp_path):
+    path = _claude_session(tmp_path, cost=0.0)
+    ev = default_checks.merge_evidence(
+        [default_checks.extract_claude(str(path))])
+    assert ev["recorded_cost"] == 0.0
+    checks = default_checks.judge_default_checks(ev, 0.0)
+    assert _verdicts(checks)["D5"] == "VERIFIED"
+    checks = default_checks.judge_default_checks(ev, 1.0)
+    assert _verdicts(checks)["D5"] == "FAILED"
+    assert "recorded $0.0000" in checks[4]["observation"]
+    assert "inf" not in checks[4]["observation"]
+    assert "no ratio" in checks[4]["observation"]
 
 
 def test_d5_not_observed_and_partial_and_codex():
@@ -500,34 +814,126 @@ def test_receipt_renders_tables_and_footer():
     checks = [
         {"id": "D1", "name": "tests executed", "verdict": "VERIFIED",
          "observation": "`pytest` (succeeded; is_error=false)"},
-        {"id": "D5", "name": "billed vs estimated cost",
+        {"id": "D5", "name": "trace-recorded vs estimated cost",
          "verdict": "FAILED",
          "observation": "recorded $0.0500 vs metered estimate $0.0210"},
     ]
     text = receipt_mod.render_receipt(
         sources=["claude/session-1.jsonl"], estimated_cost=0.021,
         recorded_cost=0.05, checks=checks, unknown_rate=0.0)
-    assert "# Averth Verified Agent PR Receipt" in text
+    assert "# Averth Agent PR Receipt (trace-observed)" in text
+    assert "Verified Agent PR Receipt" not in text
+    assert "Outcome: 2 of 2 checks resolved, 1 FAILED, 0 unknown" in text
     assert "Metered estimate (total) | $0.02 ESTIMATED" in text
-    assert "Recorded cost (trace) | $0.05" in text
+    assert ("Recorded cost (trace-reported, not verified against any "
+            "invoice or bill) | $0.05") in text
     assert "| D1 tests executed | VERIFIED |" in text
     assert "Unknown rate: 0.0%" in text
+    assert "Bar: under 15% for a resolvable receipt" in text
+    assert "This receipt is under the bar." in text
+    assert "On the 50-trace public audit" in text
+    assert "median 3.22x, 0/50 within 10%" in text
+    assert "## What to do next" in text
+    assert "Paste this whole receipt into the PR description." in text
+    assert "reconcile against the invoice first (D5 FAILED)" in text
     assert "No cost per accepted outcome" in text
     assert "Estimates are not bills" in text
+    assert "The recorded figure is what the trace reports" in text
+    assert "does not verify it against any invoice or bill" in text
     assert "trace-observed, not human-written" in text
+
+
+def test_receipt_unknown_rate_over_bar_states_the_implication():
+    checks = [{"id": "D1", "name": "tests executed",
+               "verdict": "NOT OBSERVED",
+               "observation": "no test command observed in trace"}]
+    text = receipt_mod.render_receipt(
+        sources=[], estimated_cost=0.01, recorded_cost=None,
+        checks=checks, unknown_rate=1.0)
+    assert "At 100.0%, treat the FAILED/NOT OBSERVED rows as unproven" \
+        in text
+    assert "do not present this receipt as verification" in text
+    assert "1 of 1 checks could not be resolved" in text
+
+
+def test_receipt_what_to_do_next_ready_when_all_resolve():
+    checks = [{"id": "D1", "name": "tests executed",
+               "verdict": "VERIFIED", "observation": "ok"}]
+    text = receipt_mod.render_receipt(
+        sources=[], estimated_cost=0.01, recorded_cost=0.01,
+        checks=checks, unknown_rate=0.0)
+    assert "Ready to paste as-is." in text
+
+
+def test_receipt_records_two_dp_in_table_four_dp_in_observation():
+    checks = [{"id": "D5", "name": "trace-recorded vs estimated cost",
+               "verdict": "FAILED",
+               "observation": "recorded $0.3205 vs metered estimate "
+                              "$0.9832 (4dp figures; ratio 3.07x; agree "
+                              "within 5%)"}]
+    text = receipt_mod.render_receipt(
+        sources=["x.traj.json"], estimated_cost=0.9832,
+        recorded_cost=0.3205, checks=checks, unknown_rate=0.0)
+    assert "| $0.32 |" in text
+    assert "recorded $0.3205 vs metered estimate $0.9832" in text
+
+
+def test_receipt_suppresses_ratio_when_recorded_is_zero():
+    checks = [{"id": "D5", "name": "trace-recorded vs estimated cost",
+               "verdict": "FAILED",
+               "observation": "recorded $0.0000 vs metered estimate "
+                              "$1.0000; no ratio (recorded cost is "
+                              "$0.00)"}]
+    text = receipt_mod.render_receipt(
+        sources=["claude/s.jsonl"], estimated_cost=1.0,
+        recorded_cost=0.0, checks=checks, unknown_rate=0.0)
+    assert "Metered estimate / recorded cost" not in text
+    assert "ZeroDivisionError" not in text
+
+
+def test_receipt_source_kind_labels_an_explicit_trace():
+    checks = []
+    text = receipt_mod.render_receipt(
+        sources=["django-15930.traj.json"],
+        source_kind="mini-SWE-agent trajectory",
+        estimated_cost=0.98, recorded_cost=0.3205, checks=checks,
+        unknown_rate=0.6)
+    assert ("Source: `django-15930.traj.json` (mini-SWE-agent "
+            "trajectory)") in text
+    assert "Source sessions:" not in text
+    text = receipt_mod.render_receipt(
+        sources=["claude/s.jsonl"], estimated_cost=0.02,
+        recorded_cost=None, checks=checks, unknown_rate=1.0)
+    assert "Source sessions: `claude/s.jsonl`" in text
 
 
 def test_receipt_escapes_hostile_session_names():
     checks = [{"id": "D1", "name": "tests executed",
                "verdict": "NOT OBSERVED",
                "observation": "no test command observed in trace"}]
-    hostile = "claude/evil|name\n[x](https://example.com)"
+    hostile = ("claude/a`b<img src=x onerror=alert(1)>evil|name\n"
+               "[x](https://example.com)\x7f")
     text = receipt_mod.render_receipt(
         sources=[hostile], estimated_cost=0.01, recorded_cost=None,
         checks=checks, unknown_rate=1.0)
     assert "evil\\|name" in text
     assert "[x](https://example.com)" not in text
     assert "\n[x]" not in text
+    assert "<img" not in text
+    # The hostile backtick is escaped, never bare in the source text.
+    assert "a\\`b" in text
+    assert "\x7f" not in text
+
+
+def test_receipt_escapes_hostile_commands_in_observations():
+    checks = [{"id": "D1", "name": "tests executed",
+               "verdict": "NOT OBSERVED",
+               "observation": "`pytest` ran <img src=x onerror=alert(1)>"}]
+    text = receipt_mod.render_receipt(
+        sources=["claude/s.jsonl"], estimated_cost=0.01,
+        recorded_cost=None, checks=checks, unknown_rate=1.0)
+    assert "<img" not in text
+    assert "&lt;img" in text
 
 
 def test_receipt_path_for_html():
@@ -546,7 +952,7 @@ def test_receipt_heading_is_the_default_checks_label():
 
 
 def test_receipt_suppresses_ratio_when_recorded_not_comparable():
-    checks = [{"id": "D5", "name": "billed vs estimated cost",
+    checks = [{"id": "D5", "name": "trace-recorded vs estimated cost",
                "verdict": "EXTERNAL-UNVERIFIABLE", "observation": "x"}]
     text = receipt_mod.render_receipt(
         sources=["codex/r.jsonl"], estimated_cost=0.02,
@@ -558,11 +964,11 @@ def test_receipt_suppresses_ratio_when_recorded_not_comparable():
 
 
 def test_receipt_recorded_note_for_codex():
-    checks = [{"id": "D5", "name": "billed vs estimated cost",
+    checks = [{"id": "D5", "name": "trace-recorded vs estimated cost",
                "verdict": "EXTERNAL-UNVERIFIABLE", "observation": "x"}]
     assert receipt_mod.recorded_note_for(checks) is not None
     assert "subscription" in receipt_mod.recorded_note_for(checks)
-    checks = [{"id": "D5", "name": "billed vs estimated cost",
+    checks = [{"id": "D5", "name": "trace-recorded vs estimated cost",
                "verdict": "VERIFIED", "observation": "x"}]
     assert receipt_mod.recorded_note_for(checks) is None
 
@@ -579,6 +985,8 @@ def test_cli_scan_no_sessions_is_exit_2(tmp_path, monkeypatch, capsys):
     assert "no local Claude Code or Codex sessions found" in err
     assert str(tmp_path / ".claude" / "projects") in err
     assert str(tmp_path / ".codex" / "sessions") in err
+    assert "Run Claude Code or Codex once" in err
+    assert "averth try <trace-file>" in err
 
 
 def test_cli_scan_runs_on_fake_sessions(tmp_path, monkeypatch, capsys):
@@ -593,11 +1001,26 @@ def test_cli_scan_runs_on_fake_sessions(tmp_path, monkeypatch, capsys):
     assert (tmp_path / "averth-scan-receipt.md").exists()
     receipt = (tmp_path / "averth-scan-receipt.md").read_text(
         encoding="utf-8")
-    assert "# Averth Verified Agent PR Receipt" in receipt
-    assert "D5 billed vs estimated cost" in receipt
+    assert "# Averth Agent PR Receipt (trace-observed)" in receipt
+    assert "D5 trace-recorded vs estimated cost" in receipt
     assert "EXTERNAL-UNVERIFIABLE" in receipt  # Codex present
-    assert "Averth Verified Agent PR Receipt" in out  # printed in scan
-    assert "Local scan: 2 session(s) scanned" in out
+    assert "Averth Agent PR Receipt (trace-observed)" in out  # printed
+    assert "copy from the line below to the end of the output" in out
+    assert "Local scan: 2 session(s) scanned (of 2 found)" in out
+    assert "Default checks (trace-observed):" in out
+
+
+def test_cli_scan_reports_total_found_past_the_cap(tmp_path, monkeypatch,
+                                                   capsys):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    for i in range(12):
+        p = _claude_session(tmp_path, name="s%02d.jsonl" % i)
+        _touch(p, 1000 + i)
+    rc = main(["try"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "10 session(s) scanned (of 12 found; newest 10)" in out
 
 
 def test_cli_scan_all_parse_failures_is_exit_2(tmp_path, monkeypatch,
@@ -611,6 +1034,27 @@ def test_cli_scan_all_parse_failures_is_exit_2(tmp_path, monkeypatch,
     err = capsys.readouterr().err
     assert rc == 2
     assert "failed to parse" in err
+    assert str(bad) in err
+    assert "meter one file explicitly" in err
+
+
+def test_cli_scan_no_usage_is_exit_2_with_next_step(tmp_path, monkeypatch,
+                                                    capsys):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    # Tool records but no usage records: the importer meters nothing.
+    path = tmp_path / ".claude" / "projects" / "proj" / "s.jsonl"
+    records = [
+        _claude_assistant("msg_01", content=[
+            _bash_use("call_1", "pytest")]),
+        _claude_tool_result("call_1", False),
+    ]
+    _write_jsonl(path, records)
+    rc = main(["try"])
+    err = capsys.readouterr().err
+    assert rc == 2
+    assert "no usage records found" in err
+    assert "averth try <trace-file>" in err
 
 
 def test_cli_scan_subagent_only_is_exit_2(tmp_path, monkeypatch, capsys):
@@ -621,6 +1065,7 @@ def test_cli_scan_subagent_only_is_exit_2(tmp_path, monkeypatch, capsys):
     err = capsys.readouterr().err
     assert rc == 2
     assert "subagent rollout(s) found but excluded" in err
+    assert "pass a rollout file explicitly" in err
 
 
 def test_cli_scan_rejects_format_and_model_flags(tmp_path, monkeypatch,
@@ -629,7 +1074,18 @@ def test_cli_scan_rejects_format_and_model_flags(tmp_path, monkeypatch,
     monkeypatch.setenv("HOME", str(tmp_path))
     _claude_session(tmp_path)
     assert main(["try", "--format", "traj"]) == 2
+    err = capsys.readouterr().err
+    assert "--format" in err
     assert main(["try", "--model", "gpt-5"]) == 2
+    err = capsys.readouterr().err
+    assert "--model" in err
+    assert main(["try", "--format", "traj", "--model", "gpt-5"]) == 2
+    err = capsys.readouterr().err
+    assert "--format" in err and "--model" in err
+    assert main(["try", "--recorded", "0.05"]) == 2
+    err = capsys.readouterr().err
+    assert "--recorded" in err
+    assert "trace's own recorded cost" in err
 
 
 def test_cli_scan_receipt_override(tmp_path, monkeypatch, capsys):
@@ -652,14 +1108,20 @@ def test_cli_explicit_traj_writes_receipt(tmp_path, monkeypatch, capsys):
     receipt_path = tmp_path / "django-15930-try-receipt.md"
     assert receipt_path.exists()
     receipt = receipt_path.read_text(encoding="utf-8")
-    assert "# Averth Verified Agent PR Receipt" in receipt
-    assert "D5 billed vs estimated cost" in receipt
+    assert "# Averth Agent PR Receipt (trace-observed)" in receipt
+    assert "D5 trace-recorded vs estimated cost" in receipt
+    assert "Source: `django-15930.traj.json` (mini-SWE-agent " \
+        "trajectory)" in receipt
     # Case study: recorded $0.3205 vs metered estimate $0.98 -> FAILED.
     assert "recorded $0.3205" in receipt
     assert "FAILED" in receipt
     # Explicit mode writes the receipt file but does not print it.
-    assert "Averth Verified Agent PR Receipt" not in out
+    assert "Averth Agent PR Receipt (trace-observed)" not in out
     assert "Receipt written to" in out
+    assert "Markdown for pasting into a GitHub PR description" in out
+    # D5 FAILED: the P&L must not call the run clean.
+    assert "No material findings" not in out
+    assert "Default checks (trace-observed):" in out
 
 
 def test_cli_explicit_receipt_refused_without_force(tmp_path, monkeypatch,
@@ -673,3 +1135,85 @@ def test_cli_explicit_receipt_refused_without_force(tmp_path, monkeypatch,
     assert rc == 2
     err = capsys.readouterr().err
     assert "already exists" in err
+
+# --- collision guards ---------------------------------------------------
+
+
+def test_cli_receipt_equal_to_html_is_refused(tmp_path, monkeypatch,
+                                              capsys):
+    monkeypatch.chdir(tmp_path)
+    traj = os.path.join(REPO, "try-it", "fixtures",
+                        "django-15930.traj.json")
+    for extra in ([], ["--force"]):
+        rc = main(["try", traj, "--model", "claude-sonnet-4-20250514",
+                   "--out", "same.html", "--receipt", "same.html"]
+                  + extra)
+        assert rc == 2
+        assert "same as the HTML report path" in capsys.readouterr().err
+        assert not (tmp_path / "same.html").exists()
+
+
+def test_cli_receipt_equal_to_trace_is_refused_and_trace_survives(
+        tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+    src = os.path.join(REPO, "try-it", "fixtures",
+                       "django-15930.traj.json")
+    copy = tmp_path / "copy.traj.json"
+    copy.write_bytes(open(src, "rb").read())
+    before = copy.read_bytes()
+    rc = main(["try", str(copy), "--model", "claude-sonnet-4-20250514",
+               "--receipt", str(copy), "--force"])
+    assert rc == 2
+    assert "same as the input trace" in capsys.readouterr().err
+    assert copy.read_bytes() == before
+
+
+def test_cli_out_equal_to_trace_is_refused_and_trace_survives(
+        tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+    src = os.path.join(REPO, "try-it", "fixtures",
+                       "django-15930.traj.json")
+    copy = tmp_path / "copy.traj.json"
+    copy.write_bytes(open(src, "rb").read())
+    before = copy.read_bytes()
+    rc = main(["try", str(copy), "--model", "claude-sonnet-4-20250514",
+               "--out", str(copy), "--force"])
+    assert rc == 2
+    assert "same as the input trace" in capsys.readouterr().err
+    assert copy.read_bytes() == before
+
+
+def test_cli_receipt_is_a_directory_with_force_writes_nothing(
+        tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "receiptdir").mkdir()
+    traj = os.path.join(REPO, "try-it", "fixtures",
+                        "django-15930.traj.json")
+    rc = main(["try", traj, "--model", "claude-sonnet-4-20250514",
+               "--receipt", "receiptdir", "--force"])
+    assert rc == 2
+    err = capsys.readouterr().err
+    assert "is a directory" in err
+    assert not (tmp_path / "django-15930-try.html").exists()
+
+
+def test_cli_scan_receipt_equal_to_html_is_refused(tmp_path, monkeypatch,
+                                                   capsys):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    _claude_session(tmp_path)
+    rc = main(["try", "--out", "same.html", "--receipt", "same.html",
+               "--force"])
+    assert rc == 2
+    assert "same as the HTML report path" in capsys.readouterr().err
+    assert not (tmp_path / "same.html").exists()
+
+
+def test_cli_explicit_fifo_trace_is_refused(tmp_path, monkeypatch,
+                                            capsys):
+    monkeypatch.chdir(tmp_path)
+    fifo = tmp_path / "pipe.traj.json"
+    os.mkfifo(fifo)
+    rc = main(["try", str(fifo), "--model", "claude-sonnet-4-20250514"])
+    assert rc == 2
+    assert "not a regular file" in capsys.readouterr().err
