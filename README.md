@@ -89,7 +89,7 @@ Attempts above p95 with their dominant driver, ranked by dollars. Cost anomalies
 
 ```
 averth/            the package (tracker, importers, reporting, policy sim)
-tests/             568 passing, 1 skipped, including an adversarial chaos suite
+tests/             571 passing, 1 skipped, including an adversarial chaos suite
 pilot-sim/         clean-install prospect simulation (fake traces, all formats)
 examples/          demo.py — simulated 2,000-ticket month across all five layers; validated-diagnoses/ — the 40-POC outreach-ready index plus all 43 counted A-lane POC files (see examples/validated-diagnoses/README.md for what the dollars are not)
 docs/              QUICKSTART, PILOT, VALIDATION, and design docs
