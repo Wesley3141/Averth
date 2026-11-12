@@ -124,7 +124,21 @@
 
 ### Fixed
 
-- V0 evidence verifier, frozen checks (rehearsal criterion (c)): the checks file is now hashed
+- D1 (tests executed) no longer counts a heredoc file-creation write
+  as a test run: `cat <<'EOF' > test_x.py` is `cat` writing a file,
+  not a test execution, so its rc 0 no longer makes D1 VERIFIED
+  (and the same write no longer counts as a build command for D2).
+  The classifier strips the write (fence line through its terminator)
+  before pattern-matching, so words in the written script's body
+  (e.g. `import unittest`) cannot match either; shell text outside
+  the write still classifies on its own merits, and D4
+  duplicate-invocation counting is unchanged (repeated identical
+  writes still count as duplicates). On the 50-trace public audit
+  this corrects D1 from 7 VERIFIED / 9 FAILED / 34 NOT OBSERVED to
+  4 / 10 / 36 (`django__django-11532` VERIFIED → FAILED on its
+  genuine final pytest run, rc 1; `django__django-14493` and
+  `sphinx-doc__sphinx-7910` VERIFIED → NOT OBSERVED); the unknown
+  rate moves 53.6% → 54.4%.
   on its raw bytes at load, re-hashed before the ledger is built and
   written, and a net change between load and re-hash refuses to write
   output with exit code 2. The timing is a single net-change check: an

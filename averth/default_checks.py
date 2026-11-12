@@ -219,14 +219,63 @@ def _is_test_path(path):
             or path.startswith("test/") or path.startswith("tests/"))
 
 
+# A heredoc file-creation write: ``cat <<'EOF' > test_x.py`` (or
+# ``>>`` append, or the redirect before the heredoc marker). The
+# command being run is ``cat`` writing a file; the test-named file
+# is a redirection target, not an executed script, and the heredoc
+# body is file contents, not a command line — so a word in the body
+# (e.g. ``import unittest`` inside the written script) must not
+# classify the write as a test or build run. Checked against the
+# 50-trace public audit: every false test classification of this
+# shape is a bare ``cat <<'EOF' > <file>`` first line; no ``tee`` /
+# ``printf`` / ``echo`` write false-classifies there, so coverage
+# is ``cat`` only.
+_HEREDOC_WRITE = re.compile(
+    r"^\s*cat\s+[^\n]*<<-?\s*['\"]?([A-Za-z_][A-Za-z0-9_]*)['\"]?")
+
+
+def _strip_heredoc_writes(command):
+    """Remove ``cat <<DELIM > file`` heredoc writes from a
+    multi-line fence command: each write's fence line through its
+    terminator line (the line equal to the delimiter) is dropped,
+    so the written file's contents are never pattern-matched as a
+    command line. Any shell text outside a heredoc write is kept
+    and still classified on its own merits (a fence may chain a
+    write and a genuine run). An unterminated heredoc drops the
+    rest of the fence: the remainder is body, not commands."""
+    lines = command.split("\n")
+    kept = []
+    i = 0
+    while i < len(lines):
+        match = _HEREDOC_WRITE.match(lines[i])
+        if not match:
+            kept.append(lines[i])
+            i += 1
+            continue
+        delim = match.group(1)
+        i += 1
+        while i < len(lines) and lines[i].strip() != delim:
+            i += 1
+        if i < len(lines):
+            i += 1  # drop the terminator line itself
+    return "\n".join(kept)
+
+
 def classify_command(command):
     """Classify a shell command string.
 
     Returns ``("test", [test-file tokens])``,
     ``("build", [])``, or ``(None, [])``. Test patterns are checked
     first, so ``make test`` classifies as a test, not a build.
+    Heredoc file-creation writes are stripped first (see
+    ``_strip_heredoc_writes``): ``cat <<'EOF' > test_x.py`` is a
+    file write, not a test run, even when the written script's body
+    mentions a test runner.
     """
     if not isinstance(command, str) or not command.strip():
+        return None, []
+    command = _strip_heredoc_writes(command)
+    if not command.strip():
         return None, []
     for pattern in _TEST_PATTERNS:
         if re.search(pattern, command):

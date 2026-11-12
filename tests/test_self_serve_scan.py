@@ -573,6 +573,107 @@ def test_classify_command_extracts_test_file_targets():
     assert targets == []
 
 
+# --- heredoc writes are not test/build runs ---------------------------
+
+
+HEREDOC_WRITE = (
+    "cat <<'EOF' > test_fix.py\n"
+    "import unittest\n"
+    "from unittest.mock import Mock\n"
+    "print('pytest')\n"
+    "EOF")
+
+
+def test_classify_command_heredoc_write_is_not_a_test_or_build():
+    # The write's rc 0 is the file creation succeeding, not a passing
+    # test: the body mentions unittest/pytest only because that is
+    # what the written script contains. Regression: three of the
+    # 50-trace audit's seven D1 VERIFIED verdicts rested on such a
+    # write (django__django-11532, django__django-14493,
+    # sphinx-doc__sphinx-7910).
+    assert default_checks.classify_command(HEREDOC_WRITE) == (None, [])
+    # Append form, also seen in the audit data.
+    assert default_checks.classify_command(
+        "cat <<'EOF' >> tests/test_x.py\nimport unittest\nEOF") == (None, [])
+    # Redirect before the heredoc marker.
+    assert default_checks.classify_command(
+        "cat > test_fix.py <<'EOF'\nimport unittest\nEOF") == (None, [])
+    # A heredoc write chained with a genuine run in the same fence:
+    # the write is ignored, the run still classifies.
+    kind, _targets = default_checks.classify_command(
+        HEREDOC_WRITE + "\npytest -q")
+    assert kind == "test"
+    # Plain `cat` of a test file is not a run either.
+    assert default_checks.classify_command(
+        "cat tests/test_a.py")[0] is None
+
+
+def _write_traj_with_fences(tmp_path, fences):
+    """Write a mini-SWE-agent traj whose assistant messages are the
+    given (bash text, returncode-or-None) fences in order."""
+    messages = []
+    for bash_text, rc in fences:
+        messages.append({"role": "assistant",
+                         "content": "```bash\n%s\n```" % bash_text})
+        if rc is not None:
+            messages.append({"role": "user", "content": [
+                {"type": "text",
+                 "text": "<returncode>%d</returncode>" % rc}]})
+    traj = tmp_path / "run.traj.json"
+    traj.write_text(json.dumps({
+        "info": {"model_stats": {"instance_cost": 0.5}},
+        "messages": messages}), encoding="utf-8")
+    return str(traj)
+
+
+def _traj_d1_d2(tmp_path, fences):
+    ev = default_checks.extract_traj(_write_traj_with_fences(
+        tmp_path, fences))
+    return _verdicts(default_checks.judge_default_checks(
+        default_checks.merge_evidence([ev]), 0.5))
+
+
+def test_d1_heredoc_write_alone_is_not_observed(tmp_path):
+    verdicts = _traj_d1_d2(tmp_path, [(HEREDOC_WRITE, 0)])
+    assert verdicts["D1"] == "NOT OBSERVED"
+    assert verdicts["D2"] == "NOT OBSERVED"
+
+
+def test_d1_heredoc_write_plus_genuine_pytest_is_verified(tmp_path):
+    verdicts = _traj_d1_d2(tmp_path, [(HEREDOC_WRITE, 0),
+                                      ("pytest -q", 0)])
+    assert verdicts["D1"] == "VERIFIED"
+
+
+def test_d1_heredoc_write_plus_failing_pytest_is_failed(tmp_path):
+    verdicts = _traj_d1_d2(tmp_path, [(HEREDOC_WRITE, 0),
+                                      ("pytest -q", 1)])
+    assert verdicts["D1"] == "FAILED"
+
+
+WAVE2_TRAJS = os.path.expanduser(
+    "~/workspace/research/averth-strategy-2026-11-11/self-serve-scan"
+    "/wave2/trajs")
+
+
+@pytest.mark.skipif(not os.path.isdir(WAVE2_TRAJS),
+                    reason="wave 2 audit trajectories not present")
+def test_d1_audit_traces_heredoc_verdicts_corrected():
+    # The three audit traces whose D1 VERIFIED rested on a heredoc
+    # write's rc 0. django__django-11532 also ran a genuine pytest
+    # (rc 1), so it judges FAILED on that run; the other two ran no
+    # genuine test command, so they judge NOT OBSERVED.
+    expected = {"django__django-11532": "FAILED",
+                "django__django-14493": "NOT OBSERVED",
+                "sphinx-doc__sphinx-7910": "NOT OBSERVED"}
+    for instance, verdict in expected.items():
+        ev = default_checks.extract_traj(os.path.join(
+            WAVE2_TRAJS, instance + ".traj.json"))
+        checks = default_checks.judge_default_checks(
+            default_checks.merge_evidence([ev]), 0.5)
+        assert _verdicts(checks)["D1"] == verdict, instance
+
+
 # --- the five checks ---------------------------------------------------
 
 
