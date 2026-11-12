@@ -79,7 +79,13 @@
   D1/D2/D3 judge on. Codex `function_call_output` carries no exit code
   in the documented format, so Codex test/build commands are
   NOT OBSERVED unless a record carries an `exit_code` field.
-  91 tests in `tests/test_self_serve_scan.py` (discovery with a fake
+  Trajectory detection scans the top-level keys incrementally in
+  chunks until `messages` is found or the outermost object closes
+  (capped at 16 MiB): a fixed 64 KiB sniff prefix silently missed
+  the key on trajectories whose leading `info` object is larger
+  than the prefix (3 of the 50 public-audit trajectories), reading
+  them as carrying no tool records at all.
+  93 tests in `tests/test_self_serve_scan.py` (discovery with a fake
   home, extraction, every verdict including the NOT OBSERVED paths,
   receipt escaping, CLI scan and explicit-trace behavior).
   `try-it/README.md` documents the scan, the receipt, and the D1-D5

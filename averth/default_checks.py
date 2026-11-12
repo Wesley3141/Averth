@@ -91,6 +91,7 @@ Unknown rate: the fraction of the five checks whose verdict is
 NOT OBSERVED or EXTERNAL-UNVERIFIABLE.
 """
 
+import codecs
 import json
 import math
 import os
@@ -325,6 +326,109 @@ def _top_level_keys(text):
                 break
         i += 1
     return keys
+
+
+# A trajectory's top-level keys precede its ``messages`` array, but a
+# large leading ``info`` object can push ``messages`` far past any
+# fixed sniff prefix: three of the 50 public-audit trajectories carry
+# ``messages`` at byte 68,872 / 97,401 / 154,285, past a 64 KiB
+# prefix, so a fixed-prefix sniff silently reads them as "no tool
+# records" (every check NOT OBSERVED). The scanner below reads in
+# chunks until the key is found or the outermost object closes, so
+# detection does not depend on where the key sits. The 16 MiB cap
+# only guards against pathological files; a real trajectory's
+# leading block is under 200 KiB.
+_TRAJ_SNIFF_LIMIT = 16 * 1024 * 1024
+_TOP_KEY_MAX_LEN = 256
+
+
+class _TopLevelKeyScanner:
+    """Incremental scanner for the top-level keys of one JSON object.
+
+    Feed text chunks; ``keys`` accumulates the depth-1 keys seen so
+    far and ``closed`` turns True when the outermost value ends (or
+    when the first non-whitespace character shows the top-level
+    value is not an object at all, e.g. a bare JSON list). A string
+    that starts at depth 1 and is followed (after whitespace) by
+    ``:`` is a key; a string value at depth 1 is followed by ``,``
+    or ``}`` instead, and keys of nested objects start deeper, so
+    the rule is exact for valid JSON. String, escape, depth, and
+    pending-key state carry across chunk boundaries. Keys longer
+    than 256 characters are skipped (no key this scanner is asked
+    about is anywhere near that long).
+    """
+
+    def __init__(self):
+        self.keys = set()
+        self.closed = False
+        self.depth = 0
+        self.in_string = False
+        self.escaped = False
+        self._str_depth = None
+        self._buf = []
+        self._too_long = False
+        self._pending = None
+        self._saw_value = False
+
+    def feed(self, text):
+        for ch in text:
+            if self.closed:
+                return
+            if self.in_string:
+                if self.escaped:
+                    self.escaped = False
+                    if self._str_depth == 1 and not self._too_long:
+                        self._buf.append(ch)
+                elif ch == "\\":
+                    self.escaped = True
+                    if self._str_depth == 1 and not self._too_long:
+                        self._buf.append(ch)
+                elif ch == '"':
+                    self.in_string = False
+                    if self._str_depth == 0:
+                        # A string is the whole top-level value: no
+                        # top-level keys can follow it.
+                        self.closed = True
+                        return
+                    if self._str_depth == 1 and not self._too_long:
+                        self._pending = "".join(self._buf)
+                    self._buf = []
+                else:
+                    if self._str_depth == 1 and not self._too_long:
+                        self._buf.append(ch)
+                        if len(self._buf) > _TOP_KEY_MAX_LEN:
+                            self._too_long = True
+                            self._buf = []
+                continue
+            if self._pending is not None:
+                if ch in " \t\r\n":
+                    continue
+                if ch == ":":
+                    self.keys.add(self._pending)
+                self._pending = None
+            if ch == '"':
+                self.in_string = True
+                self.escaped = False
+                self._str_depth = self.depth
+                self._buf = []
+                self._too_long = False
+            elif ch in "{[":
+                if not self._saw_value:
+                    self._saw_value = True
+                    if ch != "{":
+                        # Top-level value is not an object: no
+                        # top-level keys exist. (A bare JSON list,
+                        # e.g. a Langfuse export, stops here.)
+                        self.closed = True
+                        return
+                self.depth += 1
+            elif ch in "}]":
+                self.depth -= 1
+                if self.depth <= 0:
+                    self.closed = True
+                    return
+            elif ch not in " \t\r\n":
+                self._saw_value = True
 
 
 def extract_claude(path):
@@ -607,24 +711,35 @@ def extract_from_file(path):
     reason stated) instead of an error: JSONL events and Langfuse
     exports carry no tool-use records.
 
-    The sniff is incremental and bounded (the first ~64 KiB for the
-    top-level keys, the first 50 lines up to 1 MiB for the
-    Claude/Codex shapes): the whole file is never loaded just to
-    detect its shape. Only a detected trajectory is then parsed in
-    full, once, by ``extract_traj``.
+    The sniff is incremental and bounded: the top-level keys are
+    scanned in chunks (see ``_TopLevelKeyScanner``) until ``messages``
+    is found or the outermost object closes, capped at 16 MiB, and
+    the first 50 lines up to 1 MiB are scanned for the Claude/Codex
+    shapes. The whole file is never loaded just to detect its shape.
+    Only a detected trajectory is then parsed in full, once, by
+    ``extract_traj``.
     """
     if not _is_regular_file(path):
         evidence = _new_evidence("unknown")
         evidence["sessions"].append(os.path.basename(path))
         return evidence
+    scanner = _TopLevelKeyScanner()
     try:
+        decoder = codecs.getincrementaldecoder("utf-8")(
+            errors="replace")
         with open(path, "rb") as f:
-            prefix = f.read(65536)
+            scanned = 0
+            while scanned < _TRAJ_SNIFF_LIMIT:
+                chunk = f.read(65536)
+                if not chunk:
+                    break
+                scanned += len(chunk)
+                scanner.feed(decoder.decode(chunk))
+                if "messages" in scanner.keys or scanner.closed:
+                    break
     except OSError:
-        prefix = b""
-    head_text = prefix.decode("utf-8", errors="replace")
-    if head_text.lstrip().startswith("{") \
-            and "messages" in _top_level_keys(head_text):
+        pass
+    if "messages" in scanner.keys:
         return extract_traj(path)
     head = []
     budget = 1024 * 1024

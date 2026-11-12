@@ -496,6 +496,47 @@ def test_extract_from_file_large_jsonl_streams(tmp_path):
     assert ev["commands"] == []
 
 
+def test_top_level_key_scanner_chunk_boundaries():
+    # The "messages" key split across feeds, nested keys ignored, a
+    # bare list closing the scan at once.
+    s = default_checks._TopLevelKeyScanner()
+    s.feed('{"info": {"model": "x", "nested": {"messages": true}}, "me')
+    assert "messages" not in s.keys
+    s.feed('ssages": [], "other": 1}')
+    assert s.keys == {"info", "messages", "other"}
+    assert s.closed
+    s2 = default_checks._TopLevelKeyScanner()
+    s2.feed('[{"messages": []}]')
+    assert s2.closed and s2.keys == set()
+
+
+def test_extract_from_file_finds_messages_past_64k(tmp_path):
+    # Regression: three of the 50 public-audit trajectories carry
+    # "messages" past byte 64 KiB (large leading "info" object), and
+    # a fixed 64 KiB sniff prefix read them as "no tool records"
+    # (every check NOT OBSERVED). The scanner must find the key
+    # wherever it sits.
+    traj = tmp_path / "run.traj.json"
+    padding = "x" * (100 * 1024)
+    traj.write_text(json.dumps({
+        "info": {"model_stats": {"instance_cost": 0.5},
+                 "padding": padding},
+        "messages": [
+            {"role": "assistant",
+             "content": "```bash\npytest tests/test_a.py\n```"},
+            {"role": "user", "content": [
+                {"type": "text",
+                 "text": "<returncode>0</returncode>\nPASSED"}]},
+        ]}), encoding="utf-8")
+    assert traj.stat().st_size > 64 * 1024
+    ev = default_checks.extract_from_file(str(traj))
+    assert ev["source"] == "traj"
+    assert [c["command"] for c in ev["commands"]] == [
+        "pytest tests/test_a.py"]
+    assert ev["commands"][0]["outcome"] is True
+    assert ev["recorded_cost"] == 0.5
+
+
 # --- classification --------------------------------------------------
 
 
