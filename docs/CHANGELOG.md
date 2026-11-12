@@ -59,12 +59,15 @@
   invocations fail — a pinned judgment call, not a measured bar:
   on the 50-trace public audit the duplicate-count distribution
   was {0: 2, 1: 16, 2: 8, 3: 7, 4: 7, 5: 3, 6: 2, 8: 1, 10: 1,
-  11: 1, 20: 2}, so 10/50 fail at >=5 and 24/50 at >=3), D5
+  11: 1, 20: 2}, so 10/50 fail at >=5 and 24/50 at >=3; 1–4 duplicate
+  invocations → VERIFIED; no tool commands at all → NOT OBSERVED; the
+  count is shown when any tool command was observed), D5
   trace-recorded vs estimated cost (agree within 5% of the recorded
   figure, inclusive; a partial recorded-cost record is
   NOT OBSERVED; any Codex session is EXTERNAL-UNVERIFIABLE; the
   operator-supplied `--recorded` figure is never used for D5; a
-  recorded $0.00 is a recorded cost, not an absence). Evidence
+  recorded $0.00 is a recorded cost, not an absence; no ratio is
+  stated when the recorded cost is $0.00). Evidence
   comes from a new read-only extraction pass over the raw transcript
   (Claude `tool_use`/`tool_result`, Codex `response_item`
   function_call/output, mini-SWE-agent bash fences). Outcome
@@ -87,7 +90,7 @@
   them as carrying no tool records at all. The same streaming scan
   backs `averth try` format detection, whose old 1 MiB prefix had
   the same hole for a trajectory with a larger leading block.
-  93 tests in `tests/test_self_serve_scan.py` (discovery with a fake
+  98 tests in `tests/test_self_serve_scan.py` (discovery with a fake
   home, extraction, every verdict including the NOT OBSERVED paths,
   receipt escaping, CLI scan and explicit-trace behavior).
   `try-it/README.md` documents the scan, the receipt, and the D1-D5

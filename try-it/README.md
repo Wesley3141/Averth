@@ -207,7 +207,7 @@ as V0, every verdict citing its observation:
   -> FAILED; none observed, or observed with no outcome signal ->
   NOT OBSERVED. Judged on the last observed test command.
 - **D2 build passed**: same shape for a build command (go build,
-  cargo build, npm run build, bare `make` / `make build`, tsc, ...).
+  cargo build, npm run build, bare `make` / `make build` / `make all`, tsc, ...).
   `make test` is a test command (D1), not a build; `make lint` and
   other non-build targets are neither.
 - **D3 files touched vs files tested**: edited source files from
@@ -219,8 +219,10 @@ as V0, every verdict citing its observation:
   NOT OBSERVED. A named test run -> VERIFIED when every edited
   source file has a stem-matching test file named in that last test
   command and the named tests passed, FAILED when the named tests
-  failed or when any edited source file has no stem-matching test
-  file, NOT OBSERVED when the named tests' outcome is unknown. Name
+  failed or (when they passed) when any edited source file has no
+  stem-matching test file, NOT OBSERVED when the named tests' outcome
+  is unknown — the outcome is checked first, so an unknown outcome is
+  NOT OBSERVED even when some edited file is unmatched. Name
   matching is the criterion; actual coverage is never inferred.
 - **D4 duplicate-invocation overhead**: repeated identical tool
   invocations counted as OBSERVED duplicate-invocation overhead,
@@ -238,7 +240,7 @@ as V0, every verdict citing its observation:
   within 5% (metered estimate within 5% of the recorded cost,
   inclusive) -> VERIFIED; differ -> FAILED (both figures and the
   ratio stated, at 4dp in the observation, except when the metered
-  estimate is $0.00, where no ratio is stated); no recorded figure
+  estimate is $0.00, or the recorded cost is $0.00, where no ratio is stated); no recorded figure
   -> NOT OBSERVED. If only some scanned Claude sessions carry a
   recorded cost, the comparison would be partial and D5 is
   NOT OBSERVED. Any Codex session in the run — scan mode or an
