@@ -9,7 +9,7 @@ averth trace traces.json --format langfuse
 
 Runs locally. Your traces never leave your machine.
 
-Experimental V0 evidence verifier: evidence-v0/ on master (merged PR 2, a50f7a0) checks human-written acceptance checks against the recorded run, with generic ingestion for JSON, JSONL, plain logs, OpenTelemetry spans, and meter events. Unknown input becomes NOT OBSERVED or EXTERNAL-UNVERIFIABLE, never a false pass or fail. It has 53 tests passing on fixture tests only, no registry install, no live benchmark, no paying customer, no validated repair, no measured savings, and no real workflow run yet. See evidence-v0/README.md and evidence-v0/INSTALL.md. It is separate from the meter install above.
+Experimental V0 evidence verifier: evidence-v0/ on master (merged PR 2, a50f7a0) checks human-written acceptance checks against the recorded run, with generic ingestion for JSON, JSONL, plain logs, OpenTelemetry spans, and meter events. Unknown input becomes NOT OBSERVED or EXTERNAL-UNVERIFIABLE, never a false pass or fail. It has 268 tests passing, no registry install, no live benchmark, no paying customer, no validated repair, no measured savings, and no real workflow run yet. See evidence-v0/README.md and evidence-v0/INSTALL.md. It is separate from the meter install above.
 
 ## The problem
 
