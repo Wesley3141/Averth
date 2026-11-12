@@ -10,7 +10,12 @@
   (`~/.codex/sessions/**/*.jsonl`) by mtime, meters them with the
   existing importers, and writes `averth-scan.html`. Codex subagent
   rollouts are excluded by default (counted as skipped, with the
-  reason); a session file that fails to parse is skipped with a
+  reason); the subagent check scans the whole file for its
+  `session_meta` record and every candidate is examined before the
+  10-cap is applied, so the skipped count is honest past the cap.
+  A non-regular file (FIFO, socket) named `*.jsonl`, or a
+  permission-denied subdirectory, is skipped with the reason
+  instead of being opened. A session file that fails to parse is skipped with a
   warning counted in the report, never silently dropped, and if all
   fail the command exits 2. No sessions found exits 2 naming the
   directories checked. New `averth/local_scan.py` (discovery only);
