@@ -48,13 +48,13 @@ Supported formats: `langfuse`, `langsmith`, `otel`, `jsonl`, `claude` (Claude Co
 a mini-SWE-agent trajectory, a JSONL events file, or a Langfuse
 export and writes one self-contained HTML report you can share, with
 an optional recorded-cost comparison (`--recorded`) and V0 verdict
-summary (`--ledger` + `--checks`), plus a "Verified Agent PR Receipt"
-(Markdown for pasting into a PR description). With no trace at all,
+summary (`--ledger` + `--checks`), plus an "Averth Agent PR Receipt
+(trace-observed)" (Markdown for pasting into a PR description). With no trace at all,
 plain `averth try` scans your last 10 local Claude Code / Codex
 sessions instead — zero-config, no flags. The receipt also carries
 five default checks judged only on what the transcript shows
-(tests executed, build passed, files touched vs files tested, retry
-overhead as observed duplicate invocations, billed vs estimated
+(tests executed, build passed, files touched vs files tested,
+duplicate-invocation overhead, trace-recorded vs estimated
 cost), needing no human-written checks. See `try-it/README.md`.
 
 **Want the AI read on it?** Bring your own key, get the recommendation:
@@ -89,7 +89,7 @@ Attempts above p95 with their dominant driver, ranked by dollars. Cost anomalies
 
 ```
 averth/            the package (tracker, importers, reporting, policy sim)
-tests/             412 passing, 1 skipped, including an adversarial chaos suite
+tests/             568 passing, 1 skipped, including an adversarial chaos suite
 pilot-sim/         clean-install prospect simulation (fake traces, all formats)
 examples/          demo.py — simulated 2,000-ticket month across all five layers; validated-diagnoses/ — the 40-POC outreach-ready index plus all 43 counted A-lane POC files (see examples/validated-diagnoses/README.md for what the dollars are not)
 docs/              QUICKSTART, PILOT, VALIDATION, and design docs
