@@ -20,16 +20,24 @@
   fail the command exits 2. No sessions found exits 2 naming the
   directories checked. New `averth/local_scan.py` (discovery only);
   CLI changes confined to `averth/cli.py`.
-- "Verified Agent PR Receipt": compact Markdown for pasting into a
+- "Averth Agent PR Receipt (trace-observed)": compact Markdown for pasting into a
   GitHub PR description, written as `<stem>-receipt.md` next to the
   HTML report (same stem rule; `--receipt PATH` overrides) in both
   scan mode and explicit-trace mode, and printed to stdout in scan
-  mode. Contents: billed vs estimated cost table, the default-checks
-  table, unknown rate, and an honesty footer (no cost per accepted
-  outcome; estimates are not bills; default checks are
+  mode. Contents: the resolution scope line, generated date, source
+  sessions (or the single source with its kind in explicit mode), a
+  scan note in scan mode, a trace-recorded vs metered estimate cost
+  table (with the known systematic ~3.2x overestimate disclosed:
+  on the 50-trace public audit the metered estimate ran ~3.2x the
+  trace-recorded cost on every trace, median 3.22x, 0/50 within 10%),
+  the default-checks table, the unknown rate (with the 15% bar
+  stated), a "What to do next" section generated from the verdicts,
+  and an honesty footer (no cost per accepted outcome; estimates are
+  not bills; the recorded figure is what the trace reports and is
+  not verified against any invoice or bill; default checks are
   trace-observed, not human-written). New `averth/receipt.py`;
   hostile session ids / filenames are escaped so they cannot form
-  Markdown links or break tables.
+  Markdown links, end a code span, or inject raw HTML.
 - Default checks (trace-observed): five checks that need no
   human-written checks, judged only on what the transcript shows by
   a judge separate from V0 (evidence-v0 is not installed in the
