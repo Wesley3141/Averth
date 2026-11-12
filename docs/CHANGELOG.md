@@ -31,17 +31,31 @@
   meter venv; nothing shells out to it or depends on it). New
   `averth/default_checks.py`: D1 tests executed, D2 build passed,
   D3 files touched vs files tested (stem matching only; actual
-  coverage never inferred), D4 retry overhead as OBSERVED
-  duplicate-invocation overhead (never meter retries; 3+ duplicate
-  invocations fail), D5 billed vs estimated cost (agree within 5%;
-  Codex subscription billing is EXTERNAL-UNVERIFIABLE). Evidence
+  coverage never inferred; the named-test branch is gated on the
+  test run's outcome exactly like the bare-suite branch, and only
+  the last test command's named files are matched), D4
+  duplicate-invocation overhead (never meter retries; 5+ duplicate
+  invocations fail — a pinned judgment call, not a measured bar:
+  on the 50-trace public audit the duplicate-count distribution
+  was {0: 2, 1: 16, 2: 8, 3: 7, 4: 7, 5: 3, 6: 2, 8: 1, 10: 1,
+  11: 1, 20: 2}, so 10/50 fail at >=5 and 24/50 at >=3), D5
+  trace-recorded vs estimated cost (agree within 5% of the recorded
+  figure, inclusive; a partial recorded-cost record is
+  NOT OBSERVED; any Codex session is EXTERNAL-UNVERIFIABLE; the
+  operator-supplied `--recorded` figure is never used for D5; a
+  recorded $0.00 is a recorded cost, not an absence). Evidence
   comes from a new read-only extraction pass over the raw transcript
   (Claude `tool_use`/`tool_result`, Codex `response_item`
   function_call/output, mini-SWE-agent bash fences). Outcome
-  signals: Claude `tool_result` `is_error` counts as the
-  transcript's observed outcome (no numeric exit code exists in the
-  transcript); a command with no outcome signal is NOT OBSERVED,
-  never guessed. Codex `function_call_output` carries no exit code
+  signals: Claude `tool_result` `is_error` is treated as the
+  transcript's observed outcome (no numeric exit code is present on
+  the command records the judge reads; the judge assumes Claude
+  Code sets `is_error` from the command's exit status, which is not
+  verified against Claude Code's documentation); a command with no
+  outcome signal is NOT OBSERVED, never guessed. Mini-SWE-agent
+  trajectories carry a per-command exit status (`<returncode>` in
+  the following user message), which the extractor parses and
+  D1/D2/D3 judge on. Codex `function_call_output` carries no exit code
   in the documented format, so Codex test/build commands are
   NOT OBSERVED unless a record carries an `exit_code` field.
   58 tests in `tests/test_self_serve_scan.py` (discovery with a fake

@@ -22,16 +22,18 @@ exit code WHERE PRESENT).
 Outcome signals, stated explicitly (a Wave 1 interpretation decision;
 see WAVE1-REPORT.md): neither transcript shape carries a numeric exit
 code on every command record. Claude ``tool_result`` blocks carry an
-``is_error`` boolean, which IS the transcript's observed outcome for
-that command (Claude Code sets it from the command's exit status),
-so ``is_error: false`` counts as a successful run and ``is_error:
-true`` as a failed run, and the observation says so ("is_error=false;
-no numeric exit code in transcript"). A command with NO matching
-tool_result, and no is_error / exit code anywhere, has an unknown
-outcome: the check says so and judges NOT OBSERVED, never guesses.
-Codex ``function_call_output`` records carry neither field in the
-documented format, so Codex test/build commands are NOT OBSERVED
+``is_error`` boolean, which the judge treats as the transcript's
+observed outcome for that command. This assumes Claude Code sets
+``is_error`` from the command's exit status; that assumption is not
+verified against Claude Code's documentation. A command with NO
+matching tool_result, and no is_error / exit code anywhere, has an
+unknown outcome: the check says so and judges NOT OBSERVED, never
+guesses. Codex ``function_call_output`` records carry neither field in
+the documented format, so Codex test/build commands are NOT OBSERVED
 unless a record happens to carry an ``exit_code`` field.
+Mini-SWE-agent trajectories DO carry a per-command exit status: each
+bash command's following user message carries a ``<returncode>``
+tag, which ``extract_traj`` parses and D1/D2/D3 judge on.
 
 The five default checks (semantics pinned here, in code and docs):
 
@@ -44,30 +46,43 @@ The five default checks (semantics pinned here, in code and docs):
   build, npm run build, make, tsc, ...).
 - D3 files touched vs files tested: judged ONLY on what the trace
   shows (edited files from Edit/Write tool calls vs test files named
-  in observed test commands, matched by file stem). A bare test
+  in the LAST observed test command, matched by file stem). A bare test
   command with no file arguments runs the whole suite, so with a
-  successful outcome it VERIFIES the touched files. When a test
-  command names specific files and an edited source file has no
-  stem-matching test among them -> FAILED, citing the unmatched
-  files. When coverage cannot be established from the trace (no
+  successful outcome it VERIFIES the touched files, with a failed
+  outcome it FAILS, and with an unknown outcome it is NOT OBSERVED.
+  A named test run is gated on outcome the same way: a passing named
+  run whose files stem-match every edited source file VERIFIES them
+  (name matching only; actual coverage is never inferred), a failing
+  named run FAILS, and a named run with an unknown outcome is
+  NOT OBSERVED. When a test command names specific files and an edited
+  source file has no stem-matching test among them -> FAILED, citing
+  the unmatched files. Edited files that are themselves test files
+  are excluded before judging, so editing only test files yields
+  NOT OBSERVED. When coverage cannot be established from the trace (no
   edited files, no test command, or no outcome signal on a
   full-suite run) -> NOT OBSERVED with the reason stated. Name
   matching is the criterion, stated in the observation; actual
   coverage is never inferred.
-- D4 retry overhead: counts repeated identical tool invocations
-  (the same command run 2+ times) as OBSERVED duplicate-invocation
-  overhead. Labelled exactly that, NEVER as meter retries (the
-  Claude/Codex importers emit no retry events, by design).
-  Threshold (pinned): 3 or more duplicate invocations -> FAILED;
-  fewer -> VERIFIED. The count is always shown. No commands at all
-  -> NOT OBSERVED.
-- D5 billed vs estimated: when the trace carries its own recorded
-  cost (Claude ``result.total_cost_usd``, mini-SWE-agent
+- D4 duplicate-invocation overhead: counts repeated identical tool
+  invocations (the same command run 2+ times) as OBSERVED
+  duplicate-invocation overhead. Labelled exactly that, NEVER as
+  meter retries (the Claude/Codex importers emit no retry events,
+  by design). Threshold (pinned): 5 or more duplicate invocations
+  -> FAILED; fewer -> VERIFIED. The count is always shown when any
+  tool command was observed. No commands at all -> NOT OBSERVED.
+  The threshold is a pinned judgment call, not a measured bar: on
+  the 50-trace public audit the duplicate-count distribution was
+  {0: 2, 1: 16, 2: 8, 3: 7, 4: 7, 5: 3, 6: 2, 8: 1, 10: 1, 11: 1,
+  20: 2}; 10/50 fail at >=5, 24/50 at >=3.
+- D5 trace-recorded vs estimated cost: when the trace carries its own
+  recorded cost (Claude ``result.total_cost_usd``, mini-SWE-agent
   ``info.model_stats.instance_cost``) compare with the metered
   estimate: agree within 5% -> VERIFIED; differ -> FAILED (both
-  figures and the ratio stated); no recorded figure -> NOT OBSERVED;
-  subscription billing where list-price comparison is meaningless
-  (Codex) -> EXTERNAL-UNVERIFIABLE with the reason. In a scan, D5
+  figures and the ratio stated, at 4dp in the observation); no recorded
+  figure -> NOT OBSERVED; subscription billing where list-price
+  comparison is meaningless (Codex) -> EXTERNAL-UNVERIFIABLE with
+  the reason. The recorded figure is what the trace reports; Averth
+  does not verify it against any invoice or bill. In a scan, D5
   resolves only when every scanned Claude session carries a recorded
   cost and no Codex session is present; a partial comparison would
   mislead, so a partial record is NOT OBSERVED.
@@ -80,6 +95,7 @@ import json
 import math
 import os
 import re
+import stat
 
 LABEL = "default checks (trace-observed)"
 
@@ -90,10 +106,14 @@ VERDICTS = ("VERIFIED", "FAILED", "NOT OBSERVED",
 D5_TOLERANCE = 0.05
 
 # D4: this many duplicate identical command invocations (counting
-# each repeat past the first) fails the check. One or two re-runs are
-# normal agent iteration (fix, then re-run); three or more identical
-# re-invocations indicate a loop / overhead worth flagging.
-D4_DUPLICATE_FAIL_THRESHOLD = 3
+# each repeat past the first) fails the check. Up to four re-runs are
+# normal agent iteration (fix, then re-run); five or more identical
+# re-invocations indicate a loop / overhead worth flagging. The
+# threshold is a pinned judgment call, not a measured bar: on the
+# 50-trace public audit the duplicate-count distribution was
+# {0: 2, 1: 16, 2: 8, 3: 7, 4: 7, 5: 3, 6: 2, 8: 1, 10: 1, 11: 1,
+# 20: 2} (10/50 fail at >=5, 24/50 at >=3, 7/50 at >=6).
+D4_DUPLICATE_FAIL_THRESHOLD = 5
 
 _BASH_FENCE = re.compile(r"```bash[ \t]*\n?(.*?)```",
                          re.DOTALL | re.IGNORECASE)
@@ -250,6 +270,63 @@ def _content_blocks(record):
     return []
 
 
+def _is_regular_file(path):
+    """True when ``path`` is a regular file (not a FIFO, socket, or
+    directory). A FIFO named ``*.jsonl`` would block forever on open
+    for read, so discovery and extraction refuse non-regular files
+    instead of opening them."""
+    try:
+        return stat.S_ISREG(os.lstat(path).st_mode)
+    except OSError:
+        return False
+
+
+def _top_level_keys(text):
+    """Top-level keys of a JSON object from a (possibly truncated)
+    prefix of its text.
+
+    Scans the text for string keys at depth 1 (a string followed by
+    ``:`` while inside the outermost object); returns the set found
+    so far. A truncated prefix yields a partial set, never an error.
+    """
+    keys = set()
+    depth = 0
+    i = 0
+    n = len(text)
+    while i < n:
+        ch = text[i]
+        if ch == '"':
+            j = i + 1
+            chars = []
+            while j < n:
+                c = text[j]
+                if c == "\\":
+                    j += 2
+                    continue
+                if c == '"':
+                    break
+                chars.append(c)
+                j += 1
+            if j >= n:
+                break
+            key = "".join(chars)
+            k = j + 1
+            while k < n and text[k] in " \t\r\n":
+                k += 1
+            if depth == 1 and k < n and text[k] == ":":
+                keys.add(key)
+            i = j + 1
+            continue
+        if ch in "{[":
+            depth += 1
+        elif ch in "}]":
+            depth -= 1
+            if depth <= 0:
+                break
+        i += 1
+    return keys
+
+
 def extract_claude(path):
     """Extract trace-observed evidence from one Claude Code session.
 
@@ -259,20 +336,32 @@ def extract_claude(path):
     skipped, matching the claude importer. Lines that fail to parse
     are counted, never crash the extraction: the importer has
     already validated the file when the scan runs, so a count here
-    is a belt-and-braces signal, not a second validator.
+    is a belt-and-braces signal, not a second validator. A line
+    that is not valid UTF-8 is counted the same way (the file is
+    read as bytes and decoded line by line, so one bad line cannot
+    abort the rest). ``pending`` is keyed only by non-empty-string
+    tool ids, so a ``tool_use`` block with no id can never claim
+    another command's outcome.
     """
     evidence = _new_evidence("claude")
     session = os.path.basename(path)
     evidence["sessions"].append(session)
+    if not _is_regular_file(path):
+        return evidence
     # tool_use_id -> index into evidence["commands"].
     pending = {}
     last_cost = None
     try:
-        f = open(path, encoding="utf-8")
-    except (OSError, UnicodeDecodeError):
+        f = open(path, "rb")
+    except OSError:
         return evidence
     with f:
-        for line in f:
+        for raw in f:
+            try:
+                line = raw.decode("utf-8")
+            except UnicodeDecodeError:
+                evidence["unparseable_lines"] += 1
+                continue
             if not line.strip():
                 continue
             try:
@@ -306,7 +395,9 @@ def extract_claude(path):
                     if name == "Bash":
                         command = data.get("command")
                         if isinstance(command, str) and command.strip():
-                            pending[tool_id] = len(evidence["commands"])
+                            if isinstance(tool_id, str) and tool_id:
+                                pending[tool_id] = len(
+                                    evidence["commands"])
                             evidence["commands"].append({
                                 "command": command,
                                 "outcome": None,
@@ -383,13 +474,20 @@ def extract_codex(path):
     evidence = _new_evidence("codex")
     session = os.path.basename(path)
     evidence["sessions"].append(session)
+    if not _is_regular_file(path):
+        return evidence
     pending = {}
     try:
-        f = open(path, encoding="utf-8")
-    except (OSError, UnicodeDecodeError):
+        f = open(path, "rb")
+    except OSError:
         return evidence
     with f:
-        for line in f:
+        for raw in f:
+            try:
+                line = raw.decode("utf-8")
+            except UnicodeDecodeError:
+                evidence["unparseable_lines"] += 1
+                continue
             if not line.strip():
                 continue
             try:
@@ -409,7 +507,8 @@ def extract_codex(path):
             if ptype == "function_call":
                 command = _codex_command(payload.get("arguments"))
                 call_id = payload.get("call_id")
-                pending[call_id] = len(evidence["commands"])
+                if isinstance(call_id, str) and call_id:
+                    pending[call_id] = len(evidence["commands"])
                 evidence["commands"].append({
                     "command": command,
                     "outcome": None,
@@ -434,18 +533,27 @@ def extract_codex(path):
     return evidence
 
 
+_RETURNCODE = re.compile(r"<returncode>(-?\d+)</returncode>")
+
+
 def extract_traj(path):
     """Extract trace-observed evidence from a mini-SWE-agent trajectory.
 
-    Bash fenced commands in assistant message text are the commands;
-    the trajectory carries no per-command exit status, so their
-    outcomes are unknown (D1/D2 judge NOT OBSERVED on a traj, never
-    guess). The recorded cost is ``info.model_stats.instance_cost``.
+    Bash fenced commands in assistant message text are the commands.
+    Each command's exit status is the ``<returncode>`` tag in the
+    following user message: returncodes are associated with their
+    preceding bash command in order (the first returncode in a user
+    message belongs to the earliest preceding command still awaiting
+    one). A command with no following returncode has an unknown
+    outcome (D1/D2 judge NOT OBSERVED on it, never guess). The
+    recorded cost is ``info.model_stats.instance_cost``.
     """
     from averth.importers import miniswe
 
     evidence = _new_evidence("traj")
     evidence["sessions"].append(os.path.basename(path))
+    if not _is_regular_file(path):
+        return evidence
     evidence["recorded_cost"] = miniswe.traj_instance_cost(path)
     try:
         with open(path, encoding="utf-8") as f:
@@ -457,52 +565,81 @@ def extract_traj(path):
     messages = traj.get("messages")
     if not isinstance(messages, list):
         return evidence
+    pending = []  # indices of commands awaiting a <returncode>
     for message in messages:
         if not isinstance(message, dict):
             continue
-        if message.get("role") != "assistant":
-            continue
+        role = message.get("role")
         text = miniswe._message_text(message)
-        for match in _BASH_FENCE.finditer(text):
-            command = match.group(1).strip()
-            if command:
-                evidence["commands"].append({
-                    "command": command,
-                    "outcome": None,
-                    "outcome_note": "trajectory text carries no "
-                                    "per-command exit status",
-                    "session": evidence["sessions"][0],
-                })
+        if role == "assistant":
+            for match in _BASH_FENCE.finditer(text):
+                command = match.group(1).strip()
+                if command:
+                    pending.append(len(evidence["commands"]))
+                    evidence["commands"].append({
+                        "command": command,
+                        "outcome": None,
+                        "outcome_note": "no <returncode> for this "
+                                        "command in the following user "
+                                        "message",
+                        "session": evidence["sessions"][0],
+                    })
+        elif role == "user":
+            for match in _RETURNCODE.finditer(text):
+                if not pending:
+                    break
+                idx = pending.pop(0)
+                rc = int(match.group(1))
+                evidence["commands"][idx]["outcome"] = (rc == 0)
+                evidence["commands"][idx]["outcome_note"] = (
+                    "trajectory <returncode>%d</returncode>" % rc)
     return evidence
 
 
 def extract_from_file(path):
     """Extract evidence from any explicit-trace file, sniffing shape.
 
-    A JSON object with a ``messages`` key is a mini-SWE-agent
+    A JSON object with a top-level ``messages`` key is a mini-SWE-agent
     trajectory; otherwise the first lines are sniffed for Claude
     ``tool_use`` blocks (``type: assistant``) or Codex
     ``response_item`` function_call records. A file matching neither
     shape yields empty evidence (every check NOT OBSERVED with the
     reason stated) instead of an error: JSONL events and Langfuse
     exports carry no tool-use records.
+
+    The sniff is incremental and bounded (the first ~64 KiB for the
+    top-level keys, the first 50 lines up to 1 MiB for the
+    Claude/Codex shapes): the whole file is never loaded just to
+    detect its shape. Only a detected trajectory is then parsed in
+    full, once, by ``extract_traj``.
     """
+    if not _is_regular_file(path):
+        evidence = _new_evidence("unknown")
+        evidence["sessions"].append(os.path.basename(path))
+        return evidence
     try:
-        with open(path, encoding="utf-8") as f:
-            whole = json.load(f)
-    except (OSError, UnicodeDecodeError, ValueError):
-        whole = None
-    if isinstance(whole, dict) and "messages" in whole:
+        with open(path, "rb") as f:
+            prefix = f.read(65536)
+    except OSError:
+        prefix = b""
+    head_text = prefix.decode("utf-8", errors="replace")
+    if head_text.lstrip().startswith("{") \
+            and "messages" in _top_level_keys(head_text):
         return extract_traj(path)
     head = []
+    budget = 1024 * 1024
     try:
-        with open(path, encoding="utf-8") as f:
-            for _ in range(50):
-                line = f.readline()
-                if not line:
+        with open(path, "rb") as f:
+            while len(head) < 50 and budget > 0:
+                raw = f.readline(65536)
+                if not raw:
                     break
-                head.append(line)
-    except (OSError, UnicodeDecodeError):
+                budget -= len(raw)
+                try:
+                    head.append(raw.decode("utf-8"))
+                except UnicodeDecodeError:
+                    head.append("")
+    except OSError:
         head = []
     is_claude = False
     is_codex = False
@@ -535,6 +672,7 @@ def merge_evidence(evidences):
     merged["sessions"] = []
     merged["sources"] = set()
     recorded_total = 0.0
+    saw_recorded = False
     claude_sessions = 0
     claude_with_cost = 0
     for ev in evidences:
@@ -548,10 +686,15 @@ def merge_evidence(evidences):
             if ev["recorded_cost"] is not None:
                 recorded_total += ev["recorded_cost"]
                 claude_with_cost += 1
+                saw_recorded = True
         elif ev["source"] == "traj" and ev["recorded_cost"] is not None:
             recorded_total += ev["recorded_cost"]
+            saw_recorded = True
     merged["has_codex"] = "codex" in merged["sources"]
-    merged["recorded_cost"] = recorded_total if recorded_total else None
+    # A recorded $0.00 is a recorded cost, not an absence: presence is
+    # tracked separately from the total, so a $0.00 record is not
+    # dropped to None.
+    merged["recorded_cost"] = recorded_total if saw_recorded else None
     merged["claude_sessions"] = claude_sessions
     merged["claude_with_cost"] = claude_with_cost
     merged["sources"] = sorted(merged["sources"])
@@ -571,6 +714,53 @@ def _outcome_text(command):
                               command["outcome_note"])
 
 
+def _evidence_sources(evidence):
+    """Source kinds in the evidence: {"traj"} / {"claude"} / {"codex"}
+    / {"unknown"} (JSONL / Langfuse) / a mix (scan mode)."""
+    sources = evidence.get("sources")
+    if isinstance(sources, (list, tuple, set)) and sources:
+        return set(sources)
+    source = evidence.get("source")
+    return {source} if source else set()
+
+
+def _format_limitation(sources, kind):
+    """Format-limitation sentence for a NOT OBSERVED row, or "".
+
+    The absence is in the format, not the run, when the only source
+    is a mini-SWE-agent trajectory (D3: it edits via bash, never
+    Edit/Write calls) or a JSONL/Langfuse file (no tool-use records
+    at all)."""
+    if sources == {"traj"} and kind in ("d3",):
+        return (" (mini-SWE-agent edits files via bash, not Edit/Write "
+                "calls, so this check cannot resolve on this format)")
+    if sources == {"unknown"}:
+        return (" (JSONL events and Langfuse exports carry no "
+                "tool-use records, so this check cannot resolve on "
+                "these formats)")
+    return ""
+
+
+def _earlier_outcomes_note(observed, kind_word):
+    """Note when earlier runs of the same kind resolved but the last
+    did not, so a passing run is never hidden behind a later unknown
+    one. ``observed`` is the list of command dicts in order."""
+    earlier = observed[:-1]
+    passed = sum(1 for c in earlier if c.get("outcome") is True)
+    failed = sum(1 for c in earlier if c.get("outcome") is False)
+    if not passed and not failed:
+        return ""
+    parts = []
+    if passed:
+        parts.append("%d earlier %s run(s) passed"
+                     % (passed, kind_word))
+    if failed:
+        parts.append("%d earlier %s run(s) failed"
+                     % (failed, kind_word))
+    return ("; %s but the latest run's outcome is unknown, so the "
+            "check is NOT OBSERVED" % " and ".join(parts))
+
+
 def _judge_command_check(check_id, name, kind, evidence):
     """D1/D2: judge the last observed command of one kind."""
     observed = []
@@ -580,10 +770,13 @@ def _judge_command_check(check_id, name, kind, evidence):
         classified, _targets = classify_command(cmd["command"])
         if classified == kind:
             observed.append(cmd)
+    kind_word = "test" if kind == "test" else "build"
     if not observed:
         return {"id": check_id, "name": name, "verdict": "NOT OBSERVED",
-                "observation": "no %s command observed in trace"
-                               % ("test" if kind == "test" else "build")}
+                "observation": "no %s command observed in trace%s"
+                               % (kind_word,
+                                  _format_limitation(
+                                      _evidence_sources(evidence), "d1"))}
     last = observed[-1]
     runs = "observed %d time(s); last run: %s" % (
         len(observed), _outcome_text(last))
@@ -594,19 +787,29 @@ def _judge_command_check(check_id, name, kind, evidence):
         return {"id": check_id, "name": name, "verdict": "FAILED",
                 "observation": runs}
     return {"id": check_id, "name": name, "verdict": "NOT OBSERVED",
-            "observation": runs + "; no exit code or error flag in "
-                           "trace, so the outcome is not judged"}
+            "observation": runs + "; no exit code or error flag for "
+                           "this command in the trace, so the outcome "
+                           "is not judged"
+                           + _earlier_outcomes_note(observed, kind_word)}
 
 
 def _judge_d3(evidence):
-    """D3: files touched vs files tested, by name matching only."""
+    """D3: files touched vs files tested, by name matching only.
+
+    The named-test branch is gated on the last test command's
+    outcome exactly like the bare-suite branch: a passing named run
+    VERIFIES (name matching only), a failing named run FAILS, and a
+    named run with an unknown outcome is NOT OBSERVED. Only the LAST
+    test command's named files are matched."""
     edited = [f for f in evidence["edited_files"]
               if not _is_test_path(f)]
     if not edited:
         return {"id": "D3", "name": "files touched vs files tested",
                 "verdict": "NOT OBSERVED",
                 "observation": "no Edit/Write tool calls observed in "
-                               "trace"}
+                               "trace%s"
+                               % _format_limitation(
+                                   _evidence_sources(evidence), "d3")}
     tests = []
     for cmd in evidence["commands"]:
         if cmd["command"] is None:
@@ -621,6 +824,8 @@ def _judge_d3(evidence):
                                "command observed in trace"
                                % ", ".join("`%s`" % f for f in edited)}
     last_cmd, targets = tests[-1]
+    test_cmds = [cmd for cmd, _t in tests]
+    earlier_note = _earlier_outcomes_note(test_cmds, "test")
     if not targets:
         # A bare test command runs the whole suite.
         if last_cmd["outcome"] is True:
@@ -642,18 +847,45 @@ def _judge_d3(evidence):
         return {"id": "D3", "name": "files touched vs files tested",
                 "verdict": "NOT OBSERVED",
                 "observation": "full test suite ran but its outcome is "
-                               "unknown (%s); edited files: %s"
+                               "unknown (%s); edited files: %s%s"
                                % (_outcome_text(last_cmd),
-                                  ", ".join("`%s`" % f for f in edited))}
+                                  ", ".join("`%s`" % f for f in edited),
+                                  earlier_note)}
     named_stems = {_test_stem(t) for t in targets}
     unmatched = [f for f in edited
                  if _test_stem(f) not in named_stems]
+    unmatched_note = ""
+    if unmatched:
+        unmatched_note = ("; edited file(s) with no stem-matching "
+                          "test file in %s: %s (name matching only; "
+                          "actual coverage is not inferred)"
+                          % (_outcome_text(last_cmd),
+                             ", ".join("`%s`" % f for f in unmatched)))
+    if last_cmd["outcome"] is None:
+        return {"id": "D3", "name": "files touched vs files tested",
+                "verdict": "NOT OBSERVED",
+                "observation": "the named tests' outcome is unknown, "
+                               "so no verdict (%s); edited: %s%s%s"
+                               % (_outcome_text(last_cmd),
+                                  ", ".join("`%s`" % f for f in edited),
+                                  unmatched_note, earlier_note)}
+    if last_cmd["outcome"] is False:
+        return {"id": "D3", "name": "files touched vs files tested",
+                "verdict": "FAILED",
+                "observation": "the named tests failed, so the "
+                               "touched files are not verified as "
+                               "tested (%s); edited: %s%s"
+                               % (_outcome_text(last_cmd),
+                                  ", ".join("`%s`" % f for f in edited),
+                                  unmatched_note)}
     if not unmatched:
         return {"id": "D3", "name": "files touched vs files tested",
                 "verdict": "VERIFIED",
                 "observation": "every edited source file has a "
-                               "stem-matching test file named in %s; "
-                               "edited: %s"
+                               "stem-matching test file named in %s "
+                               "(name matching only; actual coverage "
+                               "is not inferred; the named tests "
+                               "passed); edited: %s"
                                % (_outcome_text(last_cmd),
                                   ", ".join("`%s`" % f for f in edited))}
     return {"id": "D3", "name": "files touched vs files tested",
@@ -674,31 +906,33 @@ def _judge_d4(evidence):
         key = " ".join(cmd["command"].split())
         counts[key] = counts.get(key, 0) + 1
     if not counts:
-        return {"id": "D4", "name": "retry overhead (duplicate "
-                                    "invocations)",
+        return {"id": "D4", "name": "duplicate-invocation overhead",
                 "verdict": "NOT OBSERVED",
-                "observation": "no tool commands observed in trace"}
+                "observation": "no tool commands observed in trace%s"
+                               % _format_limitation(
+                                   _evidence_sources(evidence), "d4")}
     duplicates = sum(n - 1 for n in counts.values() if n > 1)
     worst = max(counts.items(), key=lambda kv: kv[1])
     detail = ("OBSERVED duplicate-invocation overhead: %d duplicate "
               "invocation(s) of identical commands "
-              "(threshold: %d+ fails); most-repeated command `%s` ran "
-              "%d time(s)"
+              "(threshold: %d+ fails; pinned judgment call, not a "
+              "measured bar - 50-trace public audit distribution "
+              "0:2, 1:16, 2:8, 3:7, 4:7, 5:3, 6:2, 8:1, 10:1, 11:1, "
+              "20:2; 10/50 fail at >=5); most-repeated command `%s` "
+              "ran %d time(s)"
               % (duplicates, D4_DUPLICATE_FAIL_THRESHOLD,
                  worst[0], worst[1]))
     if duplicates >= D4_DUPLICATE_FAIL_THRESHOLD:
-        return {"id": "D4", "name": "retry overhead (duplicate "
-                                    "invocations)",
+        return {"id": "D4", "name": "duplicate-invocation overhead",
                 "verdict": "FAILED", "observation": detail}
-    return {"id": "D4", "name": "retry overhead (duplicate "
-                                "invocations)",
+    return {"id": "D4", "name": "duplicate-invocation overhead",
             "verdict": "VERIFIED", "observation": detail}
 
 
 def _judge_d5(evidence, estimated_cost):
-    """D5: billed (recorded) vs estimated cost."""
+    """D5: trace-recorded vs estimated cost."""
     if evidence.get("has_codex"):
-        return {"id": "D5", "name": "billed vs estimated cost",
+        return {"id": "D5", "name": "trace-recorded vs estimated cost",
                 "verdict": "EXTERNAL-UNVERIFIABLE",
                 "observation": "scan includes Codex session(s); Codex "
                                "subscription billing (per-seat plans, "
@@ -707,7 +941,7 @@ def _judge_d5(evidence, estimated_cost):
                                "meaningless"}
     recorded = evidence.get("recorded_cost")
     if recorded is None:
-        return {"id": "D5", "name": "billed vs estimated cost",
+        return {"id": "D5", "name": "trace-recorded vs estimated cost",
                 "verdict": "NOT OBSERVED",
                 "observation": "no session carries a recorded cost (no "
                                "result.total_cost_usd / instance_cost "
@@ -715,7 +949,7 @@ def _judge_d5(evidence, estimated_cost):
     total_sessions = evidence.get("claude_sessions", 0)
     with_cost = evidence.get("claude_with_cost", 0)
     if total_sessions and with_cost < total_sessions:
-        return {"id": "D5", "name": "billed vs estimated cost",
+        return {"id": "D5", "name": "trace-recorded vs estimated cost",
                 "verdict": "NOT OBSERVED",
                 "observation": "only %d of %d Claude session(s) carry "
                                "a recorded cost; a partial comparison "
@@ -723,23 +957,31 @@ def _judge_d5(evidence, estimated_cost):
                                                   total_sessions)}
     if estimated_cost is None or estimated_cost == 0:
         if recorded == 0:
-            return {"id": "D5", "name": "billed vs estimated cost",
+            return {"id": "D5", "name": "trace-recorded vs estimated cost",
                     "verdict": "VERIFIED",
                     "observation": "recorded $0.00 and metered estimate "
                                    "$0.00 agree"}
-        return {"id": "D5", "name": "billed vs estimated cost",
+        return {"id": "D5", "name": "trace-recorded vs estimated cost",
                 "verdict": "FAILED",
                 "observation": "recorded $%.4f but metered estimate "
                                "$0.00" % recorded}
-    ratio = estimated_cost / recorded if recorded else float("inf")
-    detail = ("recorded $%.4f vs metered estimate $%.4f (ratio %.2fx; "
-              "agree within %.0f%%)"
+    if recorded == 0:
+        # A recorded $0.00 with a nonzero estimate: FAILED, with no
+        # ratio (a ratio against zero is meaningless, never "infx").
+        return {"id": "D5", "name": "trace-recorded vs estimated cost",
+                "verdict": "FAILED",
+                "observation": "recorded $0.0000 vs metered estimate "
+                               "$%.4f; no ratio (recorded cost is "
+                               "$0.00)" % estimated_cost}
+    ratio = estimated_cost / recorded
+    detail = ("recorded $%.4f vs metered estimate $%.4f (4dp figures; "
+              "ratio %.2fx; agree within %.0f%%)"
               % (recorded, estimated_cost, ratio,
                  D5_TOLERANCE * 100))
     if abs(ratio - 1.0) <= D5_TOLERANCE:
-        return {"id": "D5", "name": "billed vs estimated cost",
+        return {"id": "D5", "name": "trace-recorded vs estimated cost",
                 "verdict": "VERIFIED", "observation": detail}
-    return {"id": "D5", "name": "billed vs estimated cost",
+    return {"id": "D5", "name": "trace-recorded vs estimated cost",
             "verdict": "FAILED", "observation": detail}
 
 
