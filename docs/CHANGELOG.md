@@ -84,7 +84,9 @@
   (capped at 16 MiB): a fixed 64 KiB sniff prefix silently missed
   the key on trajectories whose leading `info` object is larger
   than the prefix (3 of the 50 public-audit trajectories), reading
-  them as carrying no tool records at all.
+  them as carrying no tool records at all. The same streaming scan
+  backs `averth try` format detection, whose old 1 MiB prefix had
+  the same hole for a trajectory with a larger leading block.
   93 tests in `tests/test_self_serve_scan.py` (discovery with a fake
   home, extraction, every verdict including the NOT OBSERVED paths,
   receipt escaping, CLI scan and explicit-trace behavior).

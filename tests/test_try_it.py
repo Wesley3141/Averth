@@ -496,6 +496,23 @@ def test_detect_try_format_skips_typeless_first_line(tmp_path):
     assert _detect_try_format(str(f)) == "jsonl"
 
 
+def test_detect_try_format_finds_messages_past_1mib(tmp_path):
+    # Same class as the default-checks sniff bug: a trajectory whose
+    # leading "info" object pushes "messages" past a fixed prefix
+    # must still detect as traj (the old 1 MiB prefix missed it).
+    from averth.cli import _detect_try_format
+
+    f = tmp_path / "big.traj.json"
+    f.write_text(json.dumps({
+        "info": {"padding": "x" * (2 * 1024 * 1024)},
+        "messages": [
+            {"role": "assistant",
+             "content": "```bash\npytest\n```"},
+        ]}), encoding="utf-8")
+    assert f.stat().st_size > 1024 * 1024
+    assert _detect_try_format(str(f)) == "traj"
+
+
 def test_detect_try_format_rejects_garbage(tmp_path):
     from averth.cli import _detect_try_format
 

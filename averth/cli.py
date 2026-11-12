@@ -229,17 +229,18 @@ def _detect_try_format(path):
     first 10 non-blank lines, so a header event without a ``type``
     key does not hide valid events below it). Anything else raises
     ValueError naming the supported shapes. The file is read
-    incrementally — at most the first 1 MiB for the object-shape
-    sniff, then the first 10 non-blank lines (1 MiB each at most)
-    for the JSONL scan — never loaded whole, so a multi-hundred-MB
-    session file does not cost a whole-file string plus a
-    whole-file parse. Corner: a bare JSON list larger than 1 MiB on
+    incrementally — the object-shape sniff scans the top-level keys
+    in chunks until found or the object closes (capped at 16 MiB),
+    then the first 10 non-blank lines (1 MiB each at most) are
+    scanned for the JSONL shape — never loaded whole, so a
+    multi-hundred-MB session file does not cost a whole-file string
+    plus a whole-file parse. Corner: a bare JSON list larger than 1 MiB on
     a single line is not detected (its first line is truncated by
     the scan cap).
     """
     import json
 
-    from averth.default_checks import _top_level_keys
+    from averth.default_checks import _scan_file_top_level_keys
 
     try:
         head = bytearray()
@@ -279,9 +280,12 @@ def _detect_try_format(path):
         return "langfuse"
     if not eof:
         # Only a prefix was read: a truncated object still carries
-        # its top-level keys early, and a pretty-printed bare list
-        # opens with a lone "[" line.
-        keys = _top_level_keys(text)
+        # its top-level keys, but a large leading value (e.g. a
+        # trajectory's "info" block) can push "messages" past any
+        # fixed prefix, so the keys are scanned in chunks until
+        # found or the object closes (capped at 16 MiB). A
+        # pretty-printed bare list opens with a lone "[" line.
+        keys = _scan_file_top_level_keys(path)
         if "messages" in keys:
             return "traj"
         if "data" in keys:

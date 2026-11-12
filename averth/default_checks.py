@@ -282,52 +282,6 @@ def _is_regular_file(path):
         return False
 
 
-def _top_level_keys(text):
-    """Top-level keys of a JSON object from a (possibly truncated)
-    prefix of its text.
-
-    Scans the text for string keys at depth 1 (a string followed by
-    ``:`` while inside the outermost object); returns the set found
-    so far. A truncated prefix yields a partial set, never an error.
-    """
-    keys = set()
-    depth = 0
-    i = 0
-    n = len(text)
-    while i < n:
-        ch = text[i]
-        if ch == '"':
-            j = i + 1
-            chars = []
-            while j < n:
-                c = text[j]
-                if c == "\\":
-                    j += 2
-                    continue
-                if c == '"':
-                    break
-                chars.append(c)
-                j += 1
-            if j >= n:
-                break
-            key = "".join(chars)
-            k = j + 1
-            while k < n and text[k] in " \t\r\n":
-                k += 1
-            if depth == 1 and k < n and text[k] == ":":
-                keys.add(key)
-            i = j + 1
-            continue
-        if ch in "{[":
-            depth += 1
-        elif ch in "}]":
-            depth -= 1
-            if depth <= 0:
-                break
-        i += 1
-    return keys
-
-
 # A trajectory's top-level keys precede its ``messages`` array, but a
 # large leading ``info`` object can push ``messages`` far past any
 # fixed sniff prefix: three of the 50 public-audit trajectories carry
@@ -700,6 +654,36 @@ def extract_traj(path):
     return evidence
 
 
+def _scan_file_top_level_keys(path):
+    """Top-level keys of the JSON object in ``path``.
+
+    Scans the file in chunks with ``_TopLevelKeyScanner`` until the
+    keys are resolved (``messages`` found, or the outermost object
+    closes) or the 16 MiB cap is hit. Never raises: an unreadable
+    file yields an empty set. The cap only guards against
+    pathological files; a real trajectory's leading block is under
+    200 KiB, but a fixed small prefix is not safe (three of the 50
+    public-audit trajectories carry ``messages`` past 64 KiB).
+    """
+    scanner = _TopLevelKeyScanner()
+    try:
+        decoder = codecs.getincrementaldecoder("utf-8")(
+            errors="replace")
+        with open(path, "rb") as f:
+            scanned = 0
+            while scanned < _TRAJ_SNIFF_LIMIT:
+                chunk = f.read(65536)
+                if not chunk:
+                    break
+                scanned += len(chunk)
+                scanner.feed(decoder.decode(chunk))
+                if "messages" in scanner.keys or scanner.closed:
+                    break
+    except OSError:
+        return set()
+    return scanner.keys
+
+
 def extract_from_file(path):
     """Extract evidence from any explicit-trace file, sniffing shape.
 
@@ -723,23 +707,7 @@ def extract_from_file(path):
         evidence = _new_evidence("unknown")
         evidence["sessions"].append(os.path.basename(path))
         return evidence
-    scanner = _TopLevelKeyScanner()
-    try:
-        decoder = codecs.getincrementaldecoder("utf-8")(
-            errors="replace")
-        with open(path, "rb") as f:
-            scanned = 0
-            while scanned < _TRAJ_SNIFF_LIMIT:
-                chunk = f.read(65536)
-                if not chunk:
-                    break
-                scanned += len(chunk)
-                scanner.feed(decoder.decode(chunk))
-                if "messages" in scanner.keys or scanner.closed:
-                    break
-    except OSError:
-        pass
-    if "messages" in scanner.keys:
+    if "messages" in _scan_file_top_level_keys(path):
         return extract_traj(path)
     head = []
     budget = 1024 * 1024
