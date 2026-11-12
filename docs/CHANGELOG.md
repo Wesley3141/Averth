@@ -17,9 +17,17 @@
   permission-denied subdirectory, is skipped with the reason
   instead of being opened. A session file that fails to parse is skipped with a
   warning counted in the report, never silently dropped, and if all
-  fail the command exits 2. No sessions found exits 2 naming the
-  directories checked. New `averth/local_scan.py` (discovery only);
-  CLI changes confined to `averth/cli.py`.
+  fail the command exits 2. The scan note reports the total found
+  ("N session(s) scanned (of M found; newest N)" when the cap
+  applies). `--format`, `--model`, and `--recorded` are refused in
+  scan mode (exit 2, naming the offending flag); `--recorded` is
+  never used for D5 in any mode. The receipt is written before the
+  HTML report in both modes, and a receipt path equal to the HTML
+  report path or the input trace file (or `--out` equal to the input
+  trace) is refused up front, with or without `--force`, as is a
+  receipt path naming an existing directory. No-sessions,
+  only-subagent, all-parse-fail, and no-model-calls errors name the
+  next step to take.
 - "Averth Agent PR Receipt (trace-observed)": compact Markdown for pasting into a
   GitHub PR description, written as `<stem>-receipt.md` next to the
   HTML report (same stem rule; `--receipt PATH` overrides) in both

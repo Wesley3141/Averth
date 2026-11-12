@@ -13,12 +13,15 @@ Usage:
 ``try`` is the one-command free run: it meters a trace file (a
 mini-SWE-agent trajectory, JSONL events, or a Langfuse export),
 prints the text report, and writes a self-contained HTML report you
-can share, plus a "Verified Agent PR Receipt" (compact Markdown for
-pasting into a GitHub PR description). With no trace argument it
-scans your last 10 local Claude Code / Codex sessions instead
-(zero-config: no flags required). ``--recorded`` is an
-operator-supplied figure claimed to be the run's recorded cost, shown
-next to the metered estimate; Averth does not verify it. ``--ledger``
+can share, plus an "Averth Agent PR Receipt (trace-observed)"
+(compact Markdown for pasting into a GitHub PR description). With no
+trace argument it scans your last 10 local Claude Code / Codex
+sessions instead (zero-config: no flags required). ``--recorded`` is
+an operator-supplied figure claimed to be the run's recorded cost,
+shown next to the metered estimate; Averth does not verify it. It
+is accepted for explicit traces only (refused in scan mode) and is
+never used for the receipt's trace-recorded-vs-estimated check (D5),
+which compares only the trace's own recorded cost. ``--ledger``
 adds a V0 verdict summary from a V0 evidence ledger (``--checks``
 verifies the ledger's checks digest and refuses on mismatch). The
 receipt also carries the default checks (trace-observed): five
@@ -39,6 +42,7 @@ module always imports cleanly.
 import argparse
 import math
 import os
+import stat
 import sys
 
 
@@ -92,11 +96,12 @@ def build_parser():
                    help="Trace file to meter (mini-SWE-agent .traj.json, JSONL events, or a Langfuse export). Omit it to scan your last 10 local Claude Code / Codex sessions instead (zero-config scan).")
     y.add_argument("--format", default="auto",
                    choices=["auto", "traj", "jsonl", "langfuse"],
-                   help="Trace format (default: auto-detect).")
+                   help="Trace format (default: auto-detect). Refused in "
+                        "scan mode (no trace file).")
     y.add_argument("--model", default=None, metavar="NAME",
-                   help="Model name for mini-SWE-agent trajectories (e.g. claude-sonnet-4-20250514). Required unless the file name contains a priced model name. An explicit --model overrides the name inferred from the file name. Ignored for JSONL and Langfuse input, whose models come from the file itself. List priced models with 'averth pricing'.")
+                   help="Model name for mini-SWE-agent trajectories (e.g. claude-sonnet-4-20250514). Required unless the file name contains a priced model name. An explicit --model overrides the name inferred from the file name. Ignored for JSONL and Langfuse input, whose models come from the file itself. List priced models with 'averth pricing'. Refused in scan mode (no trace file).")
     y.add_argument("--recorded", type=float, default=None, metavar="DOLLARS",
-                   help="Operator-supplied figure claimed to be the recorded cost for the same run (must be positive; e.g. the 'cost' field of a leaderboard per_instance_details.json entry). Averth does not verify it; shown next to the metered estimate. No comparison is shown when the run completed zero runs.")
+                   help="Operator-supplied figure claimed to be the recorded cost for the same run (must be positive; e.g. the 'cost' field of a leaderboard per_instance_details.json entry). Averth does not verify it; shown next to the metered estimate. No comparison is shown when the run completed zero runs. Explicit traces only: refused in scan mode, and never used for the receipt's trace-recorded-vs-estimated check (D5), which compares only the trace's own recorded cost.")
     y.add_argument("--ledger", default=None, metavar="PATH",
                    help="V0 evidence ledger JSON to summarize in the report. Without --checks the ledger's checks digest is shown but not verified.")
     y.add_argument("--checks", default=None, metavar="PATH",
@@ -106,13 +111,15 @@ def build_parser():
     y.add_argument("--agent", default=None, metavar="NAME",
                    help="Agent name shown in the report (default for trajectory input: miniswe-import; for JSONL input: jsonl-import; for Langfuse input: langfuse-import).")
     y.add_argument("--force", action="store_true",
-                   help="Overwrite an existing --out file instead of refusing.")
+                   help="Overwrite an existing --out file or receipt instead of refusing.")
     y.add_argument("--receipt", default=None, metavar="PATH",
                    help="Markdown receipt output path (default: the HTML "
                         "report path with .html replaced by -receipt.md; "
                         "in scan mode the default is "
                         "averth-scan-receipt.md). The receipt is written "
-                        "in both scan mode and explicit-trace mode.")
+                        "in both scan mode and explicit-trace mode. The "
+                        "receipt is also printed to stdout in scan mode "
+                        "only.")
 
     s = sub.add_parser("simulate",
                        help="Generate adversarial synthetic production traffic "
@@ -163,7 +170,8 @@ def build_parser():
 
 def _report_and_html(tracker, html_path, policy_sim=None, anomaly=False,
                      try_extras=None, try_summary=(), try_mode=False,
-                     model_cost_basis=None):
+                     model_cost_basis=None, default_checks_summary=None,
+                     default_checks_failed=False):
     from averth.report import report_text, write_html
     from averth.insights import findings_text, anomalies_text
 
@@ -172,7 +180,18 @@ def _report_and_html(tracker, html_path, policy_sim=None, anomaly=False,
                       model_cost_basis=model_cost_basis))
     print()
     print("=" * 60)
-    print(findings_text(p))
+    findings = findings_text(p)
+    if default_checks_summary is not None:
+        # The P&L findings must not call a run "clean" that the
+        # receipt in the same output flags as failed.
+        if default_checks_failed and findings.startswith(
+                "No material findings"):
+            print(default_checks_summary)
+        else:
+            print(findings)
+            print(default_checks_summary)
+    else:
+        print(findings)
     if anomaly:
         print()
         print("=" * 60)
@@ -209,25 +228,46 @@ def _detect_try_format(path):
     whole-file parse does not match a shape, and it looks at the
     first 10 non-blank lines, so a header event without a ``type``
     key does not hide valid events below it). Anything else raises
-    ValueError naming the supported shapes. The file is read once.
+    ValueError naming the supported shapes. The file is read
+    incrementally — at most the first 1 MiB for the object-shape
+    sniff, then the first 10 non-blank lines (1 MiB each at most)
+    for the JSONL scan — never loaded whole, so a multi-hundred-MB
+    session file does not cost a whole-file string plus a
+    whole-file parse. Corner: a bare JSON list larger than 1 MiB on
+    a single line is not detected (its first line is truncated by
+    the scan cap).
     """
     import json
 
+    from averth.default_checks import _top_level_keys
+
     try:
-        with open(path, encoding="utf-8") as f:
-            text = f.read()
+        head = bytearray()
+        eof = False
+        with open(path, "rb") as f:
+            while len(head) < 1024 * 1024:
+                chunk = f.read(min(65536, 1024 * 1024 - len(head)))
+                if not chunk:
+                    eof = True
+                    break
+                head += chunk
+    except OSError as e:
+        raise ValueError("%s is not readable: %s" % (path, e))
+    if not bytes(head).strip():
+        raise ValueError("%s is empty" % path)
+    try:
+        text = bytes(head).decode("utf-8")
     except UnicodeDecodeError:
         raise ValueError(
             "%s is not readable text (binary or non-UTF-8); supply a "
             ".traj.json, JSONL, or Langfuse JSON export" % path
         )
-    if not text.strip():
-        raise ValueError("%s is empty" % path)
     data = None
-    try:
-        data = json.loads(text)
-    except json.JSONDecodeError:
-        data = None
+    if eof:
+        try:
+            data = json.loads(text)
+        except json.JSONDecodeError:
+            data = None
     if isinstance(data, dict):
         if "messages" in data:
             return "traj"
@@ -237,20 +277,43 @@ def _detect_try_format(path):
         # so fall through to the line scan before rejecting it.
     elif isinstance(data, list):
         return "langfuse"
+    if not eof:
+        # Only a prefix was read: a truncated object still carries
+        # its top-level keys early, and a pretty-printed bare list
+        # opens with a lone "[" line.
+        keys = _top_level_keys(text)
+        if "messages" in keys:
+            return "traj"
+        if "data" in keys:
+            return "langfuse"
+        first_line = text.lstrip().splitlines()[0].strip() \
+            if text.lstrip().splitlines() else ""
+        if first_line == "[":
+            return "langfuse"
     scanned = 0
-    for line in text.splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        scanned += 1
-        if scanned > 10:
-            break
-        try:
-            obj = json.loads(line)
-        except json.JSONDecodeError:
-            break
-        if isinstance(obj, dict) and "type" in obj:
-            return "jsonl"
+    try:
+        with open(path, "rb") as f:
+            while True:
+                raw = f.readline(1024 * 1024)
+                if not raw:
+                    break
+                try:
+                    line = raw.decode("utf-8").strip()
+                except UnicodeDecodeError:
+                    break
+                if not line:
+                    continue
+                scanned += 1
+                if scanned > 10:
+                    break
+                try:
+                    obj = json.loads(line)
+                except json.JSONDecodeError:
+                    break
+                if isinstance(obj, dict) and "type" in obj:
+                    return "jsonl"
+    except OSError as e:
+        raise ValueError("%s is not readable: %s" % (path, e))
     if isinstance(data, dict):
         raise ValueError(
             "%s is JSON but none of the supported shapes: a "
@@ -300,6 +363,38 @@ def _refuse_existing(abs_path, force, what):
     return None
 
 
+def _refuse_path_collision(first_abs, second_abs, first_what,
+                           second_what):
+    """Refuse (exit 2) when two output/input paths name the same file.
+
+    ``--force`` means overwrite a *file*, never destroy the other
+    output or the input trace: a receipt equal to the HTML report,
+    or either output equal to the input trace, is refused up front,
+    before any metering, with or without ``--force``.
+    """
+    if first_abs == second_abs:
+        print("averth: error: %s path %s is the same as the %s path; "
+              "use a different path"
+              % (first_what, first_abs, second_what), file=sys.stderr)
+        return 2
+    return None
+
+
+def _refuse_directory_output(abs_path, what):
+    """Refuse (exit 2) when an output path is an existing directory.
+
+    ``--force`` never replaces a directory. Checked up front, so a
+    bad receipt path cannot fail after the HTML report has already
+    been written and printed as a success.
+    """
+    if os.path.isdir(abs_path):
+        print("averth: error: cannot write %s to %s: it is a "
+              "directory (--force never replaces a directory)"
+              % (what, abs_path), file=sys.stderr)
+        return 2
+    return None
+
+
 def _write_receipt_file(receipt_abs, receipt_text):
     """Write the receipt Markdown file. Returns 0 or 2."""
     try:
@@ -309,8 +404,25 @@ def _write_receipt_file(receipt_abs, receipt_text):
         print("averth: error: cannot write receipt to %s: %s"
               % (receipt_abs, e), file=sys.stderr)
         return 2
-    print("Receipt written to %s" % receipt_abs)
+    print("Receipt written to %s (Markdown for pasting into a GitHub "
+          "PR description)" % receipt_abs)
     return 0
+
+
+def _default_checks_summary(checks):
+    """One-line default-checks summary for the P&L findings."""
+    counts = {v: 0 for v in
+              ("VERIFIED", "FAILED", "NOT OBSERVED",
+               "EXTERNAL-UNVERIFIABLE")}
+    for check in checks:
+        if check["verdict"] in counts:
+            counts[check["verdict"]] += 1
+    return ("Default checks (trace-observed): %d VERIFIED, %d FAILED, "
+            "%d NOT OBSERVED, %d EXTERNAL-UNVERIFIABLE — see the "
+            "receipt."
+            % (counts["VERIFIED"], counts["FAILED"],
+               counts["NOT OBSERVED"],
+               counts["EXTERNAL-UNVERIFIABLE"]))
 
 
 def _cmd_try_scan(args):
@@ -325,10 +437,30 @@ def _cmd_try_scan(args):
     fail, exit 2. No sessions at all is exit 2 naming the
     directories checked.
     """
-    if args.format != "auto" or args.model:
-        print("averth: error: scan mode takes no trace file; --format "
-              "and --model apply to explicit traces only (run "
-              "'averth try <file>' for a single trace)", file=sys.stderr)
+    offending = []
+    if args.format != "auto":
+        offending.append("--format")
+    if args.model:
+        offending.append("--model")
+    if args.recorded is not None:
+        offending.append("--recorded")
+    if offending:
+        if len(offending) == 1:
+            names, verb = offending[0], "applies"
+        elif len(offending) == 2:
+            names, verb = " and ".join(offending), "apply"
+        else:
+            names = ", ".join(offending[:-1]) + ", and " + offending[-1]
+            verb = "apply"
+        hint = ""
+        if "--recorded" in offending:
+            hint = ("; the receipt compares the trace's own recorded "
+                    "cost")
+        print("averth: error: scan mode does not accept %s; %s %s to "
+              "explicit traces only — run 'averth try <file>' for a "
+              "single trace%s"
+              % (names, "it" if len(offending) == 1 else "they", verb,
+                 hint), file=sys.stderr)
         return 2
     if args.checks and not args.ledger:
         print("averth: error: --checks needs --ledger", file=sys.stderr)
@@ -340,14 +472,21 @@ def _cmd_try_scan(args):
         return 2
     from averth import default_checks, local_scan
     from averth import receipt as receipt_mod
-    selected, skipped, checked = local_scan.discover_sessions()
+    selected, skipped, checked, total_found = \
+        local_scan.discover_sessions()
     if not selected:
         extra = ""
-        if skipped:
+        n_subagent = sum(1 for s in skipped
+                         if s["reason"].startswith("subagent rollout"))
+        if n_subagent:
             extra = (" (%d subagent rollout(s) found but excluded by "
-                     "default)" % len(skipped))
+                     "default; pass a rollout file explicitly: "
+                     "averth try <path-to-rollout.jsonl>)"
+                     % n_subagent)
         print("averth: error: no local Claude Code or Codex sessions "
-              "found%s; checked %s and %s"
+              "found%s; checked %s and %s. No sessions yet? Run "
+              "Claude Code or Codex once to create one, or meter a "
+              "single trace file instead: averth try <trace-file>"
               % (extra, checked[0], checked[1]), file=sys.stderr)
         return 2
     html_path = args.out or "averth-scan.html"
@@ -365,6 +504,18 @@ def _cmd_try_scan(args):
         print("averth: error: cannot write receipt to %s: %s"
               % (receipt_abs, err), file=sys.stderr)
         return 2
+    # Collision guards, up front before any metering: the receipt
+    # must never overwrite the HTML report (or vice versa).
+    rc = _refuse_path_collision(receipt_abs, html_abs, "--receipt",
+                                "HTML report")
+    if rc is not None:
+        return rc
+    rc = _refuse_directory_output(receipt_abs, "receipt")
+    if rc is not None:
+        return rc
+    rc = _refuse_directory_output(html_abs, "HTML report")
+    if rc is not None:
+        return rc
     from averth.importers import claude as claude_mod
     from averth.importers import codex as codex_mod
     from averth.importers import common
@@ -391,8 +542,12 @@ def _cmd_try_scan(args):
             evidences.append(default_checks.extract_codex(path))
         scanned.append(cand)
     if not scanned:
-        print("averth: error: all %d session file(s) failed to parse; "
-              "nothing to meter" % len(selected), file=sys.stderr)
+        print("averth: error: all %d session file(s) failed to parse "
+              "(%s); nothing to meter. Check the newest session file "
+              "opens as JSONL, or meter one file explicitly to see its "
+              "parse error: averth try <file>"
+              % (len(selected), ", ".join(parse_failures)),
+              file=sys.stderr)
         return 2
     try:
         tracker = common.events_to_tracker("local-scan", events)
@@ -405,7 +560,10 @@ def _cmd_try_scan(args):
     pnl = tracker.pnl()
     if pnl["attempts"] == 0:
         print("averth: error: the scanned sessions contain no model "
-              "calls; nothing to meter", file=sys.stderr)
+              "calls (no usage records found); nothing to meter. "
+              "Sessions without model usage cannot be metered — run a "
+              "session that makes model calls, or meter a trace file "
+              "instead: averth try <trace-file>", file=sys.stderr)
         return 2
     # The V0 ledger is verified BEFORE anything is written, as in
     # explicit mode.
@@ -435,13 +593,25 @@ def _cmd_try_scan(args):
         evidence, pnl["cost_total"])
     n_claude = sum(1 for c in scanned if c["source"] == "claude")
     n_codex = len(scanned) - n_claude
+    n_subagent = sum(1 for s in skipped
+                     if s["reason"].startswith("subagent rollout"))
+    n_other_skipped = len(skipped) - n_subagent
+    if total_found > len(scanned):
+        scanned_part = ("%d session(s) scanned (of %d found; newest %d)"
+                        % (len(scanned), total_found, len(scanned)))
+    else:
+        scanned_part = ("%d session(s) scanned (of %d found)"
+                        % (len(scanned), total_found))
     scan_note = (
-        "Local scan: %d session(s) scanned (%d Claude Code, %d Codex); "
+        "Local scan: %s (%d Claude Code, %d Codex); "
         "%d skipped (subagent rollouts); %d failed to parse. Token "
         "counts are trace-supplied; Averth does not verify them as "
         "recorded usage."
-        % (len(scanned), n_claude, n_codex, len(skipped),
+        % (scanned_part, n_claude, n_codex, n_subagent,
            len(parse_failures)))
+    if n_other_skipped:
+        scan_note += (" %d other file(s) skipped (not a regular file "
+                      "or unreadable)." % n_other_skipped)
     source_note = (
         "Trace: local scan of %d session(s) (%s). Token counts are "
         "trace-supplied; Averth does not verify them as recorded "
@@ -467,14 +637,22 @@ def _cmd_try_scan(args):
         checks=checks,
         unknown_rate=default_checks.unknown_rate(checks),
         scan_note=scan_note)
-    rc = _report_and_html(tracker, html_path, try_extras=extras,
-                          try_summary=summary, try_mode=True)
-    if rc != 0:
-        return rc
+    # The receipt is written BEFORE the HTML report, so a receipt
+    # failure can never follow a success-looking report write.
     rc = _write_receipt_file(receipt_abs, receipt_text)
     if rc != 0:
         return rc
+    checks_summary = _default_checks_summary(checks)
+    checks_failed = any(c["verdict"] == "FAILED" for c in checks)
+    rc = _report_and_html(tracker, html_path, try_extras=extras,
+                          try_summary=summary, try_mode=True,
+                          default_checks_summary=checks_summary,
+                          default_checks_failed=checks_failed)
+    if rc != 0:
+        return rc
     print()
+    print("--- Averth PR receipt (also written to %s): copy from the "
+          "line below to the end of the output ---" % receipt_abs)
     print(receipt_text)
     return 0
 
@@ -489,6 +667,10 @@ def _cmd_try(args):
         return 2
     if not os.path.isfile(path):
         print("averth: error: file not found: %s" % path, file=sys.stderr)
+        return 2
+    if not stat.S_ISREG(os.lstat(path).st_mode):
+        print("averth: error: %s is not a regular file; pass a trace "
+              "file, not a special file" % path, file=sys.stderr)
         return 2
     if args.checks and not args.ledger:
         print("averth: error: --checks needs --ledger", file=sys.stderr)
@@ -546,6 +728,28 @@ def _cmd_try(args):
         print("averth: error: cannot write receipt to %s: %s"
               % (receipt_abs, err), file=sys.stderr)
         return 2
+    # Collision guards, up front before any metering: the receipt
+    # must never overwrite the HTML report or the input trace, and
+    # --out must never overwrite the input trace either.
+    trace_abs = os.path.abspath(path)
+    rc = _refuse_path_collision(receipt_abs, html_abs, "--receipt",
+                                "HTML report")
+    if rc is not None:
+        return rc
+    rc = _refuse_path_collision(receipt_abs, trace_abs, "--receipt",
+                                "input trace")
+    if rc is not None:
+        return rc
+    rc = _refuse_path_collision(html_abs, trace_abs, "--out",
+                                "input trace")
+    if rc is not None:
+        return rc
+    rc = _refuse_directory_output(receipt_abs, "receipt")
+    if rc is not None:
+        return rc
+    rc = _refuse_directory_output(html_abs, "HTML report")
+    if rc is not None:
+        return rc
     # An unknown model is refused, never silently fallback-priced: a
     # typo'd --model must not produce a confident wrong report.
     if fmt == "traj":
@@ -679,19 +883,39 @@ def _cmd_try(args):
         [default_checks.extract_from_file(path)])
     checks = default_checks.judge_default_checks(
         evidence, pnl["cost_total"])
+    sources = evidence.get("sources") or []
+    if len(sources) == 1 and sources[0] in ("traj", "claude", "codex"):
+        source_kind = {"traj": "mini-SWE-agent trajectory",
+                       "claude": "Claude session",
+                       "codex": "Codex rollout"}[sources[0]]
+    elif fmt in ("jsonl", "langfuse"):
+        source_kind = {"jsonl": "JSONL",
+                       "langfuse": "Langfuse"}[fmt]
+    else:
+        source_kind = None
     receipt_text = receipt_mod.render_receipt(
         sources=evidence["sessions"],
+        source_kind=source_kind,
         estimated_cost=pnl["cost_total"],
         recorded_cost=evidence["recorded_cost"],
         recorded_note=receipt_mod.recorded_note_for(checks),
         checks=checks,
         unknown_rate=default_checks.unknown_rate(checks))
-    rc = _report_and_html(tracker, html_path, try_extras=extras,
-                          try_summary=summary, try_mode=True,
-                          model_cost_basis=model_cost_basis)
+    # The receipt is written BEFORE the HTML report, so a receipt
+    # failure can never follow a success-looking report write.
+    rc = _write_receipt_file(receipt_abs, receipt_text)
     if rc != 0:
         return rc
-    return _write_receipt_file(receipt_abs, receipt_text)
+    checks_summary = _default_checks_summary(checks)
+    checks_failed = any(c["verdict"] == "FAILED" for c in checks)
+    rc = _report_and_html(tracker, html_path, try_extras=extras,
+                          try_summary=summary, try_mode=True,
+                          model_cost_basis=model_cost_basis,
+                          default_checks_summary=checks_summary,
+                          default_checks_failed=checks_failed)
+    if rc != 0:
+        return rc
+    return 0
 
 
 def _cmd_simulate(args):
