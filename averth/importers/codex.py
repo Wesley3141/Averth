@@ -217,6 +217,7 @@ def parse_codex_rollout(path):
     stats = {
         "lines_total": 0,
         "lines_skipped_blank": 0,
+        "lines_skipped_comment": 0,
         "token_count_events": 0,
         "model_events_emitted": 0,
         "other_lines_skipped": 0,
@@ -241,6 +242,12 @@ def parse_codex_rollout(path):
         for line_no, line in enumerate(f, start=1):
             if not line.strip():
                 stats["lines_skipped_blank"] += 1
+                continue
+            if line.lstrip().startswith("#"):
+                # Comment lines carry no records: skipped like the
+                # sniffer skips them, so a commented rollout meters
+                # the records it contains instead of failing at parse.
+                stats["lines_skipped_comment"] += 1
                 continue
             stats["lines_total"] += 1
             try:

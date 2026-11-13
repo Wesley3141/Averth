@@ -3,7 +3,7 @@
 Usage:
     averth trace <file> --format otel|langsmith|jsonl|langfuse|claude|codex [--html PATH]
                  [--policy-cap FLOAT] [--policy-yield FLOAT] [--agent NAME]
-    averth try [<file>] [--format auto|traj|jsonl|langfuse] [--model NAME]
+    averth try [<file>] [--format auto|traj|jsonl|langfuse|claude|codex] [--model NAME]
                  [--recorded DOLLARS] [--ledger PATH] [--checks PATH]
                  [--out PATH] [--receipt PATH] [--agent NAME]
     averth simulate --attempts N --seed S [--jsonl PATH] [--html PATH]
@@ -11,22 +11,23 @@ Usage:
     averth pricing
 
 ``try`` is the one-command free run: it meters a trace file (a
-mini-SWE-agent trajectory, JSONL events, or a Langfuse export),
-prints the text report, and writes a self-contained HTML report you
-can share, plus an "Averth Agent PR Receipt (trace-observed)"
-(compact Markdown for pasting into a GitHub PR description). With no
-trace argument it scans your last 10 local Claude Code / Codex
-sessions instead (zero-config: no flags required). ``--recorded`` is
-an operator-supplied figure claimed to be the run's recorded cost,
-shown next to the metered estimate; Averth does not verify it. It
-is accepted for explicit traces only (refused in scan mode) and is
-never used for the receipt's trace-recorded-vs-estimated check (D5),
-which compares only the trace's own recorded cost. ``--ledger``
-adds a V0 verdict summary from a V0 evidence ledger (``--checks``
-verifies the ledger's checks digest and refuses on mismatch). The
-receipt also carries the default checks (trace-observed): five
-checks judged only on what the transcript shows, needing no
-human-written checks. No network, no account, no upload.
+mini-SWE-agent trajectory, JSONL events, a Langfuse export, a Claude
+Code session, or a Codex rollout), prints the text report, and
+writes a self-contained HTML report you can share, plus an "Averth
+Agent PR Receipt (trace-observed)" (compact Markdown for pasting
+into a GitHub PR description). With no trace argument it scans your
+last 10 local Claude Code / Codex sessions instead (zero-config: no
+flags required). ``--recorded`` is an operator-supplied figure
+claimed to be the run's recorded cost, shown next to the metered
+estimate; Averth does not verify it. It is accepted for explicit
+traces only (refused in scan mode) and is never used for the
+receipt's trace-recorded-vs-estimated check (D5), which compares
+only the trace's own recorded cost. ``--ledger`` adds a V0 verdict
+summary from a V0 evidence ledger (``--checks`` verifies the
+ledger's checks digest and refuses on mismatch). The receipt also
+carries the default checks (trace-observed): five checks judged only
+on what the transcript shows, needing no human-written checks. No
+network, no account, no upload.
 
 Parses an agent trace into a cost ledger, prints the text P&L report to
 stdout, and writes a shareable one-page HTML report. `simulate` generates
@@ -93,13 +94,14 @@ def build_parser():
 
     y = sub.add_parser("try", help="One-command meter run with a shareable HTML report.")
     y.add_argument("file", nargs="?",
-                   help="Trace file to meter (mini-SWE-agent .traj.json, JSONL events, or a Langfuse export). Omit it to scan your last 10 local Claude Code / Codex sessions instead (zero-config scan).")
+                   help="Trace file to meter (mini-SWE-agent .traj.json, JSONL events, a Langfuse export, a Claude Code session, or a Codex rollout). Omit it to scan your last 10 local Claude Code / Codex sessions instead (zero-config scan).")
     y.add_argument("--format", default="auto",
-                   choices=["auto", "traj", "jsonl", "langfuse"],
+                   choices=["auto", "traj", "jsonl", "langfuse", "claude",
+                            "codex"],
                    help="Trace format (default: auto-detect). Refused in "
                         "scan mode (no trace file).")
     y.add_argument("--model", default=None, metavar="NAME",
-                   help="Model name for mini-SWE-agent trajectories (e.g. claude-sonnet-4-20250514). Required unless the file name contains a priced model name. An explicit --model overrides the name inferred from the file name. Ignored for JSONL and Langfuse input, whose models come from the file itself. List priced models with 'averth pricing'. Refused in scan mode (no trace file).")
+                   help="Model name for mini-SWE-agent trajectories (e.g. claude-sonnet-4-20250514). Required unless the file name contains a priced model name. An explicit --model overrides the name inferred from the file name. Ignored for JSONL, Langfuse, Claude session, and Codex rollout input, whose models come from the file itself. List priced models with 'averth pricing'. Refused in scan mode (no trace file).")
     y.add_argument("--recorded", type=float, default=None, metavar="DOLLARS",
                    help="Operator-supplied figure claimed to be the recorded cost for the same run (must be positive; e.g. the 'cost' field of a leaderboard per_instance_details.json entry). Averth does not verify it; shown next to the metered estimate. No comparison is shown when the run completed zero runs. Explicit traces only: refused in scan mode, and never used for the receipt's trace-recorded-vs-estimated check (D5), which compares only the trace's own recorded cost.")
     y.add_argument("--ledger", default=None, metavar="PATH",
@@ -107,9 +109,9 @@ def build_parser():
     y.add_argument("--checks", default=None, metavar="PATH",
                    help="Checks file the V0 ledger was judged under; verifies the ledger's checks digest (refuses on mismatch). Needs --ledger.")
     y.add_argument("--out", default=None, metavar="PATH",
-                   help="HTML report output path (default: <stem>-try.html in the current directory, where <stem> is the trace filename without .traj.json or .json). Refuses to overwrite an existing file unless --force is passed.")
+                   help="HTML report output path (default: <stem>-try.html in the current directory, where <stem> is the trace filename without its extension (.traj.json loses .traj too). Refuses to overwrite an existing file unless --force is passed.")
     y.add_argument("--agent", default=None, metavar="NAME",
-                   help="Agent name shown in the report (default for trajectory input: miniswe-import; for JSONL input: jsonl-import; for Langfuse input: langfuse-import).")
+                   help="Agent name shown in the report (default for trajectory input: miniswe-import; for JSONL input: jsonl-import; for Langfuse input: langfuse-import; for Claude session input: claude-import; for Codex rollout input: codex-import).")
     y.add_argument("--force", action="store_true",
                    help="Overwrite an existing --out file or receipt instead of refusing.")
     y.add_argument("--receipt", default=None, metavar="PATH",
@@ -223,16 +225,36 @@ def _detect_try_format(path):
 
     A JSON object with a ``messages`` key is a mini-SWE-agent
     trajectory; a JSON object with ``data`` (or a bare JSON list) is a
-    Langfuse export; one JSON object per line is Averth JSONL (a
-    single-line JSONL file counts: the line scan runs whenever the
-    whole-file parse does not match a shape, and it looks at the
-    first 10 non-blank lines, so a header event without a ``type``
-    key does not hide valid events below it). Anything else raises
-    ValueError naming the supported shapes. The file is read
-    incrementally — the object-shape sniff scans the top-level keys
-    in chunks until found or the object closes (capped at 16 MiB),
-    then the first 10 non-blank lines (1 MiB each at most) are
-    scanned for the JSONL shape — never loaded whole, so a
+    Langfuse export; one JSON object per line is Averth JSONL, a
+    Claude Code session, or a Codex rollout — the line scan tells
+    those three apart by a tally over record types (see
+    ``default_checks.sniff_jsonl_shape``). Strong markers are
+    Averth JSONL events (start/model/tool/retry/escalation/end),
+    Claude assistant/user records with a ``message.content`` list,
+    and Codex ``response_item`` records: exactly one format with
+    strong markers wins, and strong markers from two formats make
+    the file ambiguous (ValueError), never first-wins. Weak
+    markers decide only with corroboration: a Claude
+    assistant/user record without a ``message.content`` list
+    decides alone; generic weak markers (system/summary/result/
+    file-history-snapshot/queue-operation for Claude;
+    session_meta/turn_context/event_msg for Codex) need two or
+    more records of the same format. A single-line JSONL file
+    counts: the line scan runs whenever the whole-file parse does
+    not match a shape, and it looks at the first 10 JSON object
+    lines (``#`` comment lines are skipped before parsing and do
+    not count; a header event without a ``type`` key does not hide
+    valid events below it). Detection skips ``#`` comment lines,
+    and the importers skip them too: a commented file meters the
+    records it contains. When no strong
+    marker was seen in those 10 lines and the file has more lines,
+    the scan continues up to 50 object lines looking for a strong
+    marker. Anything
+    else raises ValueError naming the supported shapes. The file is
+    read incrementally — the object-shape sniff scans the top-level
+    keys in chunks until found or the object closes (capped at
+    16 MiB), then the line scan reads at most 50 JSON-parseable
+    lines of 1 MiB each per phase — never loaded whole, so a
     multi-hundred-MB session file does not cost a whole-file string
     plus a whole-file parse. Corner: a bare JSON list larger than 1 MiB on
     a single line is not detected (its first line is truncated by
@@ -261,7 +283,8 @@ def _detect_try_format(path):
     except UnicodeDecodeError:
         raise ValueError(
             "%s is not readable text (binary or non-UTF-8); supply a "
-            ".traj.json, JSONL, or Langfuse JSON export" % path
+            ".traj.json, JSONL (including a Claude session or Codex "
+            "rollout), or Langfuse JSON export" % path
         )
     data = None
     if eof:
@@ -294,43 +317,32 @@ def _detect_try_format(path):
             if text.lstrip().splitlines() else ""
         if first_line == "[":
             return "langfuse"
-    scanned = 0
-    try:
-        with open(path, "rb") as f:
-            while True:
-                raw = f.readline(1024 * 1024)
-                if not raw:
-                    break
-                try:
-                    line = raw.decode("utf-8").strip()
-                except UnicodeDecodeError:
-                    break
-                if not line:
-                    continue
-                scanned += 1
-                if scanned > 10:
-                    break
-                try:
-                    obj = json.loads(line)
-                except json.JSONDecodeError:
-                    break
-                if isinstance(obj, dict) and "type" in obj:
-                    return "jsonl"
-    except OSError as e:
-        raise ValueError("%s is not readable: %s" % (path, e))
+    # Line scan: the JSONL shapes are told apart by a tally over
+    # record types (see default_checks.sniff_jsonl_shape). A return
+    # of None means no record decided the shape, and the file falls
+    # through to the "none of the supported shapes" error below;
+    # an ambiguous file raises ValueError from the sniff.
+    from averth import default_checks
+    shape = default_checks.sniff_jsonl_shape(path)
+    if shape is not None:
+        return shape
     if isinstance(data, dict):
         raise ValueError(
             "%s is JSON but none of the supported shapes: a "
             "mini-SWE-agent trajectory is a JSON object with a "
             "'messages' key; a Langfuse export is a JSON object with a "
-            "'data' key or a bare JSON list; JSONL is one event object "
-            "with a 'type' key per line" % path
+            "'data' key or a bare JSON list; Averth JSONL is one event "
+            "object with a 'type' key per line (start/model/tool/"
+            "retry/escalation/end); a Claude session is JSONL with "
+            "assistant/user records; a Codex rollout is JSONL with "
+            "response_item records" % path
         )
     raise ValueError(
         "%s is not a mini-SWE-agent trajectory (a JSON object with a "
         "'messages' key), a Langfuse export (a JSON object with a "
-        "'data' key or a bare JSON list), or a JSONL events file (one "
-        "event object with a 'type' key per line)" % path
+        "'data' key or a bare JSON list), Averth JSONL (one event "
+        "object with a 'type' key per line), a Claude session, or a "
+        "Codex rollout" % path
     )
 
 
@@ -458,16 +470,20 @@ def _cmd_try_scan(args):
             verb = "apply"
         hint = ""
         if "--recorded" in offending:
-            hint = ("; the receipt compares the trace's own recorded "
-                    "cost")
+            hint = ("; in scan mode the receipt already compares the "
+                    "trace's own recorded cost")
+        run_hint = "run 'averth try <file>' for a single trace"
+        if "--model" in offending:
+            run_hint = ("run 'averth try <file> --model NAME' for a "
+                        "trajectory")
         print("averth: error: scan mode does not accept %s; %s %s to "
-              "explicit traces only — run 'averth try <file>' for a "
-              "single trace%s"
+              "explicit traces only — %s%s"
               % (names, "it" if len(offending) == 1 else "they", verb,
-                 hint), file=sys.stderr)
+                 run_hint, hint), file=sys.stderr)
         return 2
     if args.checks and not args.ledger:
-        print("averth: error: --checks needs --ledger", file=sys.stderr)
+        print("averth: error: --checks needs --ledger; pass --ledger "
+              "PATH with --checks PATH", file=sys.stderr)
         return 2
     if args.recorded is not None and (
             not math.isfinite(args.recorded) or args.recorded <= 0):
@@ -489,8 +505,12 @@ def _cmd_try_scan(args):
                      % n_subagent)
         print("averth: error: no local Claude Code or Codex sessions "
               "found%s; checked %s and %s. No sessions yet? Run "
-              "Claude Code or Codex once to create one, or meter a "
-              "single trace file instead: averth try <trace-file>"
+              "Claude Code or Codex once to create one, or meter one "
+              "file directly: averth try <file> (a Claude session, "
+              "Codex rollout, mini-SWE-agent trajectory, Averth "
+              "JSONL, or Langfuse export). For a trajectory, add "
+              "--model NAME unless the file name contains a priced "
+              "model"
               % (extra, checked[0], checked[1]), file=sys.stderr)
         return 2
     html_path = args.out or "averth-scan.html"
@@ -548,8 +568,8 @@ def _cmd_try_scan(args):
     if not scanned:
         print("averth: error: all %d session file(s) failed to parse "
               "(%s); nothing to meter. Check the newest session file "
-              "opens as JSONL, or meter one file explicitly to see its "
-              "parse error: averth try <file>"
+              "opens as JSONL, or meter one file explicitly to see "
+              "the error: `averth try <file>`"
               % (len(selected), ", ".join(parse_failures)),
               file=sys.stderr)
         return 2
@@ -566,8 +586,12 @@ def _cmd_try_scan(args):
         print("averth: error: the scanned sessions contain no model "
               "calls (no usage records found); nothing to meter. "
               "Sessions without model usage cannot be metered — run a "
-              "session that makes model calls, or meter a trace file "
-              "instead: averth try <trace-file>", file=sys.stderr)
+              "session that makes model calls, or meter one file "
+              "directly instead: averth try <file> (a Claude session, "
+              "Codex rollout, mini-SWE-agent trajectory, Averth "
+              "JSONL, or Langfuse export). For a trajectory, add "
+              "--model NAME unless the file name contains a priced "
+              "model", file=sys.stderr)
         return 2
     # The V0 ledger is verified BEFORE anything is written, as in
     # explicit mode.
@@ -677,7 +701,8 @@ def _cmd_try(args):
               "file, not a special file" % path, file=sys.stderr)
         return 2
     if args.checks and not args.ledger:
-        print("averth: error: --checks needs --ledger", file=sys.stderr)
+        print("averth: error: --checks needs --ledger; pass --ledger "
+              "PATH with --checks PATH", file=sys.stderr)
         return 2
     if args.recorded is not None and (
             not math.isfinite(args.recorded) or args.recorded <= 0):
@@ -689,6 +714,9 @@ def _cmd_try(args):
         try:
             fmt = _detect_try_format(path)
         except ValueError as e:
+            # ValueError only: _detect_try_format guards every
+            # non-string ``type`` before classifying, so no
+            # TypeError path exists (verified by fuzzing).
             print("averth: error: cannot detect trace format: %s" % e,
                   file=sys.stderr)
             return 2
@@ -782,9 +810,20 @@ def _cmd_try(args):
                 detected = None
             hint = ("; auto-detection says this looks like %s" % detected
                     if detected and detected != fmt else "")
+            model_hint = ""
+            retry_hint = "--format auto"
+            if detected == "traj":
+                model_hint = (". For a trajectory, add --model NAME "
+                              "unless the file name contains a priced "
+                              "model")
+                # The hinted retry must work as written: --format
+                # auto alone fails on a trajectory with no priced
+                # model in the file name ("no model named").
+                retry_hint = "--format auto --model NAME"
             print("averth: error: %s does not parse as %s (%s); it may "
-                  "be another format -- try --format auto or one of "
-                  "traj|jsonl|langfuse%s" % (path, fmt, e, hint),
+                  "be another format -- try %s or one of "
+                  "traj|jsonl|langfuse|claude|codex%s%s"
+                  % (path, fmt, e, retry_hint, hint, model_hint),
                   file=sys.stderr)
             return 2
         print("averth: error: failed to parse %s (%s): %s" % (path, fmt, e),
@@ -800,8 +839,60 @@ def _cmd_try(args):
     if args.agent:
         tracker.agent_name = args.agent
     if tracker.pnl()["attempts"] == 0:
-        print("averth: error: %s contains no traces (empty export); "
-              "nothing to meter" % path, file=sys.stderr)
+        if args.format != "auto":
+            # A forced format whose importer silently skips foreign
+            # records meters nothing: say what the file looks like
+            # instead of calling it empty or usage-less.
+            try:
+                detected = _detect_try_format(path)
+            except ValueError:
+                detected = None
+            if detected is not None and detected != fmt:
+                # The hinted retry must work as written: for a
+                # trajectory, --format traj (or auto-detect) alone
+                # fails with "no model named" when the file name
+                # carries no priced model, so the --model note goes
+                # in the same message, not only in the sentence
+                # below.
+                model_hint = ""
+                if detected == "traj":
+                    model_hint = (". For a trajectory, add --model "
+                                  "NAME unless the file name contains "
+                                  "a priced model")
+                print("averth: error: %s looks like %s, not %s; pass "
+                      "--format %s (or omit --format to auto-detect)"
+                      "%s"
+                      % (path, detected, fmt, detected, model_hint),
+                      file=sys.stderr)
+                return 2
+        if fmt in ("claude", "codex"):
+            # A session file with tool records but no usage records
+            # is not an "empty export": say what is missing, and
+            # where to go next (mirrors the scan-mode wording).
+            print("averth: error: %s contains no model calls (no "
+                  "usage records found); nothing to meter. Sessions "
+                  "without model usage cannot be metered — run a "
+                  "session that makes model calls, or meter one file "
+                  "directly instead: averth try <file> (a Claude "
+                  "session, Codex rollout, mini-SWE-agent trajectory, "
+                  "Averth JSONL, or Langfuse export). For a "
+                  "trajectory, add --model NAME unless the file name "
+                  "contains a priced model"
+                  % path, file=sys.stderr)
+        else:
+            # Trajectories need a priced model: the --model note
+            # goes here too, so a trajectory that meters nothing
+            # points at the model the same way the claude/codex
+            # branch does.
+            model_hint = ""
+            if fmt == "traj":
+                model_hint = (". For a trajectory, add --model NAME "
+                              "unless the file name contains a priced "
+                              "model")
+            print("averth: error: %s contains no traces (empty "
+                  "export); nothing to meter; meter a non-empty trace "
+                  "file instead: averth try <file>%s" % (path, model_hint),
+                  file=sys.stderr)
         return 2
     # The V0 ledger is verified BEFORE anything is written: a digest
     # mismatch refuses the whole report instead of writing a report
@@ -837,6 +928,14 @@ def _cmd_try(args):
     from averth import try_report
     traj_recorded = None
     model_cost_basis = None
+    # Explicit session files render through display_name, like scan
+    # mode: two sessions sharing a basename (or a file outside the
+    # source root) must not collapse to the same bare string.
+    explicit_display = None
+    if fmt in ("claude", "codex"):
+        from averth import local_scan as local_scan_mod
+        explicit_display = local_scan_mod.display_name(
+            {"source": fmt, "path": trace_abs})
     if fmt == "traj":
         traj_recorded = miniswe_mod.traj_instance_cost(path)
         source_note = (
@@ -855,6 +954,18 @@ def _cmd_try(args):
             "Trace: %s (Averth JSONL events). Token counts are "
             "trace-supplied; Averth does not verify them as recorded "
             "usage." % base
+        )
+    elif fmt == "claude":
+        source_note = (
+            "Trace: %s (Claude session). Token counts are "
+            "trace-supplied; Averth does not verify them as recorded "
+            "usage." % explicit_display
+        )
+    elif fmt == "codex":
+        source_note = (
+            "Trace: %s (Codex rollout). Token counts are "
+            "trace-supplied; Averth does not verify them as recorded "
+            "usage." % explicit_display
         )
     else:
         source_note = (
@@ -897,8 +1008,11 @@ def _cmd_try(args):
                        "langfuse": "Langfuse"}[fmt]
     else:
         source_kind = None
+    receipt_sources = ([explicit_display]
+                       if explicit_display is not None
+                       else evidence["sessions"])
     receipt_text = receipt_mod.render_receipt(
-        sources=evidence["sessions"],
+        sources=receipt_sources,
         source_kind=source_kind,
         estimated_cost=pnl["cost_total"],
         recorded_cost=evidence["recorded_cost"],

@@ -173,6 +173,11 @@ def load_jsonl(path, agent_name="jsonl-import"):
         for line_no, line in enumerate(f, start=1):
             if not line.strip():
                 continue
+            if line.lstrip().startswith("#"):
+                # Comment lines carry no events: skipped like the
+                # sniffer skips them, so a commented file meters the
+                # events it contains instead of failing at parse.
+                continue
             try:
                 ev = json.loads(line)
             except json.JSONDecodeError as exc:

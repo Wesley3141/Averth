@@ -41,17 +41,47 @@ Or install straight from GitHub and scan with no trace file:
 - a mini-SWE-agent trajectory (`.traj.json`, as published by the
   SWE-bench leaderboard),
 - an Averth JSONL events file,
-- a Langfuse trace export (JSON).
+- a Langfuse trace export (JSON),
+- a Claude Code session file (`*.jsonl`),
+- a Codex rollout file (`*.jsonl`).
 
 The format is auto-detected (`--format auto`, the default): a JSON
 object with a `messages` key is a mini-SWE-agent trajectory, a JSON
 object with a `data` key (or a bare JSON list) is a Langfuse export,
-and one JSON object per line is Averth JSONL. Use
-`--format traj|jsonl|langfuse` only if auto-detection guesses wrong;
-if detection fails the command exits 2 naming the shapes it tried.
+and one JSON object per line is Averth JSONL, a Claude session, or a
+Codex rollout (told apart by a tally over record types: strong
+markers are Averth events start/model/tool/retry/escalation/end,
+Claude assistant/user records with a message.content list, and
+Codex response_item records — exactly one format with strong
+markers wins; a Claude assistant/user record without a
+message.content list decides alone; generic weak markers
+(system/summary/result/file-history-snapshot/queue-operation for
+Claude, session_meta/turn_context/event_msg for Codex) need two
+or more records of the same format. Strong markers from two
+formats, or decisive weak markers from both sides, make the file
+ambiguous and the command exits 2. The tally reads the first 10
+JSON object lines, extended to 50 when no strong marker was
+seen; `#` comment lines are skipped by the tally and do not count
+toward either limit. The importers and the scan-mode extraction
+skip `#` comment lines too, so a commented file meters the
+records it contains.) Use
+`--format traj|jsonl|langfuse|claude|codex` only if auto-detection
+guesses wrong; if detection fails the command exits 2 naming the
+shapes it tried.
 In scan mode (`averth try` with no trace argument) `--format` is
 refused (exit 2): it applies to explicit traces only.
-See "Trace formats" below for one example of each.
+See "Trace formats" below for the shape of each.
+
+A single session file meters directly, with no flags:
+
+```
+../averth-venv/bin/python -m averth.cli try ~/.claude/projects/my-proj/session.jsonl
+```
+
+It prints the report, writes `session-try.html` plus the PR
+receipt, and the receipt labels the source with its kind
+(`Source: \`claude/my-proj/session.jsonl\` (Claude session)`). A Codex rollout
+file works the same way.
 
 No trace at all is the zero-config scan: plain `averth try` finds
 your last 10 local Claude Code sessions
@@ -81,8 +111,9 @@ Options:
   2 asking for `--model`. An explicit `--model` overrides the name
   inferred from the file name. A `--model` that is not in the price
   table is refused (exit 2); list priced models with
-  `averth pricing`. `--model` is ignored for JSONL and Langfuse
-  input, whose models come from the file itself. The model decides
+  `averth pricing`. `--model` is ignored for JSONL, Langfuse,
+  Claude session, and Codex rollout input, whose models come from
+  the file itself. The model decides
   the list prices applied. The report shows the model as
   `provider:model` (for example `anthropic:claude-sonnet-4-20250514`):
   the provider prefix is guessed from the model name by Averth, it
@@ -112,8 +143,8 @@ Options:
   it the command is refused (exit 2).
 - `--out PATH` — where to write the HTML report. Default:
   `<stem>-try.html` in the current directory, where `<stem>` is the
-  trace filename without `.traj.json` (or `.json`):
-  `django-15930.traj.json` becomes `django-15930-try.html`. Pass
+  trace filename without its extension (`.traj.json` loses `.traj`
+  too): `django-15930.traj.json` becomes `django-15930-try.html`. Pass
   `--out` to put it elsewhere. The command refuses to overwrite an
   existing file; pass `--force` to overwrite it. In scan mode the
   default is `averth-scan.html`.
@@ -129,7 +160,9 @@ Options:
   `--force` to remove an existing work directory before rerunning.
 - `--agent NAME` — agent name shown in the report (default for
   trajectory input: `miniswe-import`; for JSONL input:
-  `jsonl-import`; for Langfuse input: `langfuse-import`).
+  `jsonl-import`; for Langfuse input: `langfuse-import`; for Claude
+  session input: `claude-import`; for Codex rollout input:
+  `codex-import`).
 
 ## The case-study run
 
@@ -146,7 +179,7 @@ in the output, in this order:
 ```
 Retries:               0
   Fully loaded:         $0.98
-Recorded cost (operator-supplied): $0.3205; metered estimate per completed run: $0.98 ESTIMATED (3.07x, calculated using the unrounded estimate)
+Recorded cost (operator-supplied): $0.3205; metered estimate per completed run: $0.98 ESTIMATED (3.07x)
 ```
 
 The HTML report (`django-15930-try.html`) shows cost per completed
@@ -238,8 +271,8 @@ as V0, every verdict citing its observation:
   cost (Claude `result.total_cost_usd`, mini-SWE-agent
   `info.model_stats.instance_cost`) vs the metered estimate: agree
   within 5% (metered estimate within 5% of the recorded cost,
-  inclusive) -> VERIFIED; differ -> FAILED (both figures and the
-  ratio stated, at 4dp in the observation, except when the recorded
+  inclusive) -> VERIFIED; differ -> FAILED (both figures stated at
+  4dp and the ratio at 2dp in the observation, except when the recorded
   cost is $0.00, where no ratio is stated); a metered estimate of
   $0.00 with a nonzero recorded cost -> NOT OBSERVED (no priced
   usage was observed in the trace, so there is nothing to compare
@@ -327,12 +360,32 @@ human accepted these runs.
   what the trajectory converter produces. To get one from a
   trajectory, run the converter (see "How the trajectory conversion
   works" below) or copy the fixture. Every line must be an event
-  object with a `type` key; a file whose first line is a header or
-  comment with no `type` is not supported.
+  object with a `type` key; a file whose first line is a header
+  JSON object with no `type` is not supported (`#` comment lines
+  are skipped).
 - **Langfuse export** (JSON): a JSON object with a `data` key, or a
   bare JSON list of observations, as exported from Langfuse
   (project settings, export). Token counts and costs are
   trace-supplied; Averth does not verify them as recorded usage.
+- **Claude session** (`*.jsonl`): one Claude Code session transcript
+  record per line, as found under `~/.claude/projects/`. The
+  records Averth reads are `assistant` records carrying a
+  `message.usage` object (the priced model calls) and `result`
+  records carrying `total_cost_usd`. Point `averth try` at any
+  single session file — including one outside
+  `~/.claude/projects/` — and it is metered directly. A line that
+  is not a transcript record is skipped, including a header JSON
+  object with no `type`; `#` comment lines are skipped too.
+- **Codex rollout** (`*.jsonl`): one Codex CLI rollout record per
+  line, as found under `~/.codex/sessions/`. The records Averth
+  reads are `response_item` function calls and `event_msg`
+  token-count records. Codex carries no recorded cost (subscription
+  billing), so D5 is EXTERNAL-UNVERIFIABLE for a rollout, the same
+  as in a scan containing one. Point `averth try` at any single
+  rollout file and it is metered directly; this is also how a Codex
+  subagent rollout excluded from the scan is metered. A line that
+  is not a rollout record is skipped, including a header JSON
+  object with no `type`; `#` comment lines are skipped too.
 
 ## Reproduce the case study
 

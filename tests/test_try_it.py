@@ -535,12 +535,808 @@ def test_detect_try_format_rejects_garbage(tmp_path):
         _detect_try_format(str(text))
 
 
+def test_detect_try_format_claude_session(tmp_path):
+    # R4: a Claude session file must detect as claude, not jsonl.
+    from averth.cli import _detect_try_format
+
+    f = tmp_path / "session.jsonl"
+    records = [
+        {"type": "assistant", "sessionId": "s1", "uuid": "u1",
+         "message": {"id": "m1", "model": "claude-sonnet-4-20250514",
+                     "usage": {"input_tokens": 1000,
+                               "output_tokens": 500},
+                     "content": [{"type": "tool_use", "id": "c1",
+                                  "name": "Bash",
+                                  "input": {"command": "pytest"}}]}},
+        {"type": "user", "sessionId": "s1",
+         "message": {"role": "user", "content": [
+             {"type": "tool_result", "tool_use_id": "c1",
+              "content": "ok", "is_error": False}]}},
+    ]
+    f.write_text("\n".join(json.dumps(r) for r in records),
+                 encoding="utf-8")
+    assert _detect_try_format(str(f)) == "claude"
+
+
+def test_detect_try_format_claude_session_leading_system_record(
+        tmp_path):
+    # A session whose first lines are system/summary records (before
+    # any assistant record) still detects as claude via the weak
+    # marker, never as jsonl.
+    from averth.cli import _detect_try_format
+
+    f = tmp_path / "session.jsonl"
+    records = [
+        {"type": "system", "sessionId": "s1"},
+        {"type": "summary", "sessionId": "s1", "summary": "x"},
+        {"type": "assistant", "sessionId": "s1", "uuid": "u1",
+         "message": {"id": "m1", "model": "claude-sonnet-4-20250514",
+                     "content": [{"type": "text", "text": "hi"}]}},
+    ]
+    f.write_text("\n".join(json.dumps(r) for r in records),
+                 encoding="utf-8")
+    assert _detect_try_format(str(f)) == "claude"
+
+
+def test_detect_try_format_claude_session_user_first(tmp_path):
+    # A session whose first record is a user record (with a
+    # message.content list) detects as claude at once.
+    from averth.cli import _detect_try_format
+
+    f = tmp_path / "session.jsonl"
+    records = [
+        {"type": "user", "sessionId": "s1",
+         "message": {"role": "user", "content": [
+             {"type": "text", "text": "run the tests"}]}},
+        {"type": "assistant", "sessionId": "s1", "uuid": "u1",
+         "message": {"id": "m1", "model": "claude-sonnet-4-20250514",
+                     "content": [{"type": "text", "text": "ok"}]}},
+    ]
+    f.write_text("\n".join(json.dumps(r) for r in records),
+                 encoding="utf-8")
+    assert _detect_try_format(str(f)) == "claude"
+
+
+def test_detect_try_format_codex_rollout(tmp_path):
+    # R4: a Codex rollout file must detect as codex, not jsonl.
+    from averth.cli import _detect_try_format
+
+    f = tmp_path / "rollout.jsonl"
+    records = [
+        {"type": "session_meta",
+         "payload": {"id": "codex-1", "cwd": "/tmp/shop",
+                     "cli_version": "0.130.0",
+                     "model_provider": "openai", "source": "cli"}},
+        {"type": "turn_context", "payload": {"model": "gpt-5.2"}},
+        {"type": "response_item",
+         "payload": {"type": "function_call", "name": "exec_command",
+                     "call_id": "c1",
+                     "arguments": json.dumps({"command": "pytest"})}},
+    ]
+    f.write_text("\n".join(json.dumps(r) for r in records),
+                 encoding="utf-8")
+    assert _detect_try_format(str(f)) == "codex"
+
+
+def test_detect_try_format_codex_rollout_metadata_only(tmp_path):
+    # A rollout with only metadata records in its first lines (no
+    # response_item yet) still detects as codex via the weak marker.
+    from averth.cli import _detect_try_format
+
+    f = tmp_path / "rollout.jsonl"
+    f.write_text(
+        '{"type": "session_meta", "payload": {"id": "codex-1", '
+        '"source": "cli"}}\n'
+        '{"type": "turn_context", "payload": {"model": "gpt-5.2"}}\n'
+        '{"type": "event_msg", "payload": {"type": "token_count", '
+        '"info": {"total_token_usage": {"input_tokens": 100, '
+        '"output_tokens": 10}}}}\n',
+        encoding="utf-8")
+    assert _detect_try_format(str(f)) == "codex"
+
+
+def test_detect_try_format_unhashable_type_is_a_clean_error(
+        tmp_path, monkeypatch, capsys):
+    # R4 rework: a record whose "type" is a list must never raise
+    # TypeError: it decides nothing, and the file is refused with a
+    # clean error instead of a traceback.
+    from averth.cli import _detect_try_format
+
+    f = tmp_path / "bad.jsonl"
+    f.write_text(json.dumps({"type": ["model"], "case_id": "x"})
+                 + "\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="none of the supported"):
+        _detect_try_format(str(f))
+    monkeypatch.chdir(tmp_path)
+    rc = main(["try", str(f)])
+    err = capsys.readouterr().err
+    assert rc == 2
+    assert err.startswith("averth: error:")
+    assert "Traceback" not in err
+    # Mixed with valid JSONL, the bad record is skipped and the
+    # file still detects as jsonl.
+    records = [
+        {"type": ["model"], "case_id": "x"},
+        {"type": "start", "case_id": "c1"},
+        {"type": "model", "case_id": "c1",
+         "model": "claude-sonnet-4-20250514",
+         "input_tokens": 100, "output_tokens": 10},
+        {"type": "end", "case_id": "c1", "success": True},
+    ]
+    f.write_text("\n".join(json.dumps(r) for r in records),
+                 encoding="utf-8")
+    assert _detect_try_format(str(f)) == "jsonl"
+
+
+def test_detect_try_format_mixed_claude_and_jsonl_is_ambiguous(
+        tmp_path, monkeypatch, capsys):
+    # R4 rework regression: a stray Claude assistant record followed
+    # by valid Averth JSONL must not silently detect as claude and
+    # report $0.00 — the file mixes shapes, so detection refuses.
+    from averth.cli import _detect_try_format
+
+    records = [
+        {"type": "assistant", "sessionId": "s1", "uuid": "u1",
+         "message": {"id": "m1", "model": "claude-sonnet-4-20250514",
+                     "usage": {"input_tokens": 1000,
+                               "output_tokens": 500},
+                     "content": [{"type": "text", "text": "hi"}]}},
+        {"type": "start", "case_id": "ctrl-1"},
+        {"type": "model", "case_id": "ctrl-1",
+         "model": "claude-sonnet-4-20250514",
+         "input_tokens": 5000, "output_tokens": 1000},
+        {"type": "end", "case_id": "ctrl-1", "success": True},
+    ]
+    f = tmp_path / "mixed.jsonl"
+    f.write_text("\n".join(json.dumps(r) for r in records),
+                 encoding="utf-8")
+    with pytest.raises(ValueError, match="ambiguous"):
+        _detect_try_format(str(f))
+    monkeypatch.chdir(tmp_path)
+    rc = main(["try", str(f)])
+    err = capsys.readouterr().err
+    assert rc == 2
+    assert "ambiguous" in err
+
+
+def test_try_pure_jsonl_control_meters_three_cents(
+        tmp_path, monkeypatch, capsys):
+    # Control for the mixed-format regression: the same JSONL
+    # records without the stray assistant record meter $0.03
+    # (5000 in / 1000 out tokens on claude-sonnet-4-20250514).
+    monkeypatch.chdir(tmp_path)
+    records = [
+        {"type": "start", "case_id": "ctrl-1"},
+        {"type": "model", "case_id": "ctrl-1",
+         "model": "claude-sonnet-4-20250514",
+         "input_tokens": 5000, "output_tokens": 1000},
+        {"type": "end", "case_id": "ctrl-1", "success": True},
+    ]
+    f = tmp_path / "ctrl.jsonl"
+    f.write_text("\n".join(json.dumps(r) for r in records),
+                 encoding="utf-8")
+    rc = main(["try", str(f)])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "Fully loaded: $0.03" in " ".join(out.split())
+
+
+def test_detect_try_format_weak_marker_conflict_is_ambiguous(tmp_path):
+    # Decisive weak markers from both sides, in either order:
+    # ambiguous, never first-weak-wins.
+    from averth.cli import _detect_try_format
+
+    claude_weak = [
+        {"type": "system", "sessionId": "s1"},
+        {"type": "summary", "sessionId": "s1", "summary": "x"},
+    ]
+    codex_weak = [
+        {"type": "session_meta", "payload": {"id": "c1"}},
+        {"type": "turn_context", "payload": {"model": "gpt-5.2"}},
+    ]
+    for records in (claude_weak + codex_weak,
+                    codex_weak + claude_weak):
+        f = tmp_path / "conflict.jsonl"
+        f.write_text("\n".join(json.dumps(r) for r in records),
+                     encoding="utf-8")
+        with pytest.raises(ValueError, match="ambiguous"):
+            _detect_try_format(str(f))
+
+
+def test_detect_try_format_weak_marker_then_strong_at_line_11(
+        tmp_path):
+    # Ten weak Claude records, then a Codex response_item at line
+    # 11: the extended scan finds the strong marker and Codex wins.
+    from averth.cli import _detect_try_format
+
+    records = [{"type": "system", "sessionId": "s1", "n": i}
+               for i in range(10)]
+    records.append(
+        {"type": "response_item",
+         "payload": {"type": "function_call", "name": "exec_command",
+                     "call_id": "c1",
+                     "arguments": json.dumps({"command": "pytest"})}})
+    f = tmp_path / "late.jsonl"
+    f.write_text("\n".join(json.dumps(r) for r in records),
+                 encoding="utf-8")
+    assert _detect_try_format(str(f)) == "codex"
+
+
+def test_detect_try_format_weak_codex_then_strong_claude_at_line_11(
+        tmp_path):
+    # Mirror case: ten weak Codex records, then a Claude assistant
+    # record at line 11: the extended scan finds it and Claude wins.
+    from averth.cli import _detect_try_format
+
+    records = [{"type": "session_meta", "payload": {"id": "c%d" % i}}
+               for i in range(10)]
+    records.append(
+        {"type": "assistant", "sessionId": "s1", "uuid": "u1",
+         "message": {"id": "m1", "model": "claude-sonnet-4-20250514",
+                     "content": [{"type": "text", "text": "hi"}]}})
+    f = tmp_path / "late.jsonl"
+    f.write_text("\n".join(json.dumps(r) for r in records),
+                 encoding="utf-8")
+    assert _detect_try_format(str(f)) == "claude"
+
+
+def test_detect_try_format_single_weak_record_files(tmp_path):
+    # One generic weak record alone decides nothing; one bare
+    # assistant/user record (no message.content list) decides alone.
+    from averth.cli import _detect_try_format
+
+    for rtype in ("system", "session_meta"):
+        f = tmp_path / "one.jsonl"
+        f.write_text(json.dumps({"type": rtype}) + "\n",
+                     encoding="utf-8")
+        with pytest.raises(ValueError, match="none of the supported"):
+            _detect_try_format(str(f))
+    f = tmp_path / "bare.jsonl"
+    f.write_text(json.dumps({"type": "assistant",
+                             "sessionId": "s1"}) + "\n",
+                 encoding="utf-8")
+    assert _detect_try_format(str(f)) == "claude"
+
+
+def test_detect_try_format_comment_led_files(tmp_path):
+    # `#` comment lines are skipped before parsing and do not count
+    # against the window.
+    from averth.cli import _detect_try_format
+
+    f = tmp_path / "led.jsonl"
+    lines = ["# Averth JSONL export",
+             "# generated 2026-11-12",
+             json.dumps({"type": "start", "case_id": "c1"}),
+             json.dumps({"type": "model", "case_id": "c1",
+                         "model": "claude-sonnet-4-20250514",
+                         "input_tokens": 100, "output_tokens": 10}),
+             json.dumps({"type": "end", "case_id": "c1",
+                         "success": True})]
+    f.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    assert _detect_try_format(str(f)) == "jsonl"
+    # Comments interleaved with the first records do not consume
+    # the 10-line window: a strong marker at dict line 10 still
+    # decides.
+    records = [{"type": "system", "sessionId": "s1", "n": i}
+               for i in range(9)]
+    records.append(
+        {"type": "assistant", "sessionId": "s1", "uuid": "u1",
+         "message": {"id": "m1", "model": "claude-sonnet-4-20250514",
+                     "content": [{"type": "text", "text": "hi"}]}})
+    lines = []
+    for i, r in enumerate(records):
+        if i % 3 == 0:
+            lines.append("# comment %d" % i)
+        lines.append(json.dumps(r))
+    f.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    assert _detect_try_format(str(f)) == "claude"
+
+
+def test_detect_try_format_strong_marker_after_unknown_lines(tmp_path):
+    # No strong marker in the first 10 lines extends the scan to
+    # 50 even with no weak markers at all.
+    from averth.cli import _detect_try_format
+
+    unknown = {"type": "zzz", "sessionId": "s1"}
+    strong = {"type": "assistant", "sessionId": "s1", "uuid": "u1",
+              "message": {"id": "m1",
+                          "model": "claude-sonnet-4-20250514",
+                          "content": [{"type": "text", "text": "hi"}]}}
+    # 39 unknown-type lines, then the strong marker at line 40.
+    f = tmp_path / "late.jsonl"
+    lines = [json.dumps(unknown) for _ in range(39)]
+    lines.append(json.dumps(strong))
+    f.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    assert _detect_try_format(str(f)) == "claude"
+    # 10 unknown-type lines, then the strong marker at line 11.
+    f = tmp_path / "eleven.jsonl"
+    lines = [json.dumps(unknown) for _ in range(10)]
+    lines.append(json.dumps(strong))
+    f.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    assert _detect_try_format(str(f)) == "claude"
+
+
+def test_detect_try_format_sixty_comment_lines(tmp_path):
+    # Comment lines do not count toward the raw-line cap: a strong
+    # marker after 60 of them still decides.
+    from averth.cli import _detect_try_format
+
+    f = tmp_path / "led.jsonl"
+    lines = ["# comment %d" % i for i in range(60)]
+    lines.append(json.dumps(
+        {"type": "assistant", "sessionId": "s1", "uuid": "u1",
+         "message": {"id": "m1", "model": "claude-sonnet-4-20250514",
+                     "content": [{"type": "text", "text": "hi"}]}}))
+    f.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    assert _detect_try_format(str(f)) == "claude"
+
+
+def test_detect_try_format_line_51_boundary(tmp_path):
+    # A strong marker past the 50-line extension is never seen:
+    # once the extension is exhausted, the weak markers decide.
+    from averth.cli import _detect_try_format
+
+    unknown = {"type": "zzz", "sessionId": "s1"}
+    claude_strong = {"type": "assistant", "sessionId": "s1",
+                     "uuid": "u1",
+                     "message": {"id": "m1",
+                                 "model": "claude-sonnet-4-20250514",
+                                 "content": [{"type": "text",
+                                              "text": "hi"}]}}
+    codex_strong = {"type": "response_item",
+                    "payload": {"type": "function_call",
+                                "name": "exec_command", "call_id": "c1",
+                                "arguments": json.dumps({"command": "ls"})}}
+    # Claude-weak in the first 10, Codex strong at line 51: the
+    # weak markers decide, the line-51 strong marker is unseen.
+    f = tmp_path / "a.jsonl"
+    lines = [json.dumps({"type": "system", "sessionId": "s1"})
+             for _ in range(2)]
+    lines += [json.dumps(unknown) for _ in range(48)]
+    lines.append(json.dumps(codex_strong))
+    f.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    assert _detect_try_format(str(f)) == "claude"
+    # Codex-weak in the first 10, Claude strong at line 51.
+    f = tmp_path / "b.jsonl"
+    lines = [json.dumps({"type": "session_meta", "payload": {}})
+             for _ in range(2)]
+    lines += [json.dumps(unknown) for _ in range(48)]
+    lines.append(json.dumps(claude_strong))
+    f.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    assert _detect_try_format(str(f)) == "codex"
+    # Weak conflict in the first 10, then a strong marker at
+    # line 11: the strong marker decides, no ambiguity.
+    f = tmp_path / "c.jsonl"
+    lines = [json.dumps({"type": "system", "sessionId": "s1"})
+             for _ in range(2)]
+    lines += [json.dumps({"type": "session_meta", "payload": {}})
+              for _ in range(2)]
+    lines += [json.dumps(unknown) for _ in range(6)]
+    lines.append(json.dumps(claude_strong))
+    f.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    assert _detect_try_format(str(f)) == "claude"
+
+
+def _claude_session_file(tmp_path, name="session.jsonl", usage=True):
+    """A minimal meterable Claude session file (synthetic)."""
+    records = [
+        {"type": "assistant", "sessionId": "s1", "uuid": "u1",
+         "message": {"id": "m1", "model": "claude-sonnet-4-20250514",
+                     "content": [{"type": "tool_use", "id": "c1",
+                                  "name": "Bash",
+                                  "input": {"command": "pytest"}}]}},
+        {"type": "user", "sessionId": "s1",
+         "message": {"role": "user", "content": [
+             {"type": "tool_result", "tool_use_id": "c1",
+              "content": "ok", "is_error": False}]}},
+        {"type": "result", "sessionId": "s1", "is_error": False,
+         "total_cost_usd": 0.05},
+    ]
+    if isinstance(usage, dict):
+        records[0]["message"]["usage"] = usage
+    elif usage:
+        records[0]["message"]["usage"] = {"input_tokens": 1000,
+                                          "output_tokens": 500}
+    path = tmp_path / name
+    path.write_text("\n".join(json.dumps(r) for r in records),
+                    encoding="utf-8")
+    return path
+
+
+def _codex_rollout_file(tmp_path, name="rollout.jsonl"):
+    """A minimal meterable Codex rollout file (synthetic)."""
+    records = [
+        {"type": "session_meta",
+         "payload": {"id": "codex-1", "cwd": "/tmp/shop",
+                     "cli_version": "0.130.0",
+                     "model_provider": "openai", "source": "cli"}},
+        {"type": "turn_context", "payload": {"model": "gpt-5.2"}},
+        {"type": "response_item",
+         "payload": {"type": "function_call", "name": "exec_command",
+                     "call_id": "c1",
+                     "arguments": json.dumps(
+                         {"command": "pytest tests/test_x.py"})}},
+        {"type": "response_item",
+         "payload": {"type": "function_call_output", "call_id": "c1",
+                     "output": "ok"}},
+        {"type": "event_msg",
+         "payload": {"type": "token_count",
+                     "info": {"total_token_usage": {
+                         "input_tokens": 1000,
+                         "cached_input_tokens": 0,
+                         "output_tokens": 100,
+                         "reasoning_output_tokens": 0}}}},
+    ]
+    path = tmp_path / name
+    path.write_text("\n".join(json.dumps(r) for r in records),
+                    encoding="utf-8")
+    return path
+
+
+def test_try_claude_session_file_auto_detected(tmp_path, monkeypatch,
+                                              capsys):
+    # R4: a single Claude session file meters directly, auto-detected.
+    monkeypatch.chdir(tmp_path)
+    path = _claude_session_file(tmp_path)
+    rc = main(["try", str(path)])
+    assert rc == 0
+    assert (tmp_path / "session-try.html").exists()
+    receipt = (tmp_path / "session-try-receipt.md").read_text(
+        encoding="utf-8")
+    assert ("Source: `claude/%s` (Claude session)"
+            % str(path).lstrip(os.sep)) in receipt
+    html = (tmp_path / "session-try.html").read_text(encoding="utf-8")
+    assert "Claude session" in html
+    out = capsys.readouterr().out
+    # Pinned metered values: 1000 in / 500 out tokens on
+    # claude-sonnet-4-20250514 = $0.0105 estimated against the
+    # trace-recorded $0.05 (ratio 0.21x). The report pads the
+    # "Fully loaded" column, so that assertion normalizes
+    # whitespace.
+    assert "Fully loaded: $0.01" in " ".join(out.split())
+    assert "recorded $0.0500 vs metered estimate $0.0105" in receipt
+    assert "ratio 0.21x" in receipt
+
+
+def test_try_claude_session_file_explicit_format(tmp_path, monkeypatch,
+                                                capsys):
+    monkeypatch.chdir(tmp_path)
+    path = _claude_session_file(tmp_path)
+    rc = main(["try", str(path), "--format", "claude"])
+    assert rc == 0
+    receipt = (tmp_path / "session-try-receipt.md").read_text(
+        encoding="utf-8")
+    assert ("Source: `claude/%s` (Claude session)"
+            % str(path).lstrip(os.sep)) in receipt
+
+
+def test_try_claude_session_cache_heavy_dollars(tmp_path, monkeypatch,
+                                                capsys):
+    # Cache-heavy usage pins the cache pricing: 1000 in / 8000
+    # cache_read / 500 cache_creation / 500 out on
+    # claude-sonnet-4-20250514 = $0.0144 estimated against the
+    # trace-recorded $0.05.
+    monkeypatch.chdir(tmp_path)
+    usage = {"input_tokens": 1000, "cache_read_input_tokens": 8000,
+             "cache_creation_input_tokens": 500, "output_tokens": 500}
+    path = _claude_session_file(tmp_path, usage=usage)
+    rc = main(["try", str(path)])
+    assert rc == 0
+    receipt = (tmp_path / "session-try-receipt.md").read_text(
+        encoding="utf-8")
+    assert "recorded $0.0500 vs metered estimate $0.0144" in receipt
+
+
+def test_try_codex_rollout_file_explicit_format(tmp_path, monkeypatch,
+                                               capsys):
+    # R4: a single Codex rollout meters directly.
+    monkeypatch.chdir(tmp_path)
+    path = _codex_rollout_file(tmp_path)
+    rc = main(["try", str(path), "--format", "codex"])
+    assert rc == 0
+    assert (tmp_path / "rollout-try.html").exists()
+    receipt = (tmp_path / "rollout-try-receipt.md").read_text(
+        encoding="utf-8")
+    assert ("Source: `codex/%s` (Codex rollout)"
+            % str(path).lstrip(os.sep)) in receipt
+    assert "EXTERNAL-UNVERIFIABLE" in receipt  # D5, Codex billing
+    assert "not comparable: Codex subscription billing" in receipt
+    html = (tmp_path / "rollout-try.html").read_text(encoding="utf-8")
+    assert "Codex rollout" in html
+    out = capsys.readouterr().out
+    # Pinned metered value: 1000 in / 100 out tokens on gpt-5.2
+    # = $0.00315.
+    assert "Total cost: $0.00315" in " ".join(out.split())
+
+
+def test_try_codex_subagent_rollout_file_auto_detected(
+        tmp_path, monkeypatch, capsys):
+    # R4 rework: a real subagent rollout (session_meta source is an
+    # object, which is what excludes it from the scan) still meters
+    # directly when passed explicitly, auto-detected as codex.
+    monkeypatch.chdir(tmp_path)
+    path = _codex_rollout_file(tmp_path)
+    records = [json.loads(line) for line in
+               path.read_text(encoding="utf-8").splitlines()
+               if line.strip()]
+    records[0]["payload"]["source"] = {
+        "subagent": {"other": "guardian"}}
+    path.write_text("\n".join(json.dumps(r) for r in records),
+                    encoding="utf-8")
+    from averth.local_scan import _is_codex_subagent
+    assert _is_codex_subagent(str(path)) is True
+    rc = main(["try", str(path)])
+    assert rc == 0
+    receipt = (tmp_path / "rollout-try-receipt.md").read_text(
+        encoding="utf-8")
+    assert ("Source: `codex/%s` (Codex rollout)"
+            % str(path).lstrip(os.sep)) in receipt
+
+
+def test_try_codex_rollout_file_auto_detected(tmp_path, monkeypatch,
+                                             capsys):
+    monkeypatch.chdir(tmp_path)
+    path = _codex_rollout_file(tmp_path)
+    rc = main(["try", str(path)])
+    assert rc == 0
+    receipt = (tmp_path / "rollout-try-receipt.md").read_text(
+        encoding="utf-8")
+    assert ("Source: `codex/%s` (Codex rollout)"
+            % str(path).lstrip(os.sep)) in receipt
+    assert "EXTERNAL-UNVERIFIABLE" in receipt  # D5, Codex billing
+    assert "not comparable: Codex subscription billing" in receipt
+    html = (tmp_path / "rollout-try.html").read_text(encoding="utf-8")
+    assert "Codex rollout" in html
+    out = capsys.readouterr().out
+    assert "Total cost: $0.00315" in " ".join(out.split())
+
+
+def test_try_comment_led_claude_session_meters(tmp_path, monkeypatch,
+                                               capsys):
+    # Round-4 fix 6: detection alone is not the product behavior —
+    # a comment-led session must meter end to end, not just detect
+    # as claude and then fail at parse. 60 leading `#` lines, the
+    # round-3 failure shape.
+    monkeypatch.chdir(tmp_path)
+    path = _claude_session_file(tmp_path)
+    lines = path.read_text(encoding="utf-8").splitlines()
+    commented = ["# exported from claude"] * 60 + lines
+    path.write_text("\n".join(commented) + "\n", encoding="utf-8")
+    rc = main(["try", str(path)])
+    assert rc == 0
+    receipt = (tmp_path / "session-try-receipt.md").read_text(
+        encoding="utf-8")
+    assert "recorded $0.0500 vs metered estimate $0.0105" in receipt
+
+
+def test_try_comment_led_codex_rollout_meters(tmp_path, monkeypatch,
+                                             capsys):
+    # Round-4 fix 6, Codex half: a comment-led rollout meters end
+    # to end with the same pinned dollars as the uncommented file.
+    monkeypatch.chdir(tmp_path)
+    path = _codex_rollout_file(tmp_path)
+    lines = path.read_text(encoding="utf-8").splitlines()
+    commented = ["# rollout notes", "#", ""] + lines
+    path.write_text("\n".join(commented) + "\n", encoding="utf-8")
+    rc = main(["try", str(path)])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "Total cost: $0.00315" in " ".join(out.split())
+
+
+def test_try_comment_led_jsonl_events_meter(tmp_path, monkeypatch,
+                                           capsys):
+    # Round-4 fix 5, end to end: a commented Averth JSONL events
+    # file meters the events it contains.
+    monkeypatch.chdir(tmp_path)
+    events = _fixture_events()
+    path = tmp_path / "events.jsonl"
+    path.write_text("# case-study events\n" + "\n".join(
+        json.dumps(e) for e in events) + "\n", encoding="utf-8")
+    rc = main(["try", str(path)])
+    assert rc == 0
+    assert (tmp_path / "events-try-receipt.md").exists()
+
+
+def test_try_codex_two_snapshots_pin_deltas_reasoning_cache(
+        tmp_path, monkeypatch, capsys):
+    # Round-4 fix 7: the single-snapshot $0.00315 pin is blind to
+    # three bugs — summing cumulative snapshots instead of deltas,
+    # dropping reasoning tokens, and pricing cached tokens at the
+    # full input rate. Two snapshots with nonzero reasoning and
+    # cache distinguish all three: expected $0.006195; sum-snapshots
+    # gives $0.00973, drop-reasoning $0.004795, cached-at-full-price
+    # $0.006825.
+    monkeypatch.chdir(tmp_path)
+    records = [
+        {"type": "session_meta",
+         "payload": {"id": "codex-1", "cwd": "/tmp/shop",
+                     "cli_version": "0.130.0",
+                     "model_provider": "openai", "source": "cli"}},
+        {"type": "turn_context", "payload": {"model": "gpt-5.2"}},
+        {"type": "response_item",
+         "payload": {"type": "function_call", "name": "exec_command",
+                     "call_id": "c1",
+                     "arguments": json.dumps(
+                         {"command": "pytest tests/test_x.py"})}},
+        {"type": "response_item",
+         "payload": {"type": "function_call_output", "call_id": "c1",
+                     "output": "ok"}},
+        {"type": "event_msg",
+         "payload": {"type": "token_count",
+                     "info": {"total_token_usage": {
+                         "input_tokens": 1000,
+                         "cached_input_tokens": 200,
+                         "output_tokens": 100,
+                         "reasoning_output_tokens": 50}}}},
+        {"type": "event_msg",
+         "payload": {"type": "token_count",
+                     "info": {"total_token_usage": {
+                         "input_tokens": 1500,
+                         "cached_input_tokens": 400,
+                         "output_tokens": 200,
+                         "reasoning_output_tokens": 100}}}},
+    ]
+    path = tmp_path / "rollout.jsonl"
+    path.write_text("\n".join(json.dumps(r) for r in records),
+                    encoding="utf-8")
+    rc = main(["try", str(path)])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "Total cost: $0.006195" in " ".join(out.split())
+
+
+def test_try_codex_rollout_without_function_calls_meters(
+        tmp_path, monkeypatch, capsys):
+    # Round-4 (optional): a rollout with token counts but no
+    # function-call records still meters — spend is observed, the
+    # missing commands are an evidence gap, not a failure.
+    monkeypatch.chdir(tmp_path)
+    records = [
+        {"type": "session_meta",
+         "payload": {"id": "codex-1", "cwd": "/tmp/shop",
+                     "cli_version": "0.130.0",
+                     "model_provider": "openai", "source": "cli"}},
+        {"type": "turn_context", "payload": {"model": "gpt-5.2"}},
+        {"type": "event_msg",
+         "payload": {"type": "token_count",
+                     "info": {"total_token_usage": {
+                         "input_tokens": 1000,
+                         "cached_input_tokens": 0,
+                         "output_tokens": 100,
+                         "reasoning_output_tokens": 0}}}},
+    ]
+    path = tmp_path / "rollout.jsonl"
+    path.write_text("\n".join(json.dumps(r) for r in records),
+                    encoding="utf-8")
+    rc = main(["try", str(path)])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "Total cost: $0.00315" in " ".join(out.split())
+
+
+def test_try_session_file_without_usage_is_a_clean_error(
+        tmp_path, monkeypatch, capsys):
+    # Tool records but no usage records: the error names what is
+    # missing instead of calling the file an "empty export".
+    monkeypatch.chdir(tmp_path)
+    path = _claude_session_file(tmp_path, usage=False)
+    rc = main(["try", str(path)])
+    err = capsys.readouterr().err
+    assert rc == 2
+    assert "no usage records found" in err
+    assert "empty export" not in err
+    # The next step names every accepted form, the concrete
+    # `averth try <file>` form, and the trajectory --model note.
+    assert "Claude session" in err
+    assert "Codex rollout" in err
+    assert "mini-SWE-agent trajectory" in err
+    assert "Averth JSONL" in err
+    assert "Langfuse export" in err
+    assert "averth try <file>" in err
+    assert "<trace-file>" not in err
+    assert "For a trajectory, add --model NAME" in err
+    assert not (tmp_path / "session-try.html").exists()
+    assert not (tmp_path / "session-try-receipt.md").exists()
+
+
+def test_try_claude_session_model_flag_is_ignored(tmp_path, monkeypatch,
+                                                  capsys):
+    # --model applies to trajectories only; passing it with a
+    # session file is ignored, not an error, and the session's own
+    # model still prices the run.
+    monkeypatch.chdir(tmp_path)
+    path = _claude_session_file(tmp_path)
+    rc = main(["try", str(path), "--model", "some-other-model"])
+    assert rc == 0
+    receipt = (tmp_path / "session-try-receipt.md").read_text(
+        encoding="utf-8")
+    assert "recorded $0.0500 vs metered estimate $0.0105" in receipt
+
+
+def test_try_cross_format_session_is_a_wrong_format_error(
+        tmp_path, monkeypatch, capsys):
+    # A Claude session forced as codex (and the mirror) meters
+    # nothing, because the importer skips foreign records: the
+    # error names what the file looks like instead of calling it
+    # empty or usage-less.
+    monkeypatch.chdir(tmp_path)
+    path = _claude_session_file(tmp_path)
+    rc = main(["try", str(path), "--format", "codex"])
+    err = capsys.readouterr().err
+    assert rc == 2
+    assert "looks like claude, not codex" in err
+    assert "no usage records found" not in err
+    assert "empty export" not in err
+    path = _codex_rollout_file(tmp_path, name="rollout2.jsonl")
+    rc = main(["try", str(path), "--format", "claude"])
+    err = capsys.readouterr().err
+    assert rc == 2
+    assert "looks like codex, not claude" in err
+    assert "no usage records found" not in err
+    assert "empty export" not in err
+
+
+def test_try_traj_without_usage_names_model(tmp_path, monkeypatch,
+                                           capsys):
+    # Round-4 fix 1: a trajectory with messages but no usage
+    # records hits the empty-export error; the --model sentence
+    # belongs there too, not only in the claude/codex branch.
+    monkeypatch.chdir(tmp_path)
+    traj = tmp_path / "no-usage-claude-sonnet-4-20250514.traj.json"
+    traj.write_text(json.dumps({
+        "instance_id": "x",
+        "messages": [{"role": "user", "content": "hi"}]}),
+        encoding="utf-8")
+    rc = main(["try", str(traj)])
+    err = capsys.readouterr().err
+    assert rc == 2
+    assert "contains no traces" in err
+    assert "For a trajectory, add --model NAME" in err
+
+
+def test_try_wrong_format_traj_hint_is_runnable(tmp_path, monkeypatch,
+                                               capsys):
+    # Round-4 fix 2: the retry hinted by the wrong-format error
+    # must work as written. For a trajectory, "--format auto"
+    # alone fails with "no model named", so the hint names
+    # "--format auto --model NAME".
+    monkeypatch.chdir(tmp_path)
+    rc = main(["try", TRAJ, "--format", "claude"])
+    err = capsys.readouterr().err
+    assert rc == 2
+    assert "--format auto --model NAME" in err
+    # The hinted command, with a real model, meters the file.
+    rc = main(["try", TRAJ, "--format", "auto", "--model", MODEL])
+    assert rc == 0
+
+
+def test_try_cross_format_traj_names_model(tmp_path, monkeypatch,
+                                          capsys):
+    # Round-4 fix 2, same defect in the other branch: a trajectory
+    # forced as claude whose importer skips every record also needs
+    # the --model note — "pass --format traj" alone fails with
+    # "no model named" when the file name carries no priced model.
+    monkeypatch.chdir(tmp_path)
+    traj = tmp_path / "one-line.traj.json"
+    traj.write_text(json.dumps({
+        "instance_id": "x",
+        "messages": [{"role": "user", "content": "hi"}]}),
+        encoding="utf-8")
+    rc = main(["try", str(traj), "--format", "claude"])
+    err = capsys.readouterr().err
+    assert rc == 2
+    assert "looks like traj, not claude" in err
+    assert "For a trajectory, add --model NAME" in err
+
+
 def test_try_wrong_format_names_detected_format(capsys):
     rc = main(["try", TRAJ, "--format", "jsonl", "--model", MODEL])
     err = capsys.readouterr().err
     assert rc == 2
     assert "does not parse as jsonl" in err
     assert "looks like traj" in err
+    assert "traj|jsonl|langfuse|claude|codex" in err
 
 
 def test_try_unsupported_file_is_an_error(tmp_path, capsys):

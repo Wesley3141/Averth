@@ -153,8 +153,11 @@ def render_receipt(*, generated_at=None, sources=(), source_kind=None,
                    unknown_rate=None, scan_note=None):
     """Render the receipt Markdown.
 
-    ``sources`` is a list of session display names (``source/basename``
-    strings) in scan mode, or the single input file in explicit mode.
+    ``sources`` is a list of session display names (``source/<path
+    below the source root>`` strings, so two sessions sharing a
+    basename still render distinctly) in scan mode, or the single
+    input file's display name (session files) or basename (other
+    traces) in explicit mode.
     ``source_kind`` names an explicit trace's kind ("mini-SWE-agent
     trajectory", "Claude session", "Codex rollout", "JSONL",
     "Langfuse"); scan mode passes None and keeps the "Source

@@ -106,6 +106,15 @@ VERDICTS = ("VERIFIED", "FAILED", "NOT OBSERVED",
 # D5: recorded vs estimated agree when within 5% of each other.
 D5_TOLERANCE = 0.05
 
+# Float slack for the inclusive 5% boundary: 0.0105/0.0100 is
+# 1.0500000000000000444 in binary float, so a bare `<= 0.05`
+# rejects a mathematically exact +5% while 0.21/0.20 (also exactly
+# +5%) passes by float luck. 1e-9 is far larger than any float
+# error in this ratio (~1e-16) and far smaller than any difference
+# a reader could see at the printed 4dp, so it admits only the
+# boundary itself, never a genuinely over-tolerance case.
+D5_TOLERANCE_EPSILON = 1e-9
+
 # D4: this many duplicate identical command invocations (counting
 # each repeat past the first) fails the check. Up to four re-runs are
 # normal agent iteration (fix, then re-run); five or more identical
@@ -443,7 +452,9 @@ def extract_claude(path):
     skipped, matching the claude importer. Lines that fail to parse
     are counted, never crash the extraction: the importer has
     already validated the file when the scan runs, so a count here
-    is a belt-and-braces signal, not a second validator. A line
+    is a belt-and-braces signal, not a second validator. ``#``
+    comment lines are skipped, not counted: like the importer and
+    the sniffer, they carry no records. A line
     that is not valid UTF-8 is counted the same way (the file is
     read as bytes and decoded line by line, so one bad line cannot
     abort the rest). ``pending`` is keyed only by non-empty-string
@@ -470,6 +481,10 @@ def extract_claude(path):
                 evidence["unparseable_lines"] += 1
                 continue
             if not line.strip():
+                continue
+            if line.lstrip().startswith("#"):
+                # Comment lines carry no records: skipped, not
+                # counted as unparseable (matches the importer).
                 continue
             try:
                 record = json.loads(line)
@@ -596,6 +611,10 @@ def extract_codex(path):
                 evidence["unparseable_lines"] += 1
                 continue
             if not line.strip():
+                continue
+            if line.lstrip().startswith("#"):
+                # Comment lines carry no records: skipped, not
+                # counted as unparseable (matches the importer).
                 continue
             try:
                 record = json.loads(line)
@@ -733,6 +752,136 @@ def _scan_file_top_level_keys(path):
     return scanner.keys
 
 
+# Record-type markers for the JSONL shapes ``averth try`` meters.
+# Strong markers decide a shape on their own; weak markers decide
+# only with corroboration (see ``sniff_jsonl_shape``).
+_JSONL_EVENT_TYPES = frozenset(
+    ("start", "model", "tool", "retry", "escalation", "end"))
+_CLAUDE_GENERIC_TYPES = frozenset(
+    ("system", "summary", "result", "file-history-snapshot",
+     "queue-operation"))
+_CODEX_GENERIC_TYPES = frozenset(
+    ("session_meta", "turn_context", "event_msg"))
+
+
+def sniff_jsonl_shape(path):
+    """Sniff which JSONL shape a file is, by a tally over record types.
+
+    Returns ``"jsonl"``, ``"claude"``, or ``"codex"``, or ``None``
+    when no record decides the shape. Raises ``ValueError`` when
+    the file mixes shapes, or is not readable.
+
+    Strong markers: Averth JSONL events (start/model/tool/retry/
+    escalation/end); Claude assistant/user records with a
+    ``message.content`` list; Codex ``response_item`` records.
+    Exactly one format with strong markers wins; strong markers
+    from two formats make the file ambiguous, never first-wins: a
+    stray record must not silently reclassify the rest of the
+    file. Weak markers: a Claude assistant/user record without a
+    ``message.content`` list decides alone; generic weak markers
+    (system/summary/result/file-history-snapshot/queue-operation
+    for Claude; session_meta/turn_context/event_msg for Codex)
+    decide only with corroboration — two or more weak records of
+    the same format. Weak markers from both sides, each decisive,
+    make the file ambiguous.
+
+    The scan reads the first 10 JSON object lines (``#`` comment
+    lines are skipped before parsing and do not count; blank lines
+    and non-dict JSON values do not count toward the 10 object
+    lines, though a non-dict JSON value still counts toward the
+    raw-line cap below; a line that is not JSON, or not UTF-8,
+    stops the scan). A raw-line cap of 50 JSON-parseable lines per
+    phase bounds the scan; ``#`` comment lines and blank lines do
+    not count toward it. When no strong
+    marker was seen in the first 10 object lines and the file has
+    more lines, the scan continues up to 50 object lines looking
+    for a strong marker. A strong marker past the 50-line extension
+    is never seen: once the extension is exhausted, the weak markers
+    decide. A record whose ``type`` is not a string decides nothing
+    (an unhashable ``type`` must never raise). The file is read
+    incrementally, never loaded whole.
+    """
+    strong = {"jsonl": 0, "claude": 0, "codex": 0}
+    weak_bare_claude = 0
+    weak_claude = 0
+    weak_codex = 0
+    dict_lines = 0
+    raw_lines = 0
+    limit = 10
+    try:
+        with open(path, "rb") as f:
+            while True:
+                raw = f.readline(1024 * 1024)
+                if not raw:
+                    break
+                try:
+                    line = raw.decode("utf-8").strip()
+                except UnicodeDecodeError:
+                    break
+                if not line or line.startswith("#"):
+                    continue
+                try:
+                    obj = json.loads(line)
+                except json.JSONDecodeError:
+                    break
+                # Only JSON-parseable lines count toward the cap:
+                # comment and blank lines do not.
+                raw_lines += 1
+                if raw_lines > 50:
+                    break
+                if not isinstance(obj, dict):
+                    continue
+                dict_lines += 1
+                rtype = obj.get("type")
+                if isinstance(rtype, str):
+                    if rtype == "response_item":
+                        strong["codex"] += 1
+                    elif rtype in ("assistant", "user"):
+                        message = obj.get("message")
+                        if isinstance(message, dict) \
+                                and isinstance(message.get("content"),
+                                               list):
+                            strong["claude"] += 1
+                        else:
+                            weak_bare_claude += 1
+                    elif rtype in _JSONL_EVENT_TYPES:
+                        strong["jsonl"] += 1
+                    elif rtype in _CLAUDE_GENERIC_TYPES:
+                        weak_claude += 1
+                    elif rtype in _CODEX_GENERIC_TYPES:
+                        weak_codex += 1
+                if dict_lines >= limit:
+                    if limit == 10 and not any(strong.values()):
+                        limit = 50
+                        raw_lines = 0
+                        continue
+                    break
+    except OSError as e:
+        raise ValueError("%s is not readable: %s" % (path, e))
+    strong_formats = [k for k, v in strong.items() if v]
+    if len(strong_formats) > 1:
+        raise ValueError(
+            "%s is ambiguous: it mixes record types from more than "
+            "one shape (%s); it is not one supported shape (Averth "
+            "JSONL, Claude session, or Codex rollout)"
+            % (path, " and ".join(sorted(strong_formats))))
+    if len(strong_formats) == 1:
+        return strong_formats[0]
+    claude_decisive = weak_bare_claude >= 1 or weak_claude >= 2
+    codex_decisive = weak_codex >= 2
+    if claude_decisive and codex_decisive:
+        raise ValueError(
+            "%s is ambiguous: it carries weak markers for both the "
+            "Claude session and Codex rollout shapes; it is not one "
+            "supported shape"
+            % path)
+    if claude_decisive:
+        return "claude"
+    if codex_decisive:
+        return "codex"
+    return None
+
+
 def extract_from_file(path):
     """Extract evidence from any explicit-trace file, sniffing shape.
 
@@ -747,10 +896,14 @@ def extract_from_file(path):
     The sniff is incremental and bounded: the top-level keys are
     scanned in chunks (see ``_TopLevelKeyScanner``) until ``messages``
     is found or the outermost object closes, capped at 16 MiB, and
-    the first 50 lines up to 1 MiB are scanned for the Claude/Codex
-    shapes. The whole file is never loaded just to detect its shape.
-    Only a detected trajectory is then parsed in full, once, by
-    ``extract_traj``.
+    the JSONL shape is sniffed by ``sniff_jsonl_shape`` (first 10
+    object lines, extended to 50 when only weak markers were seen).
+    The whole file is never loaded just to detect its shape. Only
+    a detected trajectory is then parsed in full, once, by
+    ``extract_traj``. A file whose shape is ambiguous yields empty
+    evidence (every check NOT OBSERVED with the reason stated),
+    never an error: the CLI refuses ambiguous files before this
+    function is ever called for a report.
     """
     if not _is_regular_file(path):
         evidence = _new_evidence("unknown")
@@ -758,40 +911,13 @@ def extract_from_file(path):
         return evidence
     if "messages" in _scan_file_top_level_keys(path):
         return extract_traj(path)
-    head = []
-    budget = 1024 * 1024
     try:
-        with open(path, "rb") as f:
-            while len(head) < 50 and budget > 0:
-                raw = f.readline(65536)
-                if not raw:
-                    break
-                budget -= len(raw)
-                try:
-                    head.append(raw.decode("utf-8"))
-                except UnicodeDecodeError:
-                    head.append("")
-    except OSError:
-        head = []
-    is_claude = False
-    is_codex = False
-    for line in head:
-        try:
-            record = json.loads(line)
-        except ValueError:
-            continue
-        if not isinstance(record, dict):
-            continue
-        if record.get("type") == "assistant":
-            message = record.get("message")
-            if isinstance(message, dict) \
-                    and isinstance(message.get("content"), list):
-                is_claude = True
-        if record.get("type") == "response_item":
-            is_codex = True
-    if is_claude:
+        shape = sniff_jsonl_shape(path)
+    except ValueError:
+        shape = None
+    if shape == "claude":
         return extract_claude(path)
-    if is_codex:
+    if shape == "codex":
         return extract_codex(path)
     evidence = _new_evidence("unknown")
     evidence["sessions"].append(os.path.basename(path))
@@ -1112,15 +1238,22 @@ def _judge_d5(evidence, estimated_cost):
                                "$%.4f; no ratio (recorded cost is "
                                "$0.00)" % estimated_cost}
     ratio = estimated_cost / recorded
-    detail = ("recorded $%.4f vs metered estimate $%.4f (4dp figures; "
-              "ratio %.2fx; agree within %.0f%%)"
-              % (recorded, estimated_cost, ratio,
-                 D5_TOLERANCE * 100))
-    if abs(ratio - 1.0) <= D5_TOLERANCE:
+    if abs(ratio - 1.0) <= D5_TOLERANCE + D5_TOLERANCE_EPSILON:
         return {"id": "D5", "name": "trace-recorded vs estimated cost",
-                "verdict": "VERIFIED", "observation": detail}
+                "verdict": "VERIFIED",
+                "observation": ("recorded $%.4f vs metered estimate "
+                                "$%.4f (4dp figures; ratio %.2fx; agree "
+                                "within %.0f%%)"
+                                % (recorded, estimated_cost, ratio,
+                                   D5_TOLERANCE * 100))}
     return {"id": "D5", "name": "trace-recorded vs estimated cost",
-            "verdict": "FAILED", "observation": detail}
+            "verdict": "FAILED",
+            "observation": ("recorded $%.4f vs metered estimate $%.4f "
+                            "(4dp figures; ratio %.2fx; differ by "
+                            "%.0f%%, tolerance %.0f%%)"
+                            % (recorded, estimated_cost, ratio,
+                               abs(ratio - 1.0) * 100,
+                               D5_TOLERANCE * 100))}
 
 
 def judge_default_checks(evidence, estimated_cost):

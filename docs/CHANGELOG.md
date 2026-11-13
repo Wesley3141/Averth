@@ -90,7 +90,7 @@
   them as carrying no tool records at all. The same streaming scan
   backs `averth try` format detection, whose old 1 MiB prefix had
   the same hole for a trajectory with a larger leading block.
-  98 tests in `tests/test_self_serve_scan.py` (discovery with a fake
+  111 tests in `tests/test_self_serve_scan.py` (discovery with a fake
   home, extraction, every verdict including the NOT OBSERVED paths,
   receipt escaping, CLI scan and explicit-trace behavior).
   `try-it/README.md` documents the scan, the receipt, and the D1-D5
@@ -100,7 +100,8 @@
   accepts a mini-SWE-agent trajectory (new `averth/importers/miniswe.py`,
   which reproduces the published case-study events, as parsed event
   records),
-  Averth JSONL, or a Langfuse export, with `--recorded` for the
+  Averth JSONL, a Langfuse export, a Claude Code session, or a Codex
+  rollout, with `--recorded` for the
   recorded-cost comparison and `--ledger`/`--checks` for a V0 verdict
   summary (the checks digest is verified and refuses on mismatch).
   `try-it/reproduce-case-study.py` replays the full published
@@ -110,6 +111,18 @@
   It does not recheck the 3.84x 12-run leaderboard gap, the
   0-tool-failures claim, or the $0.9832 unrounded total. See
   `try-it/README.md`.
+- One-command try-it (`averth try`) now meters a single session file
+  explicitly: `averth try <path-to-session.jsonl>` (or a Codex
+  rollout) meters that one file, auto-detected by a tally over
+  record types (strong markers: Claude assistant/user records with
+  a message.content list, Codex response_item records; weak markers
+  decide only with corroboration — see try-it/README.md) or forced
+  with `--format claude|codex`. This is also how a Codex subagent
+  rollout excluded from the scan is metered. A Claude session or
+  Codex rollout with no model calls (no usage records found) exits
+  2 with that reason instead of calling the file an empty export.
+  The receipt labels the single source with its kind (Claude
+  session / Codex rollout), as for trajectories.
 
 ### Corrected
 
@@ -127,6 +140,21 @@
 
 ### Fixed
 
+- The scan receipt's source list no longer repeats the same string
+  for distinct sessions: a session's display name is now
+  `source/<path below the source root>` (the project slug for
+  Claude, the date path for Codex) instead of a bare
+  `source/basename`, so ten files all named `session.jsonl` in
+  different projects list as ten distinct sources (e.g.
+  `claude/proj-a/session.jsonl`, `claude/proj-b/session.jsonl`).
+  The HTML report's source note uses the same names.
+- The no-sessions and no-model-calls errors no longer suggest the
+  placeholder form `averth try <trace-file>`, which could not meter
+  a session file: both now say averth try <file> and name the
+  accepted file kinds (a Claude session, Codex rollout,
+  mini-SWE-agent trajectory, Averth JSONL, or Langfuse export).
+  The all-parse-fail error changed the same way, from
+  `averth try <trace-file>` to `` `averth try <file>` ``.
 - D5 (trace-recorded vs estimated cost) no longer judges FAILED when
   the metered estimate is $0.00 and the recorded cost is nonzero:
   a $0.00 estimate means no priced usage was observed in the trace,
@@ -140,6 +168,19 @@
   figures $0.00 still VERIFIED, and disagreeing nonzero figures
   still FAILED with the ratio. On the 50-trace public audit no
   number moves (every audit trace has a metered estimate above $0).
+- D5's FAILED observation no longer claims agreement it did not
+  find: the observation is now built per verdict. The VERIFIED
+  observation keeps "agree within 5%"; the FAILED observation
+  reads "differ by N%, tolerance 5%" (e.g. recorded $0.0100 vs
+  metered estimate $0.0045, ratio 0.45x, differ by 55%).
+- D5's documented 5% tolerance is inclusive in fact as well as in
+  words: the comparison now carries a 1e-9 float slack, because
+  0.0105/0.0100 is 1.0500000000000000444 in binary float and a bare
+  `<= 0.05` rejected a mathematically exact +5% (recorded $0.0100
+  vs metered estimate $0.0105 read FAILED, "differ by 5%,
+  tolerance 5%") while 0.21/0.20 — also exactly +5% — passed by
+  float luck. Both exact-5% cases now VERIFY, on both sides of the
+  boundary; a genuinely over-tolerance case (+6%) still FAILED.
 - D1 (tests executed) no longer counts a heredoc file-creation write
   as a test run: `cat <<'EOF' > test_x.py` is `cat` writing a file,
   not a test execution, so its rc 0 no longer makes D1 VERIFIED
@@ -155,7 +196,7 @@
   genuine final pytest run, rc 1; `django__django-14493` and
   `sphinx-doc__sphinx-7910` VERIFIED → NOT OBSERVED); the unknown
   rate moves 53.6% → 54.4%.
-  on its raw bytes at load, re-hashed before the ledger is built and
+- The checks file is hashed on its raw bytes at load, re-hashed before the ledger is built and
   written, and a net change between load and re-hash refuses to write
   output with exit code 2. The timing is a single net-change check: an
   edit reverted byte-for-byte before the re-hash escapes detection, as

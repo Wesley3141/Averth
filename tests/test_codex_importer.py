@@ -136,6 +136,51 @@ class CodexImporterTest(unittest.TestCase):
         self.assertEqual(len(model_events), 1)
         self.assertEqual(model_events[0]["case_id"], "flat-1")
 
+    def test_info_null_falls_back_to_beside_it(self):
+        # Round-4 fix 8a: "info": null with total_token_usage
+        # beside it still yields one model event with the counts.
+        path = _write([
+            _meta(), _turn("gpt-5.2"),
+            {"type": "event_msg",
+             "payload": {"type": "token_count", "info": None,
+                         "total_token_usage": {
+                             "input_tokens": 1000,
+                             "cached_input_tokens": 200,
+                             "output_tokens": 100,
+                             "reasoning_output_tokens": 50}}},
+        ])
+        events, stats = codex.parse_codex_rollout(path)
+        model_events = [e for e in events if e["type"] == "model"]
+        self.assertEqual(len(model_events), 1)
+        self.assertEqual(model_events[0]["input_tokens"], 1000)
+        self.assertEqual(model_events[0]["cached_input_tokens"], 200)
+        self.assertEqual(model_events[0]["output_tokens"], 150)
+        self.assertEqual(stats["token_count_events"], 1)
+
+    def test_info_null_without_usage_skips(self):
+        # Round-4 fix 8b: "info": null with no usage anywhere, and
+        # "total_token_usage": null, emit no model event and count
+        # the line as skipped.
+        path = _write([
+            _meta(), _turn("gpt-5.2"),
+            {"type": "event_msg",
+             "payload": {"type": "token_count", "info": None}},
+        ])
+        events, stats = codex.parse_codex_rollout(path)
+        model_events = [e for e in events if e["type"] == "model"]
+        self.assertEqual(len(model_events), 0)
+        self.assertEqual(stats["other_lines_skipped"], 1)
+        path = _write([
+            _meta(), _turn("gpt-5.2"),
+            {"type": "event_msg",
+             "payload": {"type": "token_count",
+                         "info": {"total_token_usage": None}}},
+        ])
+        events, stats = codex.parse_codex_rollout(path)
+        model_events = [e for e in events if e["type"] == "model"]
+        self.assertEqual(len(model_events), 0)
+        self.assertEqual(stats["other_lines_skipped"], 1)
+
     def test_subagent_thread_flagged_not_hidden(self):
         path = _write([_meta(source={"subagent": {"other": "guardian"}}),
                        _turn("gpt-5.2"), _tokens(100, 0, 10)])

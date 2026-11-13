@@ -193,7 +193,43 @@ def discover_sessions(home=None):
     return selected, skipped, checked, total_found
 
 
+# Path segments locating a session under its source root, e.g.
+# (".claude", "projects") for Claude Code, (".codex", "sessions")
+# for Codex. The display name keeps the part below the root, so two
+# sessions that share a basename (one per project, or one per day)
+# never render as the same string.
+_SOURCE_ROOTS = {"claude": (".claude", "projects"),
+                 "codex": (".codex", "sessions")}
+
+
 def display_name(candidate):
-    """Short display name for a session in reports: ``source/basename``."""
+    """Short display name for a session in reports.
+
+    ``source/<path below the source root>``: the project slug
+    (Claude) or date path (Codex) plus the basename. A bare basename
+    repeats the same string for distinct files — every project
+    directory can hold a file named ``session.jsonl`` — so the
+    relative path is what makes the receipt's source list truthful.
+    Falls back to the full path (below the filesystem root) when
+    the path does not sit under the expected root (defensive:
+    discovery only returns files under it): a bare basename there
+    would reintroduce the same collision for outside-root files.
+    """
+    path = candidate["path"]
+    root = _SOURCE_ROOTS.get(candidate["source"])
+    if root:
+        parts = path.split(os.sep)
+        # The discovery root is the first matching pair of
+        # segments: discovery only returns files under it, so the
+        # first match is the root; a later pair would sit inside
+        # a project directory.
+        idx = -1
+        for i in range(len(parts) - 1):
+            if parts[i] == root[0] and parts[i + 1] == root[1]:
+                idx = i
+                break
+        if idx >= 0 and len(parts) > idx + 2:
+            rel = os.sep.join(parts[idx + 2:])
+            return "%s/%s" % (candidate["source"], rel)
     return "%s/%s" % (candidate["source"],
-                      os.path.basename(candidate["path"]))
+                      candidate["path"].lstrip(os.sep))

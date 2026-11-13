@@ -173,6 +173,85 @@ def test_discovery_caps_at_ten_newest(tmp_path):
     assert selected[-1]["path"] == str(paths[2])
 
 
+def test_display_name_distinguishes_same_basename_sessions(tmp_path):
+    # R4: two distinct session files sharing a basename (one per
+    # project) must not render as the same string in the receipt.
+    a = {"path": str(tmp_path / ".claude" / "projects" / "proj-a"
+                     / "session.jsonl"),
+         "source": "claude", "mtime": 1000}
+    b = {"path": str(tmp_path / ".claude" / "projects" / "proj-b"
+                     / "session.jsonl"),
+         "source": "claude", "mtime": 2000}
+    name_a = local_scan.display_name(a)
+    name_b = local_scan.display_name(b)
+    assert name_a != name_b
+    assert name_a == "claude/proj-a/session.jsonl"
+    assert name_b == "claude/proj-b/session.jsonl"
+    # Codex keeps the date path, so same-day rollouts stay distinct
+    # by basename and different-day ones by date.
+    c = {"path": str(tmp_path / ".codex" / "sessions" / "2026" / "11"
+                     / "11" / "rollout-1.jsonl"),
+         "source": "codex", "mtime": 3000}
+    assert local_scan.display_name(c) == \
+        "codex/2026/11/11/rollout-1.jsonl"
+    d = {"path": str(tmp_path / ".codex" / "sessions" / "2026" / "11"
+                     / "12" / "rollout-1.jsonl"),
+         "source": "codex", "mtime": 4000}
+    assert local_scan.display_name(d) == \
+        "codex/2026/11/12/rollout-1.jsonl"
+    assert local_scan.display_name(c) != local_scan.display_name(d)
+
+
+def test_display_name_distinguishes_outside_root_and_nested_root(
+        tmp_path):
+    # R4 rework: the fallback must not be the bare basename — two
+    # outside-root files sharing a basename in different directories
+    # must still render distinctly. And the root pair is the FIRST
+    # match, not the deepest: a path where the pair appears nested
+    # under itself must differ from the canonical one.
+    a = {"path": str(tmp_path / "elsewhere" / "a" / "session.jsonl"),
+         "source": "claude", "mtime": 1000}
+    b = {"path": str(tmp_path / "elsewhere" / "b" / "session.jsonl"),
+         "source": "claude", "mtime": 2000}
+    assert local_scan.display_name(a) != local_scan.display_name(b)
+    c = {"path": str(tmp_path / ".claude" / "projects" / ".claude"
+                     / "projects" / "proj" / "session.jsonl"),
+         "source": "claude", "mtime": 3000}
+    d = {"path": str(tmp_path / ".claude" / "projects" / "proj"
+                     / "session.jsonl"),
+         "source": "claude", "mtime": 4000}
+    assert local_scan.display_name(c) != local_scan.display_name(d)
+    assert local_scan.display_name(c) == \
+        "claude/.claude/projects/proj/session.jsonl"
+    # Canonical case unchanged.
+    e = {"path": str(tmp_path / ".claude" / "projects" / "bar"
+                     / "session.jsonl"),
+         "source": "claude", "mtime": 5000}
+    assert local_scan.display_name(e) == "claude/bar/session.jsonl"
+
+
+def test_display_name_unknown_source_falls_back_to_full_path(tmp_path):
+    # Round-4 (optional): an unknown source has no root to be
+    # relative to, so the fallback is the full path below the
+    # filesystem root, never a bare basename.
+    cand = {"path": str(tmp_path / "elsewhere" / "session.jsonl"),
+            "source": "jsonl", "mtime": 1000}
+    name = local_scan.display_name(cand)
+    assert name == "jsonl/%s" % str(
+        tmp_path / "elsewhere" / "session.jsonl").lstrip(os.sep)
+    assert name != "jsonl/session.jsonl"
+
+
+def test_display_name_path_equal_to_root_uses_full_path(tmp_path):
+    # Round-4 (optional): a path that ends at the root pair itself
+    # has nothing below the root, so the fallback applies.
+    cand = {"path": str(tmp_path / ".claude" / "projects"),
+            "source": "claude", "mtime": 1000}
+    name = local_scan.display_name(cand)
+    assert name == "claude/%s" % str(
+        tmp_path / ".claude" / "projects").lstrip(os.sep)
+
+
 def test_discovery_excludes_codex_subagent_rollouts(tmp_path):
     _codex_rollout(tmp_path, name="main.jsonl")
     _codex_rollout(tmp_path, name="sub.jsonl", subagent=True)
@@ -341,6 +420,22 @@ def test_extract_from_file_sniffs_shapes(tmp_path):
     ev = default_checks.extract_from_file(str(plain))
     assert ev["source"] == "unknown"
     assert ev["commands"] == []
+    # A file mixing shapes is ambiguous: sniffing raises, so the
+    # evidence is empty (unknown source, no commands, no recorded
+    # cost), never an error.
+    mixed = tmp_path / "mixed.jsonl"
+    mixed.write_text(
+        json.dumps({"type": "start", "case_id": "x"}) + "\n"
+        + json.dumps({"type": "assistant", "sessionId": "s1",
+                      "message": {"id": "m1",
+                                  "model": "claude-sonnet-4-20250514",
+                                  "content": [{"type": "text",
+                                               "text": "hi"}]}}),
+        encoding="utf-8")
+    ev = default_checks.extract_from_file(str(mixed))
+    assert ev["source"] == "unknown"
+    assert ev["commands"] == []
+    assert ev["recorded_cost"] is None
 
 
 def test_extract_traj_reads_fences_and_instance_cost(tmp_path):
@@ -941,6 +1036,61 @@ def test_d5_disagreeing_figures_still_fail_with_ratio():
     assert "recorded $0.3200" in checks[4]["observation"]
 
 
+def test_d5_failed_observation_does_not_claim_agreement():
+    # Round-4 reviewer (e): the FAILED row's observation must not
+    # carry the "agree within 5%" clause — a reader pasting the
+    # receipt into a PR sees a self-contradictory row. The agree
+    # clause belongs to the VERIFIED branch only.
+    ev = _evidence(recorded=0.0100, claude_sessions=1, claude_with_cost=1)
+    checks = default_checks.judge_default_checks(ev, 0.0045)
+    assert _verdicts(checks)["D5"] == "FAILED"
+    assert checks[4]["observation"] == (
+        "recorded $0.0100 vs metered estimate $0.0045 "
+        "(4dp figures; ratio 0.45x; differ by 55%, tolerance 5%)")
+    assert "agree" not in checks[4]["observation"]
+    ev = _evidence(recorded=0.0045, claude_sessions=1, claude_with_cost=1)
+    checks = default_checks.judge_default_checks(ev, 0.0045)
+    assert _verdicts(checks)["D5"] == "VERIFIED"
+    assert checks[4]["observation"] == (
+        "recorded $0.0045 vs metered estimate $0.0045 "
+        "(4dp figures; ratio 1.00x; agree within 5%)")
+
+
+def test_d5_exactly_five_percent_verifies_inclusive():
+    # Round-5 reviewer (e): the documented tolerance is inclusive,
+    # but 0.0105/0.0100 is 1.0500000000000000444 in binary float, so
+    # a bare `<= 0.05` rejected a mathematically exact +5% while
+    # 0.21/0.20 (also exactly +5%) passed by float luck. Both
+    # exact-5% cases must VERIFY, on both sides of the boundary,
+    # and a genuinely over-tolerance case must still FAIL.
+    ev = _evidence(recorded=0.0100, claude_sessions=1, claude_with_cost=1)
+    checks = default_checks.judge_default_checks(ev, 0.0105)
+    assert _verdicts(checks)["D5"] == "VERIFIED"
+    assert checks[4]["observation"] == (
+        "recorded $0.0100 vs metered estimate $0.0105 "
+        "(4dp figures; ratio 1.05x; agree within 5%)")
+    ev = _evidence(recorded=0.20, claude_sessions=1, claude_with_cost=1)
+    checks = default_checks.judge_default_checks(ev, 0.21)
+    assert _verdicts(checks)["D5"] == "VERIFIED"
+    assert checks[4]["observation"] == (
+        "recorded $0.2000 vs metered estimate $0.2100 "
+        "(4dp figures; ratio 1.05x; agree within 5%)")
+    # The -5% side, also exact in decimal: 0.0095/0.0100.
+    ev = _evidence(recorded=0.0100, claude_sessions=1, claude_with_cost=1)
+    checks = default_checks.judge_default_checks(ev, 0.0095)
+    assert _verdicts(checks)["D5"] == "VERIFIED"
+    assert checks[4]["observation"] == (
+        "recorded $0.0100 vs metered estimate $0.0095 "
+        "(4dp figures; ratio 0.95x; agree within 5%)")
+    # Just over the boundary still fails: +6%.
+    ev = _evidence(recorded=0.0100, claude_sessions=1, claude_with_cost=1)
+    checks = default_checks.judge_default_checks(ev, 0.0106)
+    assert _verdicts(checks)["D5"] == "FAILED"
+    assert checks[4]["observation"] == (
+        "recorded $0.0100 vs metered estimate $0.0106 "
+        "(4dp figures; ratio 1.06x; differ by 6%, tolerance 5%)")
+
+
 def test_d5_not_observed_and_partial_and_codex():
     ev = _evidence(recorded=None)
     assert _verdicts(
@@ -1168,7 +1318,14 @@ def test_cli_scan_no_sessions_is_exit_2(tmp_path, monkeypatch, capsys):
     assert str(tmp_path / ".claude" / "projects") in err
     assert str(tmp_path / ".codex" / "sessions") in err
     assert "Run Claude Code or Codex once" in err
-    assert "averth try <trace-file>" in err
+    # R4: the hint names the real forms instead of the placeholder
+    # "averth try <trace-file>", which could not meter a session file.
+    assert "averth try <file>" in err
+    assert "Claude session" in err
+    assert "Codex rollout" in err
+    assert "(a Claude session, Codex rollout, mini-SWE-agent " \
+        "trajectory, Averth JSONL, or Langfuse export)" in err
+    assert "<trace-file>" not in err
 
 
 def test_cli_scan_runs_on_fake_sessions(tmp_path, monkeypatch, capsys):
@@ -1205,6 +1362,116 @@ def test_cli_scan_reports_total_found_past_the_cap(tmp_path, monkeypatch,
     assert "10 session(s) scanned (of 12 found; newest 10)" in out
 
 
+def test_cli_scan_receipt_lists_same_basename_sessions_distinctly(
+        tmp_path, monkeypatch, capsys):
+    # R4: two sessions both named session.jsonl in different projects
+    # must appear as two distinct sources in the receipt, not the
+    # same string twice.
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    for proj, mtime in (("proj-a", 1000), ("proj-b", 2000)):
+        path = tmp_path / ".claude" / "projects" / proj / "session.jsonl"
+        records = [
+            _claude_assistant("msg_01", usage=USAGE, content=[
+                _bash_use("call_1", "pytest tests/test_cli.py")]),
+            _claude_tool_result("call_1", False),
+            {"type": "result", "sessionId": "sess-1", "is_error": False,
+             "total_cost_usd": 0.05},
+        ]
+        _write_jsonl(path, records)
+        _touch(path, mtime)
+    rc = main(["try"])
+    assert rc == 0
+    receipt = (tmp_path / "averth-scan-receipt.md").read_text(
+        encoding="utf-8")
+    # Newest first, each source named distinctly.
+    assert "Source sessions: `claude/proj-b/session.jsonl`, " \
+        "`claude/proj-a/session.jsonl`" in receipt
+    # The HTML report's source note names them distinctly too.
+    html = (tmp_path / "averth-scan.html").read_text(encoding="utf-8")
+    assert "claude/proj-a/session.jsonl" in html
+    assert "claude/proj-b/session.jsonl" in html
+
+
+def test_try_explicit_outside_root_session_renders_full_path(
+        tmp_path, monkeypatch):
+    # R4 round 3: explicit `averth try` on a session file outside
+    # the source root renders the display name (source + full path
+    # below the filesystem root) in the receipt and the HTML source
+    # note, and two outside-root files sharing a basename render
+    # distinctly.
+    monkeypatch.chdir(tmp_path)
+    out_a = tmp_path / "out-a"
+    out_b = tmp_path / "out-b"
+    out_a.mkdir()
+    out_b.mkdir()
+    path_a = tmp_path / "elsewhere-a" / "session.jsonl"
+    path_b = tmp_path / "elsewhere-b" / "session.jsonl"
+    records = [
+        _claude_assistant("msg_01", usage=USAGE, content=[
+            _bash_use("call_1", "pytest")]),
+        _claude_tool_result("call_1", False),
+        {"type": "result", "sessionId": "sess-1", "is_error": False,
+         "total_cost_usd": 0.05},
+    ]
+    _write_jsonl(path_a, records)
+    _write_jsonl(path_b, records)
+    rc = main(["try", str(path_a), "--out", str(out_a / "a.html"),
+               "--receipt", str(out_a / "a-receipt.md")])
+    assert rc == 0
+    rc = main(["try", str(path_b), "--out", str(out_b / "b.html"),
+               "--receipt", str(out_b / "b-receipt.md")])
+    assert rc == 0
+    receipt_a = (out_a / "a-receipt.md").read_text(encoding="utf-8")
+    receipt_b = (out_b / "b-receipt.md").read_text(encoding="utf-8")
+    assert ("Source: `claude/%s` (Claude session)"
+            % str(path_a).lstrip(os.sep)) in receipt_a
+    assert ("Source: `claude/%s` (Claude session)"
+            % str(path_b).lstrip(os.sep)) in receipt_b
+    assert str(path_a) in receipt_a
+    assert str(path_b) in receipt_b
+    assert str(path_a) not in receipt_b
+    assert str(path_b) not in receipt_a
+    html_a = (out_a / "a.html").read_text(encoding="utf-8")
+    html_b = (out_b / "b.html").read_text(encoding="utf-8")
+    assert str(path_a) in html_a
+    assert str(path_b) in html_b
+    assert str(path_a) not in html_b
+    # A Codex rollout outside the source root renders the same way.
+    rollout = tmp_path / "elsewhere-c" / "rollout.jsonl"
+    codex_records = [
+        {"type": "session_meta",
+         "payload": {"id": "codex-1", "cwd": "/tmp/shop",
+                     "cli_version": "0.130.0",
+                     "model_provider": "openai", "source": "cli"}},
+        {"type": "turn_context", "payload": {"model": "gpt-5.2"}},
+        {"type": "response_item",
+         "payload": {"type": "function_call", "name": "exec_command",
+                     "call_id": "c1",
+                     "arguments": json.dumps({"command": "pytest"})}},
+        {"type": "response_item",
+         "payload": {"type": "function_call_output", "call_id": "c1",
+                     "output": "ok"}},
+        {"type": "event_msg",
+         "payload": {"type": "token_count",
+                     "info": {"total_token_usage": {
+                         "input_tokens": 1000,
+                         "cached_input_tokens": 0,
+                         "output_tokens": 100,
+                         "reasoning_output_tokens": 0}}}},
+    ]
+    _write_jsonl(rollout, codex_records)
+    rc = main(["try", str(rollout), "--out", str(out_a / "c.html"),
+               "--receipt", str(out_a / "c-receipt.md")])
+    assert rc == 0
+    receipt_c = (out_a / "c-receipt.md").read_text(encoding="utf-8")
+    assert ("Source: `codex/%s` (Codex rollout)"
+            % str(rollout).lstrip(os.sep)) in receipt_c
+    assert str(rollout) in receipt_c
+    html_c = (out_a / "c.html").read_text(encoding="utf-8")
+    assert str(rollout) in html_c
+
+
 def test_cli_scan_all_parse_failures_is_exit_2(tmp_path, monkeypatch,
                                                capsys):
     monkeypatch.chdir(tmp_path)
@@ -1218,6 +1485,7 @@ def test_cli_scan_all_parse_failures_is_exit_2(tmp_path, monkeypatch,
     assert "failed to parse" in err
     assert str(bad) in err
     assert "meter one file explicitly" in err
+    assert "`averth try <file>`" in err
 
 
 def test_cli_scan_no_usage_is_exit_2_with_next_step(tmp_path, monkeypatch,
@@ -1236,7 +1504,13 @@ def test_cli_scan_no_usage_is_exit_2_with_next_step(tmp_path, monkeypatch,
     err = capsys.readouterr().err
     assert rc == 2
     assert "no usage records found" in err
-    assert "averth try <trace-file>" in err
+    # R4: same wording fix as the no-sessions error.
+    assert "averth try <file>" in err
+    assert "Claude session" in err
+    assert "Codex rollout" in err
+    assert "(a Claude session, Codex rollout, mini-SWE-agent " \
+        "trajectory, Averth JSONL, or Langfuse export)" in err
+    assert "<trace-file>" not in err
 
 
 def test_cli_scan_zero_token_usage_session_d5_not_observed(
