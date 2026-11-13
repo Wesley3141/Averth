@@ -3,7 +3,7 @@
 **One command on your traces reveals the change worth testing.** Averth measures the fully-loaded cost of every AI agent run — model spend, retries, tool calls, human review — and names the single fix worth trying first.
 
 ```bash
-pip install git+https://github.com/Wesley3141/Averth.git
+pip install averth
 averth trace traces.json --format langfuse
 ```
 
@@ -38,7 +38,7 @@ What it is not: another cost dashboard. The output of an Averth run is a concret
 **Already have traces?** This is the whole pilot:
 
 ```bash
-pip install git+https://github.com/Wesley3141/Averth.git
+pip install averth
 averth trace run-2026-09.json --format langfuse --html report.html
 ```
 
